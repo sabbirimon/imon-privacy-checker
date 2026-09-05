@@ -36,15 +36,23 @@ final class PrivacyReport {
      */
     public static function build( array $scan ): array {
         $categories = array(
-            'ip'          => self::score_ip(          $scan ),
-            'reputation'  => self::score_reputation(  $scan ),
-            'dns'         => self::score_dns(         $scan ),
-            'webrtc'      => self::score_webrtc(      $scan ),
-            'fingerprint' => self::score_fingerprint( $scan ),
-            'user_agent'  => self::score_user_agent(  $scan ),
-            'ipv6'        => self::score_ipv6(        $scan ),
-            'consistency' => self::score_consistency( $scan ),
-            'proxy'       => self::score_proxy(       $scan ),
+            'ip'                  => self::score_ip(                  $scan ),
+            'reputation'          => self::score_reputation(          $scan ),
+            'dns'                 => self::score_dns(                 $scan ),
+            'webrtc'              => self::score_webrtc(              $scan ),
+            'fingerprint'         => self::score_fingerprint(         $scan ),
+            'user_agent'          => self::score_user_agent(          $scan ),
+            'ipv6'                => self::score_ipv6(                $scan ),
+            'consistency'         => self::score_consistency(         $scan ),
+            'security_posture'    => self::score_security_posture(    $scan ),
+            'proxy'               => self::score_proxy(               $scan ),
+            // Surface-only — appear in the breakdown but excluded from
+            // the weighted overall. Per IMON-BUILD-GUIDE.md Phase 6: a
+            // slow connection or a chatty LAN isn't a privacy problem,
+            // so we surface them under a separate "connection health"
+            // heading rather than letting them move the privacy score.
+            'connection_quality'  => self::score_connection_quality(  $scan ),
+            'local_network'       => self::score_local_network(       $scan ),
         );
 
         // Carry the proxy detection result on the top-level report so the UI
@@ -56,6 +64,10 @@ final class PrivacyReport {
 
         // Weighted average over categories. Each category contributes its
         // own percentage scaled by its weight, then we sum and renormalize.
+        // Categories with weight 0 are SURFACE-ONLY — they appear in the
+        // breakdown but don't move the privacy overall (per
+        // IMON-BUILD-GUIDE.md Phase 6: connection quality + local network
+        // exposure are "connection health", not privacy).
         $total_weight  = 0;
         $weighted_sum  = 0;
         $worst         = null;
@@ -64,6 +76,9 @@ final class PrivacyReport {
         foreach ( $categories as $key => $row ) {
             $weight  = (int) ( $row['weight'] ?? 1 );
             $pct     = (int) ( $row['percent'] ?? 0 );
+            if ( $weight <= 0 ) {
+                continue; // surface-only — exclude from weighted overall
+            }
             $total_weight += $weight;
             $weighted_sum += $pct * $weight;
             if ( $pct < $worst_pct ) {
@@ -105,11 +120,18 @@ final class PrivacyReport {
     }
 
     /**
-     * Confidence label based on how many components have a real signal.
+     * Confidence label based on how many WEIGHTED components have a real
+     * signal. Surface-only categories (weight 0) are excluded — they
+     * don't affect the privacy score so they shouldn't drag confidence
+     * either.
      */
     private static function confidence_for( array $categories ): string {
         $unknown = 0;
         foreach ( $categories as $row ) {
+            $weight = (int) ( $row['weight'] ?? 1 );
+            if ( $weight <= 0 ) {
+                continue;
+            }
             if ( isset( $row['status_source'] ) && 'unknown' === $row['status_source'] ) {
                 $unknown++;
             }
@@ -300,19 +322,19 @@ final class PrivacyReport {
                 return self::row( 100, 'good', 'fingerprint',
                     __( 'Browser fingerprint is low-entropy and hard to distinguish.', 'privacy-checker' ),
                     array( 'bits' => $bits ),
-                    3
+                    2
                 );
             case 'moderate':
                 return self::row( 65, 'warning', 'fingerprint',
                     __( 'Browser fingerprint has moderate entropy.', 'privacy-checker' ),
                     array( 'bits' => $bits ),
-                    3
+                    2
                 );
             case 'high':
                 return self::row( 20, 'bad', 'fingerprint',
                     __( 'Browser fingerprint is highly unique — easily trackable across sites.', 'privacy-checker' ),
                     array( 'bits' => $bits ),
-                    3
+                    2
                 );
             default:
                 return self::row( 60, 'warning', 'fingerprint',
@@ -450,60 +472,259 @@ final class PrivacyReport {
     }
 
     /**
+     * Anonymity consistency — now backed by AnonymityScorer::score() which
+     * correlates IP-geo timezone, browser-reported timezone, WebRTC leak
+     * verdict, proxy classification, and (optionally) DNS resolver org.
+     *
+     * Highest weight (4) per IMON-BUILD-GUIDE.md Phase 6: this is the
+     * "are you actually as private as you think" signal — more than one
+     * channel agreeing on the same answer is the whole point of the
+     * correlation. The standalone score_consistency() previously used a
+     * cheap IP/timezone country heuristic that missed WebRTC + DNS
+     * correlation entirely.
+     *
+     * The mapper here only translates the scorer's already-baked score +
+     * mismatch list into a category row. The category's weight in the
+     * weighted overall is what amplifies its importance — not anything
+     * we add here.
+     *
      * @return array<string,mixed>
      */
     private static function score_consistency( array $scan ): array {
-        // Consistency cross-check: does the IP intel country match the timezone?
-        $tz     = isset( $scan['fingerprint']['timezone'] ) ? (string) $scan['fingerprint']['timezone'] : '';
-        $intel  = $scan['connection']['intel'] ?? array();
-        $country = strtolower( (string) ( $intel['country'] ?? '' ) );
+        $anon = $scan['connection']['anonymity'] ?? array();
 
-        if ( '' === $tz || '' === $country ) {
-            return self::row( 80, 'good', 'consistency',
-                __( 'Insufficient data to cross-check IP and timezone.', 'privacy-checker' ),
+        // AnonymityScorer wasn't run (older builds, error path) — keep
+        // "unknown" honest, don't manufacture a verdict.
+        if ( ! is_array( $anon ) || ! isset( $anon['score'] ) || null === $anon['score'] ) {
+            return self::row( 70, 'warning', 'consistency',
+                __( 'Anonymity consistency not evaluated (no signals correlated on this run).', 'privacy-checker' ),
                 array(),
-                1,
+                4,
                 'unknown'
             );
         }
-        // Cheap heuristic — if timezone includes a country code we recognize,
-        // we expect intel.country to roughly match. We can't truly geolocate
-        // a timezone, so we only flag clearly mismatched pairs.
-        $tz_country_map = array(
-            'america/'  => array( 'us', 'ca', 'mx', 'br', 'ar' ),
-            'europe/'   => array( 'gb', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'se', 'no', 'fi', 'dk', 'ie' ),
-            'asia/'     => array( 'jp', 'cn', 'kr', 'in', 'th', 'sg', 'hk', 'tw', 'id', 'ph', 'my', 'vn' ),
-            'africa/'   => array( 'za', 'ng', 'eg', 'ke', 'ma' ),
-            'australia/' => array( 'au', 'nz' ),
-            'pacific/'  => array( 'nz', 'au', 'fj' ),
+
+        $score      = (int)   $anon['score'];
+        $mismatches = is_array( $anon['mismatches'] ?? null ) ? $anon['mismatches'] : array();
+        $summary    = (string) ( $anon['summary'] ?? '' );
+        $consistent = (bool)   ( $anon['consistent'] ?? false );
+
+        // Map the scorer's score → our category status. Tighter buckets
+        // than other categories because consistency is the highest-weighted
+        // signal: a single 100 must mean "no mismatches at all", not
+        // "score happens to be high".
+        if ( $consistent && 100 === $score ) {
+            $status = 'good';
+            $msg    = $summary !== '' ? $summary : __( 'No inconsistencies detected between your IP, timezone and connection signals.', 'privacy-checker' );
+        } elseif ( $score >= 70 ) {
+            $status = 'good';
+            $msg    = $summary !== '' ? $summary : __( 'Minor inconsistencies, well within expected VPN/proxy behavior.', 'privacy-checker' );
+        } elseif ( $score >= 40 ) {
+            $status = 'warning';
+            $msg    = $summary !== '' ? $summary : __( 'Several signals disagree. Review the mismatch list below.', 'privacy-checker' );
+        } else {
+            $status = 'bad';
+            $msg    = $summary !== '' ? $summary : __( 'Multiple signals disagree with each other — your real network details may be exposed despite a masking service.', 'privacy-checker' );
+        }
+
+        return self::row( $score, $status, 'consistency', $msg,
+            array(
+                'consistent' => $consistent,
+                'mismatches' => $mismatches,
+            ),
+            4
         );
-        $tz_lower = strtolower( $tz );
-        $expected = array();
-        foreach ( $tz_country_map as $prefix => $countries ) {
-            if ( str_starts_with( $tz_lower, $prefix ) ) {
-                $expected = $countries;
-                break;
-            }
-        }
-        if ( empty( $expected ) ) {
-            return self::row( 80, 'good', 'consistency',
-                __( 'Timezone region unknown.', 'privacy-checker' ),
+    }
+
+    /**
+     * Security posture — TLS version + cipher for the current connection
+     * + browser EOL status. Second-highest weight (3) per
+     * IMON-BUILD-GUIDE.md Phase 6: outdated TLS or a very-outdated
+     * browser is a real-world risk, not an aesthetic one.
+     *
+     * Worst-case rolls up: if either TLS or browser is `outdated`-class,
+     * the category status follows the worse of the two. The numeric
+     * percent is the *average* of the two sub-percent scores — that's
+     * fair enough since both sub-signals are independent risk vectors.
+     *
+     * @return array<string,mixed>
+     */
+    private static function score_security_posture( array $scan ): array {
+        $sp = $scan['security_posture'] ?? array();
+        if ( ! is_array( $sp ) || ( empty( $sp['tls'] ) && empty( $sp['browser'] ) ) ) {
+            return self::row( 70, 'warning', 'security_posture',
+                __( 'Security posture could not be evaluated.', 'privacy-checker' ),
                 array(),
-                1,
+                3,
                 'unknown'
             );
         }
-        if ( in_array( $country, $expected, true ) ) {
-            return self::row( 100, 'good', 'consistency',
-                __( 'IP and timezone are consistent.', 'privacy-checker' ),
-                array( 'country' => $country, 'timezone' => $tz ),
-                2
+
+        $tls_pct     = self::tls_percent(  $sp['tls']     ?? array() );
+        $browser_pct = self::browser_percent( $sp['browser'] ?? array() );
+
+        // Worst-of mapping for status. Ties go to the more conservative.
+        $pcts = array( $tls_pct, $browser_pct );
+        $worst = min( $pcts );
+
+        if ( $worst >= 90 ) {
+            $status = 'good';
+            $msg    = __( 'TLS and browser are current.', 'privacy-checker' );
+        } elseif ( $worst >= 60 ) {
+            $status = 'warning';
+            $msg    = __( 'One or both security-posture signals are below current. Review the details.', 'privacy-checker' );
+        } else {
+            $status = 'bad';
+            $msg    = __( 'Outdated TLS or very-outdated browser — upgrade is strongly recommended.', 'privacy-checker' );
+        }
+
+        // Source is "measured" when we have at least one real verdict,
+        // "unknown" only when both are missing.
+        $source = ( 0 === $tls_pct && 0 === $browser_pct ) ? 'unknown' : 'measured';
+
+        return self::row(
+            (int) round( ( $tls_pct + $browser_pct ) / 2 ),
+            $status,
+            'security_posture',
+            $msg,
+            array(
+                'tls'     => $sp['tls']     ?? array(),
+                'browser' => $sp['browser'] ?? array(),
+            ),
+            3,
+            $source
+        );
+    }
+
+    /**
+     * Map TlsInfo::current_request_info() status → 0-100 percent.
+     */
+    private static function tls_percent( array $tls ): int {
+        $status = (string) ( $tls['status'] ?? 'unknown' );
+        switch ( $status ) {
+            case 'modern':     return 100;
+            case 'acceptable': return 75;
+            case 'outdated':   return 25;
+            case 'unknown':
+            default:           return 70; // don't punish what we can't measure
+        }
+    }
+
+    /**
+     * Map BrowserVersions::check() status → 0-100 percent.
+     */
+    private static function browser_percent( array $browser ): int {
+        $status = (string) ( $browser['status'] ?? 'unknown' );
+        switch ( $status ) {
+            case 'current':         return 100;
+            case 'outdated':        return 65;
+            case 'very_outdated':   return 25;
+            case 'unknown_family':
+            case 'unknown_version':
+            default:                return 70; // see tls_percent
+        }
+    }
+
+    /**
+     * Connection Quality — surface-only category (weight 0).
+     *
+     * Surfaces latency / jitter / IP-family reachability from the
+     * client-side probe but explicitly DOES NOT roll into the privacy
+     * overall. A slow connection is a health observation, not a privacy
+     * problem — folding it into the privacy score would punish visitors
+     * on bad residential Wi-Fi without telling them anything useful
+     * about their actual anonymity.
+     *
+     * @return array<string,mixed>
+     */
+    private static function score_connection_quality( array $scan ): array {
+        $cq = $scan['connection_quality'] ?? null;
+        if ( ! is_array( $cq ) ) {
+            return self::row( 70, 'warning', 'connection_quality',
+                __( 'Connection quality probe did not run.', 'privacy-checker' ),
+                array(),
+                0, // surface-only — even when missing, weight stays 0
+                'unknown'
             );
         }
-        return self::row( 35, 'warning', 'consistency',
-            __( 'IP country and timezone disagree — possible VPN or proxy in use.', 'privacy-checker' ),
-            array( 'country' => $country, 'timezone' => $tz ),
-            2
+
+        // Map jitter to a soft health score. The probe may not have run
+        // at all (e.g. CORS blocked the echo endpoint) — fall back to
+        // unknown rather than fabricating a number.
+        $latency = $cq['latency'] ?? null;
+        if ( ! is_array( $latency ) || ! isset( $latency['avg_ms'] ) ) {
+            return self::row( 70, 'warning', 'connection_quality',
+                __( 'Connection quality probe did not produce a reading.', 'privacy-checker' ),
+                $cq,
+                0,
+                'unknown'
+            );
+        }
+
+        $avg    = (float) $latency['avg_ms'];
+        $jitter = (float) $latency['jitter_ms'];
+
+        // Soft health bands — these are NOT a privacy verdict. They're
+        // surfaced so a visitor can see "your connection is a bit
+        // chatty today" without it dragging down their anonymity score.
+        if ( $avg < 100 && $jitter < 30 ) {
+            $status = 'good';
+            $msg    = __( 'Connection is fast and stable.', 'privacy-checker' );
+        } elseif ( $avg < 250 && $jitter < 80 ) {
+            $status = 'warning';
+            $msg    = __( 'Connection is acceptable but jitter is noticeable.', 'privacy-checker' );
+        } else {
+            $status = 'warning';
+            $msg    = __( 'Connection is slow or unstable — this is a health signal, not a privacy problem.', 'privacy-checker' );
+        }
+
+        return self::row( 80, $status, 'connection_quality', $msg, $cq, 0 );
+    }
+
+    /**
+     * Local Network Exposure — surface-only category (weight 0).
+     *
+     * Per IMON-BUILD-GUIDE.md Phase 6: a noisy LAN isn't a privacy
+     * problem from the visitor's own perspective (they're testing
+     * their own network from their own browser). We surface the
+     * reachability count so the visitor knows about it, but it doesn't
+     * move the privacy overall — only the LAN exposure card does that
+     * visually, with a clearly separate heading.
+     *
+     * @return array<string,mixed>
+     */
+    private static function score_local_network( array $scan ): array {
+        $ln = $scan['local_network'] ?? null;
+        if ( ! is_array( $ln ) ) {
+            return self::row( 80, 'good', 'local_network',
+                __( 'Local network probe did not run.', 'privacy-checker' ),
+                array(),
+                0,
+                'unknown'
+            );
+        }
+
+        $reachable = is_array( $ln['reachable'] ?? null ) ? $ln['reachable'] : array();
+        $count     = count( $reachable );
+
+        if ( 0 === $count ) {
+            return self::row( 90, 'good', 'local_network',
+                __( 'No common gateway responded on admin ports.', 'privacy-checker' ),
+                $ln,
+                0
+            );
+        }
+        if ( $count <= 2 ) {
+            return self::row( 80, 'warning', 'local_network',
+                __( 'A few local devices answered on admin ports. Not a privacy issue, but worth reviewing.', 'privacy-checker' ),
+                $ln,
+                0
+            );
+        }
+        return self::row( 70, 'warning', 'local_network',
+            __( 'Several local devices answered on admin ports. Review your router firewall.', 'privacy-checker' ),
+            $ln,
+            0
         );
     }
 
@@ -518,11 +739,14 @@ final class PrivacyReport {
         if ( ! in_array( $status, array( 'good', 'warning', 'bad' ), true ) ) {
             $status = 'warning';
         }
+        // Weight 0 means "surface-only" — explicitly preserved. Any
+        // other negative or zero is clamped to 1.
+        $weight = $weight <= 0 ? $weight : max( 1, $weight );
         return array(
             'key'           => $key,
             'percent'       => max( 0, min( 100, $percent ) ),
             'status'        => $status,
-            'weight'        => max( 1, $weight ),
+            'weight'        => $weight,
             'message'       => $message,
             'details'       => $details,
             'status_source' => $source,

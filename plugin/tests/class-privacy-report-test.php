@@ -43,6 +43,7 @@ final class PrivacyReportTest extends TestCase {
 					'country' => 'US',
 					'asn'     => 'AS15169',
 					'org'     => 'Google LLC',
+					'timezone' => 'America/Los_Angeles',
 				),
 				'proxy'  => array(
 					'category'   => 'datacenter',
@@ -51,6 +52,12 @@ final class PrivacyReportTest extends TestCase {
 					'confidence' => 'high',
 					'reasons'    => array(),
 					'score'      => 55,
+				),
+				'anonymity' => array(
+					'consistent' => true,
+					'score'      => 100,
+					'mismatches' => array(),
+					'summary'    => 'No inconsistencies detected.',
 				),
 			),
 			'reputation'  => array( 'status' => 'clean' ),
@@ -63,10 +70,28 @@ final class PrivacyReportTest extends TestCase {
 				'device'          => 'Desktop',
 				'bot'             => false,
 			),
-			'fingerprint' => array( 'level' => 'low', 'bits' => 4.5 ),
+			'fingerprint' => array(
+				'level'     => 'low',
+				'bits'      => 4.5,
+				'timezone'  => 'America/Los_Angeles',
+			),
 			'webrtc'      => array(
 				'verdict'     => 'protected',
 				'public_ips'  => array(),
+			),
+			'security_posture' => array(
+				'tls'     => array(
+					'status'   => 'modern',
+					'protocol' => 'TLSv1.3',
+					'cipher'   => 'TLS_AES_128_GCM_SHA256',
+					'note'     => 'Current.',
+				),
+				'browser' => array(
+					'status'  => 'current',
+					'browser' => 'Firefox',
+					'version' => 120,
+					'message' => 'No update required.',
+				),
 			),
 			'dns_test'    => array(
 				'configured' => false,
@@ -115,7 +140,9 @@ final class PrivacyReportTest extends TestCase {
 
 			$this->assertContains( $row['status'], array( 'good', 'warning', 'bad' ) );
 			$this->assertIsInt( $row['weight'] );
-			$this->assertGreaterThanOrEqual( 1, $row['weight'] );
+			// weight 0 = surface-only (Phase 6 categories). Other categories
+			// must have at least weight 1.
+			$this->assertGreaterThanOrEqual( 0, $row['weight'] );
 			$this->assertIsString( $row['message'] );
 		}
 	}
@@ -150,7 +177,10 @@ final class PrivacyReportTest extends TestCase {
 			),
 			'connection'  => array(
 				'ipv4'  => '8.8.8.8',
-				'intel' => array( 'status' => 'error' ),
+				'intel' => array(
+					'status'   => 'error',
+					'timezone' => 'Europe/Berlin',
+				),
 				'proxy' => array(
 					'category'   => 'unknown',
 					'vendor'     => '',
@@ -159,6 +189,37 @@ final class PrivacyReportTest extends TestCase {
 					'reasons'    => array(),
 					'score'      => 0,
 				),
+				'anonymity' => array(
+					'consistent' => false,
+					'score'      => 20,
+					'mismatches' => array(
+						array(
+							'signal'   => 'webrtc',
+							'detail'   => 'Public IP leaked via WebRTC',
+							'severity' => 'high',
+						),
+						array(
+							'signal'   => 'dns',
+							'detail'   => 'DNS resolver on different org',
+							'severity' => 'high',
+						),
+					),
+					'summary'    => 'Multiple signals disagree with each other.',
+				),
+			),
+			'security_posture' => array(
+				'tls'     => array(
+					'status'   => 'outdated',
+					'protocol' => 'TLSv1.0',
+					'cipher'   => 'RC4-SHA',
+					'note'     => 'Outdated.',
+				),
+				'browser' => array(
+					'status'  => 'very_outdated',
+					'browser' => 'Chrome',
+					'version' => 70,
+					'message' => 'Known security issues.',
+				),
 			),
 			'reputation'  => array( 'status' => 'listed' ),
 			'user_agent'  => array(
@@ -166,7 +227,11 @@ final class PrivacyReportTest extends TestCase {
 				'bot'      => true,
 				'bot_name' => 'curl',
 			),
-			'fingerprint' => array( 'level' => 'high', 'bits' => 18.5 ),
+			'fingerprint' => array(
+				'level'    => 'high',
+				'bits'     => 18.5,
+				'timezone' => 'Europe/Berlin',
+			),
 			'webrtc'      => array(
 				'verdict'    => 'potential_exposure',
 				'public_ips' => array( '1.2.3.4' ),
@@ -183,5 +248,132 @@ final class PrivacyReportTest extends TestCase {
 
 		$this->assertLessThan( 50, $report['overall'] );
 		$this->assertContains( $report['grade'], array( 'D', 'E', 'F' ) );
+	}
+
+	public function test_categories_include_phase_6_security_posture_and_surface_only(): void {
+		$report = PrivacyReport::build( $this->good_scan() );
+
+		$this->assertArrayHasKey( 'security_posture',    $report['categories'] );
+		$this->assertArrayHasKey( 'connection_quality',  $report['categories'] );
+		$this->assertArrayHasKey( 'local_network',       $report['categories'] );
+	}
+
+	public function test_consistency_uses_anonymity_scorer_output(): void {
+		$scan = $this->good_scan();
+		// 100 / consistent / no mismatches → 'good' category.
+		$scan['connection']['anonymity'] = array(
+			'consistent' => true,
+			'score'      => 100,
+			'mismatches' => array(),
+			'summary'    => 'No inconsistencies.',
+		);
+		$report = PrivacyReport::build( $scan );
+		$this->assertSame( 'good', $report['categories']['consistency']['status'] );
+		$this->assertSame( 100,  $report['categories']['consistency']['percent'] );
+
+		// Score 30 with mismatches → 'bad' category.
+		$scan['connection']['anonymity'] = array(
+			'consistent' => false,
+			'score'      => 30,
+			'mismatches' => array(
+				array( 'signal' => 'webrtc', 'detail' => 'leak', 'severity' => 'high' ),
+			),
+			'summary'    => 'Multiple signals disagree.',
+		);
+		$report = PrivacyReport::build( $scan );
+		$this->assertSame( 'bad', $report['categories']['consistency']['status'] );
+		$this->assertSame( 30,  $report['categories']['consistency']['percent'] );
+	}
+
+	public function test_consistency_missing_anonymity_data_returns_unknown(): void {
+		$scan = $this->good_scan();
+		unset( $scan['connection']['anonymity'] );
+		$report = PrivacyReport::build( $scan );
+		$this->assertSame( 'unknown', $report['categories']['consistency']['status_source'] );
+	}
+
+	public function test_security_posture_modern_tls_and_current_browser_is_good(): void {
+		$report = PrivacyReport::build( $this->good_scan() );
+		$sp      = $report['categories']['security_posture'];
+		$this->assertSame( 'good',    $sp['status'] );
+		$this->assertSame( 100,       $sp['percent'] );
+		$this->assertSame( 3,         $sp['weight'] );
+	}
+
+	public function test_security_posture_outdated_tls_and_very_outdated_browser_is_bad(): void {
+		$scan = $this->good_scan();
+		$scan['security_posture'] = array(
+			'tls'     => array(
+				'status'   => 'outdated',
+				'protocol' => 'TLSv1.0',
+				'cipher'   => 'RC4-SHA',
+				'note'     => 'Outdated.',
+			),
+			'browser' => array(
+				'status'  => 'very_outdated',
+				'browser' => 'Chrome',
+				'version' => 70,
+				'message' => 'Known issues.',
+			),
+		);
+		$report = PrivacyReport::build( $scan );
+		$sp      = $report['categories']['security_posture'];
+		$this->assertSame( 'bad', $sp['status'] );
+		// Average of 25 (outdated TLS) + 25 (very_outdated browser) = 25.
+		$this->assertSame( 25,    $sp['percent'] );
+	}
+
+	public function test_surface_only_categories_have_weight_zero(): void {
+		$scan = $this->good_scan();
+		$scan['connection_quality'] = array(
+			'latency' => array( 'avg_ms' => 42.0, 'min_ms' => 38.0, 'max_ms' => 50.0, 'jitter_ms' => 12.0 ),
+		);
+		$scan['local_network'] = array(
+			'reachable'    => array(),
+			'probed'       => array(),
+			'total_probes' => 0,
+		);
+		$report = PrivacyReport::build( $scan );
+
+		$this->assertSame( 0, $report['categories']['connection_quality']['weight'] );
+		$this->assertSame( 0, $report['categories']['local_network']['weight'] );
+	}
+
+	public function test_surface_only_categories_do_not_drag_overall(): void {
+		// Two scans that differ ONLY in the surface-only categories must
+		// produce identical overall scores — proves the weight-0 skip.
+		$base    = $this->good_scan();
+		$chatty  = $this->good_scan();
+		$base['connection_quality']   = array( 'latency' => array( 'avg_ms' => 30.0, 'jitter_ms' => 5.0 ) );
+		$base['local_network']        = array( 'reachable' => array(), 'probed' => array(), 'total_probes' => 0 );
+		$chatty['connection_quality'] = array( 'latency' => array( 'avg_ms' => 999.0, 'jitter_ms' => 800.0 ) );
+		$chatty['local_network']      = array(
+			'reachable'    => array( '192.168.0.1:80', '192.168.0.1:443', '10.0.0.1:80', '10.0.0.1:443' ),
+			'probed'       => array(),
+			'total_probes' => 15,
+		);
+
+		$base_report   = PrivacyReport::build( $base );
+		$chatty_report = PrivacyReport::build( $chatty );
+
+		$this->assertSame( $base_report['overall'], $chatty_report['overall'] );
+	}
+
+	public function test_consistency_has_highest_weight(): void {
+		// Per IMON-BUILD-GUIDE.md Phase 6: anonymity consistency is the
+		// highest-weighted signal. Pin it so a future refactor doesn't
+		// accidentally drop it.
+		$report = PrivacyReport::build( $this->good_scan() );
+		$weights = array();
+		foreach ( $report['categories'] as $key => $row ) {
+			$weights[ $key ] = $row['weight'];
+		}
+		$this->assertSame( 4, $weights['consistency'] );
+
+		// Surface-only must NOT beat any weighted category.
+		$this->assertGreaterThanOrEqual(
+			max( 0, max( array_diff( $weights, array( 0 ) ) ) ?: 0 ),
+			$weights['consistency']
+		);
 	}
 }

@@ -136,10 +136,43 @@ diff review between phases — not all at once.
       the layout never gets stuck on a spinner. 17 new `ln*` i18n
       strings. **170 tests / 600 assertions, all green.**
       `node --check scanner.js` clean.
-- [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5
-      into `class-privacy-report.php`).
-- [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5
-      into `class-privacy-report.php`).
+- [x] **Phase 6 — Composite report assembly** (`(this commit)`).
+      Rewrote `class-privacy-report.php` to fold the new sub-reports
+      from Phases 1–5 into the Whoer-style breakdown with weights
+      per `IMON-BUILD-GUIDE.md` Phase 6 spec:
+      - `consistency` (Phase 2 anonymity scorer): **weight 4** —
+        highest per guide, "are you actually as private as you
+        think". `score_consistency()` now reads
+        `$scan['connection']['anonymity']` (output of
+        `AnonymityScorer::score()`) instead of the old cheap
+        IP/timezone-country heuristic.
+      - `security_posture` (Phase 4): **weight 3**, NEW category.
+        `score_security_posture()` averages TLS percent
+        (modern=100, acceptable=75, outdated=25, unknown=70) +
+        browser percent (current=100, outdated=65,
+        very_outdated=25, unknown=70); status follows worst-of.
+      - `fingerprint` (Phase 3): **weight 2** (down from 3) — guide:
+        "informational weight, lower — most users can't fully fix
+        this".
+      - `webrtc`, `dns`, `reputation`: weight 3 (unchanged).
+      - `ip`, `proxy`, `user_agent`, `ipv6`: weight 2 (unchanged).
+      - **`connection_quality` (Phase 1) and `local_network`
+        (Phase 5): weight 0 — surface-only.** Per guide: "surface
+        separately as 'connection health' rather than folding into
+        'privacy score', since a slow connection isn't a privacy
+        problem". `row()` now preserves weight 0 explicitly (clamped
+        from negatives); the weighted-average loop skips weight-0
+        categories; `confidence_for()` also skips them so surface-
+        only unknowns don't tank confidence.
+      8 new PHPUnit tests covering the new shape: anonymity-scorer
+      passthrough, missing-anonymity unknown, security-posture
+      good/bad bands, surface-only weight=0 invariant, surface-only
+      doesn't-drag-overall (two scans identical except for surface
+      categories produce identical `overall`), consistency has
+      highest weight pin. **`row()` weight clamping relaxed** so
+      weight 0 is preserved as the surface-only sentinel (previously
+      `max(1, $weight)` would have promoted 0 → 1 and broken the
+      exclusion). **178 tests / 661 assertions, all green.**
 - [ ] **Phase 7 — QA pass** (audit all added code for conventions,
       shown-back-to-user, fail-closed behavior, external-CDN policy).
 
