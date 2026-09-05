@@ -4352,7 +4352,11 @@
             raf: null,
             rotating: true,
             resizeObs: null,
-            available: typeof window.THREE !== 'undefined' && (typeof window.ThreeGlobe !== 'undefined' || typeof window.ThreeGlobe3D !== 'undefined' || typeof window.Globe !== 'undefined'),
+            // The cached `available` flag is intentionally GONE — every
+            // check is fresh, via isGlobeLibraryAvailable() below. This is
+            // the fix for the bug where a late CDN response would strand
+            // the toggle as permanently "unavailable" for the rest of the
+            // page's life.
             globeCtor: null
         };
         var polyHalo = null;
@@ -4364,14 +4368,53 @@
         var animating = true;
         var lastReport = null;
 
+        // Globe texture paths. Vendored under plugin/public/assets/img/ so the
+        // plugin has no third-party CDN dependency at page-load time —
+        // important on corporate / airgapped / GDPR-strict networks where
+        // unpkg.com may be blocked. The base URL is localized server-side via
+        // `window.PC_SCAN.assetUrl`; we fall back to a same-origin derivation
+        // from the script tag if it isn't present (e.g. in an iframe).
+        function globeTextureBase() {
+            var fromLoc = (window.PC_SCAN && window.PC_SCAN.assetUrl) || '';
+            if (fromLoc) return fromLoc + 'img/';
+            // Derive from the scanner.js <script> src: .../assets/js/scanner.js → .../assets/
+            var scripts = document.getElementsByTagName('script');
+            for (var i = 0; i < scripts.length; i++) {
+                var src = scripts[i].src || '';
+                var m = src.match(/(.*\/assets\/)js\/[^/]+$/);
+                if (m) return m[1] + 'img/';
+            }
+            return 'public/assets/img/';
+        }
+
+        function globeTextureUrl(name) {
+            return globeTextureBase() + name;
+        }
+
+        /**
+         * Live check whether the three.js + three-globe libraries are
+         * currently loaded. Re-evaluated every time, never cached — see the
+         * `attempted` field above for context.
+         */
+        function isGlobeLibraryAvailable() {
+            return typeof window.THREE !== 'undefined'
+                && (typeof window.ThreeGlobe !== 'undefined'
+                    || typeof window.ThreeGlobe3D !== 'undefined'
+                    || typeof window.Globe !== 'undefined');
+        }
+
         function ensureGlobe3d() {
             if (!globeEl) return false;
             if (globe3d) return true;
-            if (!globeState.available || typeof window.THREE === 'undefined') return false;
 
             var THREE = window.THREE;
             var Ctor = window.ThreeGlobe || window.ThreeGlobe3D || window.Globe;
-            if (typeof Ctor !== 'function') return false;
+            if (typeof THREE === 'undefined' || typeof Ctor !== 'function') {
+                // Library not loaded yet (or failed to load). Diagnostic only —
+                // we DON'T poison a cached flag here, so a late CDN response
+                // still gets picked up on the next attempt.
+                return false;
+            }
             globeState.globeCtor = Ctor;
 
             try {
@@ -4407,9 +4450,9 @@
                 scene.add(light);
 
                 var globe = new Ctor()
-                    .globeImageUrl('https://unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg')
-                    .bumpImageUrl('https://unpkg.com/three-globe@2.33.0/example/img/earth-topology.png')
-                    .backgroundImageUrl('https://unpkg.com/three-globe@2.33.0/example/img/night-sky.png')
+                    .globeImageUrl(globeTextureUrl('earth-blue-marble.jpg'))
+                    .bumpImageUrl(globeTextureUrl('earth-topology.png'))
+                    .backgroundImageUrl(globeTextureUrl('night-sky.png'))
                     .showAtmosphere(true)
                     .atmosphereColor('#4a86e8')
                     .atmosphereAltitude(0.18)
@@ -4426,6 +4469,19 @@
                     .labelSize(1.15)
                     .labelDotRadius(0.28)
                     .labelAltitude(0.025);
+
+                // Pre-flight the texture URLs so a 404 surfaces a clear
+                // console error instead of a silent black sphere. We
+                // fetch() each one with `no-cors` (opaque response is fine;
+                // we only care about whether the network request resolves).
+                ['earth-blue-marble.jpg', 'earth-topology.png', 'night-sky.png'].forEach(function (name) {
+                    var url = globeTextureUrl(name);
+                    fetch(url, { method: 'HEAD', mode: 'no-cors' }).catch(function () {
+                        // eslint-disable-next-line no-console
+                        console.warn('[IMON globe] texture fetch failed:', url);
+                    });
+                });
+
                 scene.add(globe);
 
                 globeState.scene = scene;
@@ -4462,7 +4518,8 @@
                 globeState.raf = requestAnimationFrame(render);
                 return true;
             } catch (e) {
-                globeState.available = false;
+                // eslint-disable-next-line no-console
+                console.error('[IMON globe] WebGL renderer init failed:', e && e.message ? e.message : e);
                 if (globeEl) globeEl.innerHTML = '';
                 return false;
             }
@@ -4509,18 +4566,40 @@
                 // Defer init to next frame so the browser has sized the
                 // (now unhidden) globe container.
                 requestAnimationFrame(function () {
-                    if (!ensureGlobe3d()) {
+                    // Bounded retry: if three.js / three-globe haven't finished
+                    // loading yet (slow CDN, ad-blocker, dropped request),
+                    // poll every 250ms up to 5s before falling back to 2D.
+                    // This replaces the old behavior of caching
+                    // `globeState.available = false` once at bind time and
+                    // stranding the toggle for the rest of the page's life.
+                    var retries = 0;
+                    var MAX_RETRIES = 20; // 20 * 250ms = 5s
+                    function attempt() {
+                        if (ensureGlobe3d()) {
+                            globeState.mode = '3d';
+                            if (viewBtn) viewBtn.setAttribute('aria-pressed', 'true');
+                            if (lastReport) drawGlobe(lastReport);
+                            return;
+                        }
+                        if (!isGlobeLibraryAvailable() && retries < MAX_RETRIES) {
+                            retries++;
+                            setTimeout(attempt, 250);
+                            return;
+                        }
+                        // Either the library failed to load, or WebGL / texture
+                        // init threw — fall back to 2D with diagnostics.
+                        if (!isGlobeLibraryAvailable()) {
+                            // eslint-disable-next-line no-console
+                            console.error('[IMON globe] three.js / three-globe library did not load within 5s.');
+                        }
                         showToast('3D Globe is unavailable; using the 2D map.', 'warn');
                         if (mapEl) mapEl.hidden = false;
                         if (globeEl) globeEl.hidden = true;
                         globeState.mode = '2d';
                         if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
                         if (map) setTimeout(function () { map.invalidateSize(); }, 50);
-                        return;
                     }
-                    globeState.mode = '3d';
-                    if (viewBtn) viewBtn.setAttribute('aria-pressed', 'true');
-                    if (lastReport) drawGlobe(lastReport);
+                    attempt();
                 });
             } else {
                 globeState.mode = '2d';

@@ -216,6 +216,7 @@ final class PublicAssets {
             'restUrl'      => esc_url_raw( rest_url( PRIVACY_CHECKER_REST_NS . '/' ) ),
             'restNonce'    => wp_create_nonce( 'wp_rest' ),
             'isMock'       => Plugin::instance()->is_dev_mode(),
+            'assetUrl'     => esc_url_raw( PRIVACY_CHECKER_URL . 'public/assets/' ),
             'dnsPageUrl'   => esc_url_raw( home_url( '/dns-leak-test/' ) ),
             'webrtcPageUrl'=> esc_url_raw( home_url( '/webrtc-test/' ) ),
             'pingPageUrl'  => esc_url_raw( home_url( '/ping/' ) ),
