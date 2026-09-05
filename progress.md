@@ -1,7 +1,15 @@
 # Progress — Privacy Checker
 
-> Last updated: 2026-09-05. Track what's done, what's in flight, and what's
+> Last updated: 2026-09-06. Track what's done, what's in flight, and what's
 > blocked.
+
+## Roadmap reference
+
+For the next major feature track (anonymity-consistency scoring, real
+fingerprint hashing + entropy, security posture panel, LAN self-scan,
+composite scoring) see `IMON-BUILD-GUIDE.md`. That guide is split into
+seven phases and is meant to be executed one phase per session with a
+diff review between phases — not all at once.
 
 ## Phase 10 — UX polish: IMON rebrand, scan progress, styled tool results
 
@@ -349,6 +357,80 @@ and Phase 10 (UX polish):
 - [x] `DEPLOYMENT.md` written for DevOps (server requirements, env vars,
       nginx/apache configs, cron, log rotation, monitoring, rollback).
 
+## Phase 12.5 — Manual-only user-guide onboarding tour
+
+- [x] New shortcode `[privacy_checker_user_guide]` rendering a floating "?"
+      FAB plus a tour overlay shell (header + body + footer with step
+      indicator + prev/next/done).
+- [x] 11 new `PC_SCAN.i18n` strings (`guideButtonTitle`, `guideAriaLabel`,
+      `guideTitle`, `guideSubtitle`, `guideNext`, `guidePrev`, `guideDone`,
+      `guideClose`, `guideStepOf`, `guideSkip`, `guideRestart`).
+- [x] 12-step tour config localized via a second
+      `wp_localize_script('pc-scanner', 'PC_GUIDE', …)` block — each step
+      has `id`, `title`, `body`, `target` (CSS selector list, comma-
+      separated), and `place` (center / top / bottom / left / right).
+- [x] New `bindUserGuide()` in `scanner.js`: reads `PC_GUIDE.tour`, wires
+      `data-pc-action="open-guide"` (FAB + delegated in-page triggers) to
+      `openGuide()`, drives prev/next/done/close, keyboard navigation
+      (Esc / ← / → / Enter), target-aware card positioning via
+      `getBoundingClientRect()` with viewport clamping, and re-positions
+      on resize/scroll while open.
+- [x] **Manual-only by design.** The tour NEVER auto-launches: no first-
+      visit hook, no `localStorage` flag, no scheduled timer, no
+      `DOMContentLoaded` path into `openGuide()`. The only paths into the
+      overlay are explicit clicks on the FAB or a delegated in-page
+      trigger carrying the `open-guide` action.
+- [x] New CSS: `.pc-guide-fab` (fixed bottom-right, hover lift, focus ring,
+      `prefers-reduced-motion` respected, smaller on ≤540px), `.pc-guide-overlay`,
+      `.pc-guide-backdrop`, `.pc-guide-card` + placement variants
+      (`--center / --top / --bottom / --left / --right`), `.pc-guide-card__*`
+      (header / title / close / body / footer / step / actions), and full
+      `:root[data-pc-theme="dark"]` overrides.
+- [x] `composer dump-autoload -o` regenerated the classmap (1042 classes).
+- [x] **All 120 PHPUnit tests pass (464 assertions, 0 failures).**
+- [x] `node --check scanner.js` → JS_OK. `php -l class-public-assets.php`
+      → no syntax errors.
+- [x] Committed (`06c02d2`).
+
+## Phase 13 — 3D globe honest-state fixups + UX cleanup (in progress)
+
+Bugs surfaced by a code audit on the Geo Traceroute / 3D globe path.
+Each is being addressed as its own small commit so the review surface
+stays bounded.
+
+- [~] **DRY tool-slug list** — `PublicAssets::enqueue()` repeats the same
+      array of tool slugs (`ip-lookup`, `whois`, … `geotraceroute`,
+      `user-guide`) three separate times (page-slug check, URI substring
+      fallback, shortcode-tag fallback). Easy to add a new tool and
+      forget one spot. Collapsing into a single `private const TOOL_SLUGS`
+      + derived shortcode-tag list.
+- [ ] **Lazy availability check** — `globeState.available` is currently
+      evaluated once at `bindGeotraceroute()` and gates every later call
+      to `ensureGlobe3d()`. If the libraries haven't finished loading yet
+      (slow CDN, ad-blocker, dropped request) the cached `false` strands
+      the toggle as permanently "unavailable" for the rest of the page's
+      life. Replacing with a fresh `typeof window.THREE / window.ThreeGlobe`
+      check inside `ensureGlobe3d()`, plus a bounded retry (every 250 ms
+      up to 5 s) so a late CDN response still gets picked up.
+- [ ] **Self-host the globe textures** — `scanner.js` currently calls
+      `.globeImageUrl('https://unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg')`,
+      `.bumpImageUrl(...)`, `.backgroundImageUrl(...)` even though the
+      surrounding comment explicitly says we self-host three.js + three-
+      globe to support corporate / airgapped / GDPR-strict networks. On
+      exactly those networks the texture fetches fail and the user sees
+      a black sphere — perceived as "3D doesn't work." Dropping the three
+      images under `plugin/public/assets/img/` and referencing them via
+      `PRIVACY_CHECKER_URL`.
+- [ ] **Real console diagnostics** — every failure currently collapses
+      into the same generic "3D Globe is unavailable; using the 2D map"
+      toast. Adding `console.warn` / `console.error` distinguishing
+      library-load / WebGL-context-creation / texture-load failures so
+      the next debug isn't guesswork.
+- [ ] **Phase 7 (QA pass) of `IMON-BUILD-GUIDE.md` checklist #4** —
+      audit all frontend network calls (Leaflet CSS/JS from unpkg too)
+      and decide consistently: vendor everything locally or document
+      the CDN list explicitly. Lower priority than the three bugs above.
+
 ## Open questions
 
 - Should the dashboard tile for ip-api.com reflect the cached result of a recent
@@ -367,4 +449,7 @@ and Phase 10 (UX polish):
 - `build.md` — Build / install
 - `DEPLOYMENT.md` — DevOps deployment guide
 - `plan.md` — Architecture
+- `IMON-BUILD-GUIDE.md` — Seven-phase roadmap (connection quality,
+  anonymity consistency, fingerprint entropy, security posture, LAN
+  self-scan, composite scoring, QA). Execute one phase per session.
 - `puku.md` — Puku CLI
