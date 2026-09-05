@@ -796,6 +796,37 @@
         rightCol.appendChild(securityPostureCard(report));
         rightCol.appendChild(scoreBreakdownCard(report));
 
+        // Local Network Exposure — pure client-side probe of RFC1918
+        // gateway addresses. Insert as a placeholder so the report layout
+        // doesn't reflow when the probe resolves, then swap in the real
+        // card. The probe is bounded (~800ms per target); we always swap
+        // even on error so the layout never gets stuck on a spinner.
+        var lnPlaceholder = el('section', { class: 'pc-card', 'data-pc-component': 'local-network-placeholder' });
+        var lnHead = el('div', { class: 'pc-card__head' });
+        lnHead.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u{1F6AA}' }));
+        lnHead.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.lnTitle || 'LOCAL NETWORK EXPOSURE' }),
+            el('p',  { class: 'pc-card__subtitle', text: (I18N.scanning || 'Scanning\u2026') + ' \u2014 ' + (I18N.lnProbing || 'probing local gateway addresses') })
+        ]));
+        lnPlaceholder.appendChild(lnHead);
+        rightCol.appendChild(lnPlaceholder);
+        var lnNode = lnPlaceholder;
+        scanLocalNetwork({ timeout_ms: 800 }).then(function (ln) {
+            try {
+                var newCard = localNetworkExposureCard(ln);
+                if (lnNode && lnNode.parentNode) {
+                    lnNode.parentNode.replaceChild(newCard, lnNode);
+                }
+            } catch (e) { /* noop — leave the placeholder */ }
+        }).catch(function () {
+            try {
+                var fallbackCard = localNetworkExposureCard({ probed: [], reachable: [] });
+                if (lnNode && lnNode.parentNode) {
+                    lnNode.parentNode.replaceChild(fallbackCard, lnNode);
+                }
+            } catch (e2) { /* noop */ }
+        });
+
         cols.appendChild(leftCol);
         cols.appendChild(rightCol);
         region.appendChild(cols);
@@ -1128,6 +1159,124 @@
               .then(function () { i++; return next(); });
         }
         return next();
+    }
+
+    /**
+     * Probe a small fixed list of RFC1918 private gateway addresses on
+     * common admin ports, from the visitor's own browser.
+     *
+     * SCOPE LIMIT (deliberate, do not relax):
+     *   This is a self-test tool, not a network scanner-as-a-service. The
+     *   target list is hardcoded to RFC1918 private ranges (192.168.x.x,
+     *   10.x.x.x, 172.16-31.x.x). We never accept a user-supplied target
+     *   here — only probe addresses that are, by definition, on the
+     *   visitor's own local network. A probe targeting anything beyond
+     *   RFC1918 would either be a no-op (route filtered) or, worse, be
+     *   mistaken for an outbound port-scan by an upstream firewall.
+     *
+     * Returns:
+     *   {
+     *     probed:    [{host, port, status, latency_ms}],   // one per attempt
+     *     reachable: [host:port],                          // any 'open' or 'cors' rows
+     *     total_probes, completed_count
+     *   }
+     *
+     * Status values per probe:
+     *   - 'open'       — TCP connect succeeded AND we got a response (response.ok true)
+     *   - 'cors'       — TCP connect succeeded but CORS blocked reading the body
+     *                    (still informative: SOMETHING answered on that port)
+     *   - 'refused'    — TCP RST (port closed) — fast error
+     *   - 'timeout'    — no response within the per-probe budget
+     *   - 'unreachable' — network-level error (host unreachable / DNS / etc.)
+     *
+     * We probe concurrently with a per-request AbortController; the
+     * `timeout_ms` controls each probe's individual deadline, not the
+     * total wall clock.
+     */
+    function scanLocalNetwork(opts) {
+        var timeoutMs  = (opts && opts.timeout_ms)  || 800;
+        var GATEWAYS   = ['192.168.0.1', '192.168.1.1', '10.0.0.1', '10.0.1.1', '172.16.0.1'];
+        var ADMIN_PORTS = [80, 443, 8080];
+        var controllers = [];
+
+        function one(host, port) {
+            var url = 'http://' + host + ':' + port + '/';
+            var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            if (ctl) controllers.push(ctl);
+            var deadline = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            var init = { method: 'GET', mode: 'no-cors', cache: 'no-store', redirect: 'manual' };
+            if (ctl) init.signal = ctl.signal;
+            return fetch(url, init).then(function (resp) {
+                var recv = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                // no-cors responses are opaque — we know SOMETHING answered
+                // because the fetch resolved rather than throwing, but we
+                // can't read status. Mark as 'cors' to flag this honestly.
+                return {
+                    host: host,
+                    port: port,
+                    status: 'cors',
+                    latency_ms: Math.round((recv - deadline) * 100) / 100
+                };
+            }).catch(function (err) {
+                var recv = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                var name = (err && err.name) || '';
+                var status = 'unreachable';
+                if (name === 'AbortError')        status = 'timeout';
+                else if (name === 'TypeError')    status = 'refused';
+                return {
+                    host: host,
+                    port: port,
+                    status: status,
+                    latency_ms: Math.round((recv - deadline) * 100) / 100
+                };
+            });
+        }
+
+        var probes = [];
+        GATEWAYS.forEach(function (h) {
+            ADMIN_PORTS.forEach(function (p) { probes.push(one(h, p)); });
+        });
+
+        var totalProbes = probes.length;
+        return Promise.all(probes.map(function (p) {
+            // Race each probe against its own deadline so a slow target
+            // can't drag the whole batch past the budget.
+            var to = new Promise(function (resolve) {
+                setTimeout(function () {
+                    // Abort in-flight requests when their personal timer
+                    // expires — keeps the entire call bounded.
+                    controllers.forEach(function (c) {
+                        try { c.abort(); } catch (e) { /* noop */ }
+                    });
+                    resolve({ timed_out: true });
+                }, timeoutMs);
+            });
+            return Promise.race([p, to]).then(function (r) {
+                if (r && r.timed_out) {
+                    return { host: '?', port: 0, status: 'timeout', latency_ms: timeoutMs };
+                }
+                return r;
+            });
+        })).then(function (rows) {
+            var reachable = [];
+            rows.forEach(function (r) {
+                if (r && (r.status === 'cors' || r.status === 'open')) {
+                    reachable.push(r.host + ':' + r.port);
+                }
+            });
+            return {
+                probed:    rows,
+                reachable: reachable,
+                total_probes:     totalProbes,
+                completed_count:  rows.length
+            };
+        });
     }
 
     /**
@@ -1567,6 +1716,92 @@
             });
         }
         card.appendChild(dl);
+        return card;
+    }
+
+    /**
+     * Local Network Exposure card. Shows results from scanLocalNetwork()
+     * — a pure-client-side probe of common RFC1918 gateway addresses on
+     * common admin ports. The card copy is intentionally explicit: this
+     * only ever tests devices on the visitor's own LAN from the visitor's
+     * own browser. It is not an external scanner.
+     */
+    function localNetworkExposureCard(payload) {
+        var p = payload || {};
+        var probed = Array.isArray(p.probed) ? p.probed : [];
+        var reachable = Array.isArray(p.reachable) ? p.reachable : [];
+
+        var card = el('section', { class: 'pc-card', 'data-pc-component': 'local-network' });
+        var head = el('div', { class: 'pc-card__head' });
+        head.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u{1F6AA}' }));
+        head.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.lnTitle || 'LOCAL NETWORK EXPOSURE' }),
+            el('p',  { class: 'pc-card__subtitle', text: I18N.lnLede || 'Tests devices on your OWN local network, from your OWN browser — not external scanning.' })
+        ]));
+        card.appendChild(head);
+
+        // Summary callout — green if nothing answered, amber if any host
+        // answered (because answering on an admin port is itself a
+        // noteworthy finding for a home user).
+        var summary = el('div', { class: 'pc-card__lede', style: 'margin: 0.5rem 1rem 0.75rem;' });
+        if (probed.length === 0) {
+            summary.appendChild(el('div', { class: 'pc-pill pc-pill--info', text: I18N.lnNotRun || 'Probe did not run.' }));
+            card.appendChild(summary);
+            return card;
+        }
+        if (reachable.length === 0) {
+            summary.appendChild(el('div', { class: 'pc-pill pc-pill--pass', text: I18N.lnNoReachable || 'No common gateway responded — local network looks quiet.' }));
+        } else if (reachable.length <= 2) {
+            summary.appendChild(el('div', { class: 'pc-pill pc-pill--warning', text: (I18N.lnReachable || 'Some local devices answered on admin ports.') }));
+        } else {
+            summary.appendChild(el('div', { class: 'pc-pill pc-pill--danger', text: (I18N.lnManyReachable || 'Many local devices answered on admin ports — review your router firewall.') }));
+        }
+        card.appendChild(summary);
+
+        var tbl = el('table', { class: 'pc-info-table' });
+        var tbody = el('tbody');
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.lnScopeLabel || 'Probe scope' }),
+            el('td', { text: probed.length + ' ' + (I18N.lnProbesWord || 'probes') + ' · RFC1918 only', mono: true })
+        ]));
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.lnReachableLabel || 'Reachable on admin ports' }),
+            el('td', { text: reachable.length ? reachable.join(', ') : (I18N.lnNone || '\u2014'), mono: true })
+        ]));
+
+        // Per-host detail rows, grouped by host for readability.
+        var byHost = {};
+        probed.forEach(function (r) {
+            (byHost[r.host] = byHost[r.host] || []).push(r);
+        });
+        var statusWord = {
+            'open':         I18N.lnStatusOpen      || 'open',
+            'cors':         I18N.lnStatusCors      || 'answered (CORS)',
+            'refused':      I18N.lnStatusRefused   || 'closed',
+            'timeout':      I18N.lnStatusTimeout   || 'no response',
+            'unreachable':  I18N.lnStatusUnreachable|| 'unreachable'
+        };
+        Object.keys(byHost).forEach(function (h) {
+            byHost[h].forEach(function (r) {
+                var level = (r.status === 'open' || r.status === 'cors') ? 'info'
+                            : (r.status === 'refused' ? 'pass' : 'unknown');
+                tbody.appendChild(el('tr', {}, [
+                    el('th', { text: h + ':' + r.port }),
+                    el('td', { text: (statusWord[r.status] || r.status), pill: level, mono: true })
+                ]));
+            });
+        });
+
+        tbl.appendChild(tbody);
+        card.appendChild(tbl);
+
+        // Privacy note (the card is explicit but a small reminder helps).
+        var note = el('p', {
+            class: 'pc-card__note',
+            style: 'margin: 0.6rem 1rem 1rem; font-size: 0.82rem; opacity: 0.75;',
+            text: I18N.lnScopeNote || 'Scope is hardcoded to RFC1918 private ranges only. Nothing was probed off your local network.'
+        });
+        card.appendChild(note);
         return card;
     }
 

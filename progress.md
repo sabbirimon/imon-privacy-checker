@@ -108,8 +108,36 @@ diff review between phases — not all at once.
       response. 10 new `sp*` i18n strings; `securityPostureCard()`
       renders between `fingerprintTableCard()` and
       `scoreBreakdownCard()`. **170 tests / 600 assertions, all green.**
-- [ ] **Phase 5 — Local network exposure** (LAN self-scan,
-      RFC1918-scoped only, pure client-side).
+- [x] **Phase 5 — Local Network Exposure** (`(this commit)`). Pure
+      client-side — no PHP / no REST route. New `scanLocalNetwork()`
+      fires concurrent `fetch(..., {mode:'no-cors'})` against a
+      **hardcoded** list of common RFC1918 gateway addresses
+      (`192.168.0.1`, `192.168.1.1`, `10.0.0.1`, `10.0.1.1`,
+      `172.16.0.1`) on common admin ports (80 / 443 / 8080),
+      each with its own `AbortController` and a per-probe 800 ms
+      deadline so a single slow target can't drag the whole batch.
+      Each result is classified as `open` / `cors` (something
+      answered but CORS-blocked reading the body — still informative
+      and explicitly flagged) / `refused` (port closed) / `timeout`
+      (no response) / `unreachable` (network error). The target list
+      is deliberately NOT configurable and the function never accepts
+      a user-supplied target — a code comment spells out why (this
+      is a self-test tool, not a network-scanner-as-a-service; an
+      unconstrained probe list would either be filtered by upstream
+      routers or look like an outbound port-scan to an upstream
+      firewall). New `localNetworkExposureCard()` renders below the
+      score breakdown with summary pill (`pass` / `warning` / `danger`),
+      per-row per-host status, and explicit copy
+      ("Tests devices on YOUR OWN local network, from YOUR OWN browser
+      — not external scanning…"). Uses the same placeholder-then-swap
+      pattern as `connectionQualityCard()` so the report layout
+      doesn't reflow when the probe resolves; even on probe rejection
+      the placeholder is swapped for a "Probe did not run" card so
+      the layout never gets stuck on a spinner. 17 new `ln*` i18n
+      strings. **170 tests / 600 assertions, all green.**
+      `node --check scanner.js` clean.
+- [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5
+      into `class-privacy-report.php`).
 - [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5
       into `class-privacy-report.php`).
 - [ ] **Phase 7 — QA pass** (audit all added code for conventions,
