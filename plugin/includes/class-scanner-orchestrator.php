@@ -85,6 +85,31 @@ final class ScannerOrchestrator {
 
         $webrtc_summary = Webrtc::summarize( $client_signals['webrtc'] ?? array() );
 
+        // Anonymity consistency — correlates IP-geo timezone, browser-reported
+        // timezone, WebRTC leak result, and proxy classification into one
+        // composite score + mismatch list. The orchestrator already has every
+        // input it needs; AnonymityScorer does no I/O of its own. DNS-leak
+        // correlation is included only when a completed test result is passed
+        // in; the synchronous scan request doesn't run the DNS test itself.
+        try {
+            $anonymity = AnonymityScorer::score(
+                $connection['intel'] ?? array(),
+                $webrtc_summary,
+                $connection['proxy']   ?? array(),
+                (string) ( $client_signals['timezone'] ?? '' ),
+                is_array( $client_signals['dns_test_result'] ?? null ) ? $client_signals['dns_test_result'] : null
+            );
+        } catch ( \Throwable $e ) {
+            // Never let a correlation failure break the scan response.
+            $anonymity = array(
+                'consistent' => null,
+                'score'      => null,
+                'mismatches' => array(),
+                'summary'    => __( 'Unable to determine.', 'privacy-checker' ),
+            );
+        }
+        $connection['anonymity'] = $anonymity;
+
         $dns_test_state = array(
             'configured' => DnsTest::is_configured(),
             'note'       => DnsTest::is_configured()

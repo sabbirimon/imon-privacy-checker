@@ -1934,9 +1934,22 @@
 .pc-map__fallback-body  { display: flex; flex-direction: column; gap: 0.4rem; }
 .pc-map__fallback-hint  { font-size: 0.78rem; color: var(--pc-text-dim); max-width: 460px; }
 .pc-map__fallback-svg   { width: 100%; height: auto; max-height: 220px; border: 1px solid var(--pc-border); border-radius: 6px; background: #eaf6fb; margin-top: 0.4rem; }
-.pc-badge--icmp   { background: rgba(255,84,112,0.12); border-color: #ff5470; color: #ff5470; }
-.pc-badge--warn   { background: rgba(220,53,69,0.12); border-color: #dc3545; color: #dc3545; }
-.pc-badge--ok     { background: rgba(40,167,69,0.12); border-color: #28a745; color: #28a745; }
+.pc-badge--icmp    { background: rgba(255,84,112,0.12); border-color: #ff5470; color: #ff5470; }
+.pc-badge--warn    { background: rgba(220,53,69,0.12); border-color: #dc3545; color: #dc3545; }
+.pc-badge--ok      { background: rgba(40,167,69,0.12); border-color: #28a745; color: #28a745; }
+.pc-badge--caution { background: rgba(240,160,32,0.12); border-color: #f0a020; color: #b87c0a; }
+.pc-badge--unknown { background: var(--pc-surface); border-color: var(--pc-border); color: var(--pc-text-dim); }
+
+/* Anonymity Consistency card */
+.pc-card__score-row                 { margin: 0.5rem 0 0.75rem; }
+.pc-card__score-row .pc-badge       { font-size: 0.9rem; padding: 3px 12px; margin-left: 0; }
+.pc-card__note                      { font-size: 0.82rem; color: var(--pc-text-dim); margin: 0.25rem 0 0; }
+.pc-mismatch-list                   { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.pc-mismatch-list__item             { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.82rem; padding: 0.4rem 0.6rem; border-radius: 6px; background: var(--pc-surface); border: 1px solid var(--pc-border); }
+.pc-mismatch-list__badge            { flex: 0 0 auto; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; font-family: var(--pc-font-mono); }
+.pc-severity--low .pc-mismatch-list__badge    { background: rgba(23,162,184,0.15); color: #17a2b8; }
+.pc-severity--medium .pc-mismatch-list__badge { background: rgba(240,160,32,0.15); color: #b87c0a; }
+.pc-severity--high .pc-mismatch-list__badge   { background: rgba(220,53,69,0.15); color: #dc3545; }
 
 /* =========================================================
    23. Dashboard CTA row

@@ -346,6 +346,14 @@ final class PublicAssets {
                 'cqNetInfo'            => __( 'Browser network info', 'privacy-checker' ),
                 'cqNetInfoUnavailable' => __( 'Not available in this browser.', 'privacy-checker' ),
 
+                // Anonymity Consistency card (Phase 2 of IMON-BUILD-GUIDE.md).
+                'anonymityTitle'         => __( 'Anonymity Consistency', 'privacy-checker' ),
+                'anonymityLede'          => __( 'Cross-checks your IP, timezone, WebRTC, and DNS signals for agreement.', 'privacy-checker' ),
+                'anonymityScoreLabel'    => __( 'Score', 'privacy-checker' ),
+                'anonymityUnknown'       => __( 'Unknown', 'privacy-checker' ),
+                'anonymityAllConsistent' => __( 'No inconsistencies found between the signals checked.', 'privacy-checker' ),
+                'anonymityNoData'        => __( 'No completed signal checks yet.', 'privacy-checker' ),
+
                 'geoTitle'        => __( 'Geo Traceroute', 'privacy-checker' ),
                 'geoLede'         => __( 'Project your connection hops onto a world map. Animated packets trace the path between your device and the destination.', 'privacy-checker' ),
                 'geoRun'          => __( 'Trace Route', 'privacy-checker' ),

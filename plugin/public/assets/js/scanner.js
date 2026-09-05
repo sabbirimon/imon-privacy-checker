@@ -536,6 +536,7 @@
             ]
         ));
 
+        leftCol.appendChild(anonymityConsistencyCard(report));
         leftCol.appendChild(proxyCard(report));
         leftCol.appendChild(dnsLeakCard(report));
         leftCol.appendChild(webrtcActionCard(report));
@@ -1032,6 +1033,68 @@
 
         tbl.appendChild(tbody);
         card.appendChild(tbl);
+        return card;
+    }
+
+    /* ---------- Anonymity consistency ----------
+     *
+     * Renders a single summary card built from `report.connection.anonymity`
+     * (computed server-side by AnonymityScorer::score()). The card shows:
+     *   - one composite 0..100 score, color-coded
+     *   - the server's one-line summary ("No inconsistencies detected" / etc.)
+     *   - a list of mismatches, each tagged LOW / MEDIUM / HIGH
+     *
+     * When the server hasn't computed anonymity yet (older builds, an
+     * orchestrator error path) the card still renders with "Unknown" score
+     * and an explanatory note — no broken layout.
+     */
+    function anonymityConsistencyCard(report) {
+        var anon = (report && report.connection && report.connection.anonymity) || {};
+        var card = el('section', { class: 'pc-card', 'data-pc-component': 'anonymity-consistency' });
+        var head = el('div', { class: 'pc-card__head' });
+        head.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u2696\uFE0F' }));
+        head.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.anonymityTitle || 'ANONYMITY CONSISTENCY' }),
+            el('p', { class: 'pc-card__subtitle', text: anon.summary || (I18N.anonymityLede || 'Cross-checks your IP, timezone, WebRTC, and DNS signals for agreement.') })
+        ]));
+        card.appendChild(head);
+
+        var scoreVal = (typeof anon.score === 'number') ? anon.score : null;
+        var scoreClass = scoreVal === null
+            ? 'pc-badge--unknown'
+            : scoreVal >= 80 ? 'pc-badge--ok'
+            : scoreVal >= 50 ? 'pc-badge--caution'
+            : 'pc-badge--warn';
+
+        var scoreRow = el('div', { class: 'pc-card__score-row' });
+        scoreRow.appendChild(el('div', {
+            class: 'pc-badge ' + scoreClass,
+            text: scoreVal === null
+                ? (I18N.anonymityUnknown || 'Unknown')
+                : (I18N.anonymityScoreLabel || 'Score') + ' ' + scoreVal + ' / 100'
+        }));
+        card.appendChild(scoreRow);
+
+        var mismatches = Array.isArray(anon.mismatches) ? anon.mismatches : [];
+        if (!mismatches.length) {
+            card.appendChild(el('p', {
+                class: 'pc-card__note',
+                text: (anon.consistent === true)
+                    ? (I18N.anonymityAllConsistent || 'No inconsistencies found between the signals checked.')
+                    : (I18N.anonymityNoData         || 'No completed signal checks yet.')
+            }));
+        } else {
+            var list = el('ul', { class: 'pc-mismatch-list' });
+            mismatches.forEach(function (m) {
+                var sev = (m && m.severity) ? String(m.severity).toLowerCase() : 'low';
+                if ( 'low' !== sev && 'medium' !== sev && 'high' !== sev ) sev = 'low';
+                list.appendChild(el('li', { class: 'pc-mismatch-list__item pc-severity--' + sev }, [
+                    el('span', { class: 'pc-mismatch-list__badge', text: sev.toUpperCase() }),
+                    el('span', { text: (m && m.detail) ? m.detail : '' })
+                ]));
+            });
+            card.appendChild(list);
+        }
         return card;
     }
 

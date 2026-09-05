@@ -11,7 +11,7 @@ composite scoring) see `IMON-BUILD-GUIDE.md`. That guide is split into
 seven phases and is meant to be executed one phase per session with a
 diff review between phases — not all at once.
 
-- [x] **Phase 1 — Connection quality** (`2d1f8ef`, renamed in this commit).
+- [x] **Phase 1 — Connection quality** (`2d1f8ef`, renamed in `13d55be`).
       Latency / jitter via 3 sequential GETs to `/scan/connection/echo`
       (timed client-side with `performance.now()`), IP-family reachability
       derived from the existing `IpDetector::detect()` shape,
@@ -19,16 +19,35 @@ diff review between phases — not all at once.
       browser" fallback for Safari / Firefox. 11 new i18n strings; new
       `NetworkProbe::latency_probe()` + `NetworkProbe::ipv6_reachable()`
       static methods; new `connectionQualityCard()` in `scanner.js`.
-      **Renamed in this commit** (`(this commit)`): route renamed from
-      `/scan/connection/ping` → `/scan/connection/echo` to avoid name
-      collision with the existing TCP-connect `/scan/ping`; jitter
-      computation simplified from std-dev to `max - min` (more honest
-      for the 3-sample window we have); new dedicated
-      `rate_limit_connection_echo` bucket (default 60/min) so the 3
-      per-report echo calls never starve the TCP-connect `ping` bucket.
-- [ ] **Phase 2 — Deep anonymity / proxy / VPN consistency scoring**
-      (depends on Phase 1's `browser_timezone` collection point existing
-      in `collectFingerprint()`).
+      **Renamed in `13d55be`**: route renamed from `/scan/connection/ping`
+      → `/scan/connection/echo` to avoid name collision with the existing
+      TCP-connect `/scan/ping`; jitter computation simplified from std-dev
+      to `max - min` (more honest for the 3-sample window we have); new
+      dedicated `rate_limit_connection_echo` bucket (default 60/min) so
+      the 3 per-report echo calls never starve the TCP-connect `ping`
+      bucket.
+- [x] **Phase 2 — Deep anonymity / proxy / VPN consistency scoring**
+      (`(this commit)`). New `class-anonymity-scorer.php` correlates
+      four signals the orchestrator already had (IP-geo timezone,
+      browser-reported timezone from `collectFingerprint()`, WebRTC
+      verdict + leaked IPs from `Webrtc::summarize()`, ProxyDetector
+      classification) plus an optional completed DNS-leak test result
+      (passed in from the client as `dns_test_result`). Scoring weights:
+      timezone mismatch −20 (medium), WebRTC leak −40 (high), DNS
+      resolver on a different org −30 (high); confirmed proxy/VPN alone
+      is not penalised (intentional use). Timezones that share a UTC
+      offset (e.g. `Europe/Berlin` vs `Europe/Paris`) are NOT flagged
+      — uses PHP's `DateTimeZone::getOffset()` rather than string
+      compare. Returns `{consistent, score, mismatches, summary}`
+      surfaced under `connection.anonymity` in the scan response.
+      Rendered as a new `anonymityConsistencyCard()` in the left column
+      of `scanner.js` (above the proxy / DNS / WebRTC cards, since it
+      summarises them). New CSS for `.pc-badge--caution` /
+      `.pc-badge--unknown` / `.pc-card__score-row` /
+      `.pc-mismatch-list` / `.pc-severity--*`. 6 new i18n strings.
+      `dns_test_result` added to the `collect_client_signals()`
+      allowlist so the JS can pass a completed test back in. 14 new
+      PHPUnit tests (135 total, all green).
 - [ ] **Phase 3 — Advanced fingerprint exposure module** (real canvas /
       WebGL / audio hashing + entropy score). Largest single chunk,
       splits in two sub-sessions per the guide: JS collection first,
