@@ -11,6 +11,30 @@ composite scoring) see `IMON-BUILD-GUIDE.md`. That guide is split into
 seven phases and is meant to be executed one phase per session with a
 diff review between phases — not all at once.
 
+- [x] **Phase 1 — Connection quality** (`2d1f8ef`). Latency / jitter via
+      3 sequential GETs to `/scan/connection/ping` (timed client-side
+      with `performance.now()`), IP-family reachability derived from the
+      existing `IpDetector::detect()` shape, `navigator.connection`
+      read with explicit "Not available in this browser" fallback for
+      Safari / Firefox. 11 new i18n strings; new
+      `NetworkProbe::latency_probe()` + `NetworkProbe::ipv6_reachable()`
+      static methods; new `connectionQualityCard()` in `scanner.js`.
+- [ ] **Phase 2 — Deep anonymity / proxy / VPN consistency scoring**
+      (depends on Phase 1's `browser_timezone` collection point existing
+      in `collectFingerprint()`).
+- [ ] **Phase 3 — Advanced fingerprint exposure module** (real canvas /
+      WebGL / audio hashing + entropy score). Largest single chunk,
+      splits in two sub-sessions per the guide: JS collection first,
+      pause for review, then PHP scoring.
+- [ ] **Phase 4 — Security posture panel** (TLS version/cipher,
+      browser EOL check, reusing `class-security-headers.php`).
+- [ ] **Phase 5 — Local network exposure** (LAN self-scan,
+      RFC1918-scoped only, pure client-side).
+- [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5
+      into `class-privacy-report.php`).
+- [ ] **Phase 7 — QA pass** (audit all added code for conventions,
+      shown-back-to-user, fail-closed behavior, external-CDN policy).
+
 ## Phase 10 — UX polish: IMON rebrand, scan progress, styled tool results
 
 ### Theme & branding
