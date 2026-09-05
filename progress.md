@@ -173,6 +173,53 @@ diff review between phases — not all at once.
       weight 0 is preserved as the surface-only sentinel (previously
       `max(1, $weight)` would have promoted 0 → 1 and broken the
       exclusion). **178 tests / 661 assertions, all green.**
+- [x] **Phase 7 — QA pass** (`(this commit)` + `(prior commit)`).
+      Closing audit per `IMON-BUILD-GUIDE.md` Phase 7 (lines 308-322).
+      Read-only audit of Phases 1-6 surfaced four of five categories
+      clean; two small fixes plus a backlog inventory:
+      - **(A) Signal visibility** — every Phase 1-5 signal already has
+        a UI surface (audit table in plan: 12 categories × 10 cards,
+        no orphan collectors). **One inconsistency fixed here**:
+        `connection_quality` was being computed client-side but the
+        orchestrator wasn't threading it into `$scan['connection_quality']`,
+        so the Phase 6 `score_connection_quality()` category in the
+        privacy-report breakdown always reported "did not run". Fix:
+        extended `RestApi::collect_client_signals()` allowlist with
+        `connection_quality` and added structural validation +
+        pass-through in `ScannerOrchestrator::scan()` (numeric type
+        coercion on `latency.avg_ms`, optional `latency.{min,max,
+        jitter_ms,count}` + `network.{available, downlink_mbps,
+        effective_type, rtt_ms}`). 3 new PHPUnit tests cover:
+        client payload promotes source to `measured`, high-jitter
+        promotes status to `warning`, missing payload stays
+        `unknown`.
+      - **(B) PHP style** — `class-anonymity-scorer.php`,
+        `class-tls-info.php`, `class-browser-versions.php` (Phase 2,
+        4 new files) all have `declare(strict_types=1)` and
+        return-type-hints. **One violation fixed here**:
+        `RestApi::scan_connection_echo()` (Phase 1) had no return
+        type; changed to `: \WP_REST_Response|\WP_Error` (matches
+        the `enforce_rate_limit()` early-return shape).
+      - **(C) Fail-closed** — clean. `TlsInfo::current_request_info()`
+        (no `$_SERVER` keys → `'unknown'`), `BrowserVersions::check()`
+        (`unknown_family` / `unknown_version` sentinels),
+        `AnonymityScorer::score()` (empty inputs → score 100, no
+        mismatches), JS `scanLocalNetwork()` (`.catch()` maps
+        AbortError/TypeError to `'timeout'`/`'refused'`),
+        `connectionQualityProbe()` (failed sample skipped silently),
+        `collectFingerprint()` (every probe in try/catch; AudioContext
+        throw → `Promise.resolve('')`). No throw paths anywhere.
+      - **(D) External network** — clean for Phases 1-5. All new
+        `fetch()` calls are same-origin (`/scan/connection/echo`) or
+        RFC1918 LAN (by design). Self-hosted three.js, three-globe,
+        globe textures already shipped in earlier cleanup phase.
+        Pre-existing CDN leftovers (NOT Phase 7 work, listed in
+        backlog below).
+      - **(E) TODO inventory** — exactly one TODO marker remains:
+        `plugin/includes/class-fingerprint.php:211` — entropy
+        population-stats seam. Restated in backlog below.
+      **181 tests / 670 assertions, all green.** `node --check scanner.js`
+      clean. `php -l` clean on every modified file.
 - [ ] **Phase 7 — QA pass** (audit all added code for conventions,
       shown-back-to-user, fail-closed behavior, external-CDN policy).
 
@@ -593,10 +640,14 @@ stays bounded.
         clearly instead of silently rendering a black sphere)
       - `console.error('[IMON globe] three.js / three-globe library did
         not load within 5s.')` on retry exhaustion. (`c1c6854`)
-- [ ] **Phase 7 (QA pass) of `IMON-BUILD-GUIDE.md` checklist #4** —
-      audit all frontend network calls (Leaflet CSS/JS from unpkg too)
-      and decide consistently: vendor everything locally or document
-      the CDN list explicitly. Lower priority than the three bugs above.
+- [x] **Phase 7 (QA pass) of `IMON-BUILD-GUIDE.md` checklist #4** —
+      audited all Phases 1-5 frontend network calls in the dedicated
+      Phase 7 QA pass (commit immediately above). All new `fetch()`
+      calls are same-origin or RFC1918 LAN (by design). External CDN
+      leftovers (Leaflet unpkg fallbacks, raw.githubusercontent PNG
+      icons) are listed in the "Phase 7 — QA backlog" section below
+      as deferred cleanup; the locally-bundled fallbacks are already
+      in place and tested.
 
 ## Open questions
 
@@ -609,6 +660,36 @@ stays bounded.
 - Should `share_enabled=false` also hide the "Share" button client-side, or
   only 403 server-side? (Currently: client-side still renders the button
   and shows "Sharing is disabled by the site admin" on click.)
+
+## Phase 7 — QA backlog (deferred, not blocking)
+
+Surfaced by the Phase 7 read-only audit. All items are explicit
+non-goals for the IMON-BUILD-GUIDE.md track — they're listed here so
+the next contributor has a starting point. None are bugs.
+
+- **`plugin/includes/class-fingerprint.php:211`** — entropy
+  population-stats seam. `Fingerprint::entropy_estimate()` uses
+  cardinality-assumption bit weights (canvas +15, audio +15, webgl +6,
+  fontList +1 each beyond baseline of 8, masked-by-browser -5 reward,
+  etc.). Wire `Cache::remember()`-backed rolling histograms once real
+  per-signal population stats exist. Phase 3 guide explicitly defers
+  this.
+- **`plugin/public/assets/js/scanner.js:3522`** — `PC_NET_PNG_CDN`
+  resolves to `https://raw.githubusercontent.com/tmusabaika/
+  minimalistic-networking-icons/...`. Pre-existing (Phase 13 era,
+  not from Phases 1-6). Vendor locally under
+  `plugin/public/assets/img/net-icons/` and update the constant. Same
+  family of "self-host external assets" cleanup that already shipped
+  for three.js, three-globe, and the globe textures. Tracked but not
+  scheduled.
+- **`plugin/public/class-public-assets.php:163,170,185,186`** — four
+  Leaflet / three.js fallback URLs on `unpkg.com`. Each has a
+  locally-bundled fallback already (`is_readable( $local_three )` /
+  `is_readable( $local_globe )`); self-host Leaflet under
+  `plugin/public/assets/` to remove the last unpkg dependency on the
+  visitor's browser. Tracked in Phase 13 checklist #4 below. Not
+  blocking the Phase 1-7 track because the in-page `<noscript>`
+  fallback shape is documented and tested.
 
 ## Related
 
