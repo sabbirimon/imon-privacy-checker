@@ -542,6 +542,37 @@
 
         // ---- RIGHT: data tables (Whoer: connection details, fingerprint details, system) ----
         rightCol.appendChild(connectionCard(report));
+        // Connection-quality card is rendered asynchronously because the
+        // latency probe and navigator.connection snapshot need to complete
+        // first. We append a placeholder now, then swap it when the probe
+        // resolves — the rest of the report renders immediately so the user
+        // sees the bulk of the results without waiting for the 3-sample
+        // latency measurement.
+        var cqPlaceholder = el('section', { class: 'pc-card', 'data-pc-component': 'connection-quality-placeholder' });
+        var cqHead = el('div', { class: 'pc-card__head' });
+        cqHead.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u{1F4CA}' }));
+        cqHead.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.cqTitle || 'CONNECTION QUALITY' }),
+            el('p',  { class: 'pc-card__subtitle', text: (I18N.scanning || 'Scanning…') + ' \u2014 ' + (I18N.cqLatencyAvg || 'latency') })
+        ]));
+        cqPlaceholder.appendChild(cqHead);
+        rightCol.appendChild(cqPlaceholder);
+        var cqNode = cqPlaceholder;
+        Promise.all([
+            connectionQualityProbe(3).catch(function () { return null; }),
+            Promise.resolve(navigatorConnectionSnapshot())
+        ]).then(function (results) {
+            var payload = {
+                latency: results && results[0] ? results[0] : null,
+                network: results && results[1] ? results[1] : null
+            };
+            try {
+                var newCard = connectionQualityCard(report, payload);
+                if (cqNode && cqNode.parentNode) {
+                    cqNode.parentNode.replaceChild(newCard, cqNode);
+                }
+            } catch (e) { /* noop — leave the placeholder */ }
+        });
         rightCol.appendChild(fingerprintTableCard(report));
         rightCol.appendChild(scoreBreakdownCard(report));
 
@@ -805,6 +836,200 @@
                 el('td', { text: r[1] })
             ]));
         });
+        tbl.appendChild(tbody);
+        card.appendChild(tbl);
+        return card;
+    }
+
+    /* ---------- Connection quality (latency / jitter / Network Information API) ----------
+     *
+     * Latency is measured end-to-end in the visitor's browser via three
+     * sequential fetch() calls to /scan/connection/ping, timed with
+     * performance.now(). Server-side measurement would only capture the
+     * server's view of itself, which is not what the visitor cares about.
+     *
+     * Network Information API (navigator.connection) is a Chromium-only
+     * surface — explicitly shows "Not available in this browser" in
+     * Safari/Firefox rather than rendering a misleading zero value.
+     *
+     * The IPv4/v6 reachability row uses the same `request_ip` shape that
+     * the rest of the report consumes — no second IP-detection path.
+     * ------------------------------------------------------------------------- */
+
+    /**
+     * Fire N requests to /scan/connection/ping and return per-sample +
+     * min/max/avg/jitter in ms. Resolves to an empty object on failure so
+     * the calling UI can degrade gracefully ("unable to determine").
+     */
+    function connectionQualityProbe(sampleCount) {
+        var N = Math.max(1, Math.min(5, sampleCount || 3));
+        var endpoint = REST_URL
+            ? REST_URL.replace(/\/$/, '') + '/scan/connection/ping'
+            : '/wp-json/privacy-checker/v1/scan/connection/ping';
+
+        // Three sequential samples give us min/max/avg/jitter (jitter =
+        // std-dev-like spread) without serialising forever.
+        var samples = [];
+        var i = 0;
+
+        function next() {
+            if (i >= N) {
+                if (!samples.length) return Promise.resolve(null);
+                var min = Math.min.apply(null, samples);
+                var max = Math.max.apply(null, samples);
+                var avg = samples.reduce(function (a, b) { return a + b; }, 0) / samples.length;
+                var variance = samples.reduce(function (acc, v) { return acc + Math.pow(v - avg, 2); }, 0) / samples.length;
+                var jitter = Math.sqrt(variance);
+                return Promise.resolve({
+                    samples: samples,
+                    count:   samples.length,
+                    min_ms:  Math.round(min * 100) / 100,
+                    max_ms:  Math.round(max * 100) / 100,
+                    avg_ms:  Math.round(avg * 100) / 100,
+                    jitter_ms: Math.round(jitter * 100) / 100,
+                });
+            }
+            var sent = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            return fetch(endpoint, {
+                method: 'GET',
+                credentials: 'omit',
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            }).then(function (resp) {
+                var recv = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                if (resp && resp.ok) {
+                    samples.push(recv - sent);
+                }
+            }).catch(function () { /* skip failed sample */ })
+              .then(function () { i++; return next(); });
+        }
+        return next();
+    }
+
+    /**
+     * Read navigator.connection (Chromium-only Network Information API).
+     * Returns null fields when unavailable rather than zeroing — Safari /
+     * Firefox don't expose the API and showing "0 Mbps" there would be
+     * misleading.
+     */
+    function navigatorConnectionSnapshot() {
+        var c = (typeof navigator !== 'undefined' && navigator.connection) || null;
+        if (!c) {
+            return {
+                available:    false,
+                downlink_mbps: null,
+                effective_type: null,
+                rtt_ms:        null,
+                save_data:     null
+            };
+        }
+        return {
+            available:     true,
+            downlink_mbps: (typeof c.downlink === 'number')  ? c.downlink  : null,
+            effective_type: c.effectiveType || null,
+            rtt_ms:        (typeof c.rtt === 'number')        ? c.rtt       : null,
+            save_data:     (typeof c.saveData === 'boolean') ? c.saveData  : null
+        };
+    }
+
+    /**
+     * Connection Quality card. Latency / jitter / navigator.connection /
+     * IPv4-vs-IPv6 reachability, rendered as a single Whoer-style data
+     * table card matching the connectionCard + fingerprintTableCard shape.
+     */
+    function connectionQualityCard(report, payload) {
+        var p  = payload || {};
+        var lat = p.latency || null;
+        var net = p.network || {};
+        var ip  = (report && report.request_ip) || {};
+        var ipv4 = ip.ipv4 || null;
+        var ipv6 = ip.ipv6 || null;
+
+        var family = 'unknown';
+        if (ipv4 && ipv6)      family = 'dual-stack';
+        else if (ipv6)         family = 'IPv6 only';
+        else if (ipv4)         family = 'IPv4 only';
+        else                   family = I18N.unable || '—';
+
+        var card = el('section', { class: 'pc-card', 'data-pc-component': 'connection-quality' });
+        var head = el('div', { class: 'pc-card__head' });
+        head.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u{1F4CA}' }));
+        head.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.cqTitle || 'CONNECTION QUALITY' }),
+            el('p',  { class: 'pc-card__subtitle', text: I18N.cqLede || 'End-to-end latency, jitter, and your browser\'s view of the connection.' })
+        ]));
+        card.appendChild(head);
+
+        var tbl = el('table', { class: 'pc-info-table' });
+        var tbody = el('tbody');
+
+        // Latency rows — show min/avg/max/jitter if the probe succeeded.
+        if (lat && typeof lat.avg_ms === 'number') {
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqLatencyAvg || 'Average latency' }),
+                el('td', { text: lat.avg_ms + ' ms', mono: true })
+            ]));
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqLatencyMin || 'Minimum' }),
+                el('td', { text: lat.min_ms + ' ms', mono: true })
+            ]));
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqLatencyMax || 'Maximum' }),
+                el('td', { text: lat.max_ms + ' ms', mono: true })
+            ]));
+            var jitterLevel = 'pass';
+            if (lat.jitter_ms > 50)      jitterLevel = 'warning';
+            if (lat.jitter_ms > 150)     jitterLevel = 'danger';
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqLatencyJitter || 'Jitter' }),
+                el('td', { text: lat.jitter_ms + ' ms', mono: true, pill: jitterLevel })
+            ]));
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqSamples || 'Samples' }),
+                el('td', { text: String(lat.count) + ' × GET /scan/connection/ping', mono: true })
+            ]));
+        } else {
+            // Probe failed (network blocked, ad-blocker, CORS) — show
+            // "unable to determine" rather than a blank/zero row.
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.cqLatencyAvg || 'Average latency' }),
+                el('td', { text: I18N.unable || 'Unable to determine' })
+            ]));
+        }
+
+        // IPv4 vs IPv6 reachability — derived from the same request_ip
+        // shape the rest of the report consumes. Not re-detected here.
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.cqReachability || 'IP family' }),
+            el('td', { text: family, mono: true })
+        ]));
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.cqIPv4 || 'IPv4' }),
+            el('td', { text: ipv4 || (I18N.unable || '—'), mono: true })
+        ]));
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.cqIPv6 || 'IPv6' }),
+            el('td', { text: ipv6 || (I18N.unable || '—'), mono: true })
+        ]));
+
+        // Network Information API — Chromium-only. Explicit fallback message
+        // for Safari / Firefox / anything else that doesn't expose it.
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.cqNetInfo || 'Browser network info' }),
+            el('td', { text: net.available
+                ? (
+                    (net.effective_type ? ('Type: ' + net.effective_type + ' · ') : '') +
+                    (net.downlink_mbps != null ? ('Downlink: ' + net.downlink_mbps + ' Mbps · ') : '') +
+                    (net.rtt_ms != null ? ('RTT hint: ' + net.rtt_ms + ' ms') : (net.effective_type || (I18N.unable || '—')))
+                  ).replace(/·\s*$/, '')
+                : (I18N.cqNetInfoUnavailable || 'Not available in this browser.')
+            })
+        ]));
+
         tbl.appendChild(tbody);
         card.appendChild(tbl);
         return card;

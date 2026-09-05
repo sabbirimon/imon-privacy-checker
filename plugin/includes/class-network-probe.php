@@ -107,6 +107,64 @@ final class NetworkProbe {
     }
 
     /**
+     * Advertise the endpoint the browser should hit for latency probing.
+     *
+     * The actual measurement is done client-side (see scanner.js →
+     * `connectionQualityProbe()`) because latency must be measured from the
+     * visitor's perspective, not the server's. This method exists so the
+     * orchestrator / REST handlers can advertise a single source of truth
+     * for "where to ping" without hard-coding the URL in JS.
+     *
+     * @return array{endpoint:string,method:string,sample_count:int,note:string}
+     */
+    public static function latency_probe(): array {
+        return array(
+            'endpoint'     => '/wp-json/privacy-checker/v1/scan/connection/ping',
+            'method'       => 'GET',
+            'sample_count' => 3,
+            'note'         => __( 'Latency is measured end-to-end in the visitor\'s browser using performance.now() around fetch(). Server response is a trivial {t: microtime} payload with no upstream work.', 'privacy-checker' ),
+        );
+    }
+
+    /**
+     * Classify whether the detected connection is IPv4-only, IPv6-only,
+     * dual-stack, or neither (e.g. misconfigured proxy).
+     *
+     * Reuses the IP-detection shape returned by IpDetector::detect() —
+     * `{ipv4: ?string, ipv6: ?string, source: string}` — rather than
+     * re-implementing IP detection. Returns a normalised summary that the
+     * scanner orchestrator and the Connection Quality card can consume.
+     *
+     * @param array{ipv4?:?string, ipv6?:?string, source?:string} $detected
+     * @return array{reachable:bool,family:string,ipv4:?string,ipv6:?string,source:string}
+     */
+    public static function ipv6_reachable( array $detected ): array {
+        $ipv4   = isset( $detected['ipv4'] ) ? (string) $detected['ipv4'] : '';
+        $ipv6   = isset( $detected['ipv6'] ) ? (string) $detected['ipv6'] : '';
+        $source = isset( $detected['source'] ) ? (string) $detected['source'] : '';
+
+        $has_v4 = '' !== $ipv4;
+        $has_v6 = '' !== $ipv6;
+
+        $family = 'none';
+        if ( $has_v4 && $has_v6 ) {
+            $family = 'dual';
+        } elseif ( $has_v6 ) {
+            $family = 'ipv6';
+        } elseif ( $has_v4 ) {
+            $family = 'ipv4';
+        }
+
+        return array(
+            'reachable' => ( $has_v4 || $has_v6 ),
+            'family'    => $family,
+            'ipv4'      => $has_v4 ? $ipv4 : null,
+            'ipv6'      => $has_v6 ? $ipv6 : null,
+            'source'    => $source,
+        );
+    }
+
+    /**
      * Default ping targets. Format: `host:port`.
      *
      * @return string[]

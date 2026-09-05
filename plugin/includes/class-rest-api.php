@@ -208,6 +208,17 @@ final class RestApi {
             ),
         ) );
 
+        // Connection-quality endpoint — returns a trivial {t: <server microtime>}
+        // payload that the visitor's browser uses to measure end-to-end latency
+        // (round-trip, jitter) with performance.now() around fetch(). No
+        // upstream call, no DB read, no IP detection — just a fast response.
+        // Reuses the `ping` rate-limit bucket.
+        register_rest_route( $ns, '/scan/connection/ping', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'scan_connection_ping' ),
+            'permission_callback' => '__return_true',
+        ) );
+
         // TCP port probe.
         register_rest_route( $ns, '/scan/port', array(
             'methods'             => WP_REST_Server::CREATABLE,
@@ -741,6 +752,40 @@ final class RestApi {
         }
         $hostname = (string) $request->get_param( 'hostname' );
         return rest_ensure_response( DnsTest::run_doh_probe( '' !== $hostname ? $hostname : null ) );
+    }
+
+    /**
+     * GET /scan/connection/ping
+     *
+     * Trivial echo endpoint for client-side latency measurement. Returns
+     * `{ "t": <server microtime> }` with aggressive no-cache headers so the
+     * visitor's browser can time the round-trip with `performance.now()`
+     * without any upstream work, DB hit, or rate-limit pressure beyond the
+     * standard `ping` bucket.
+     *
+     * Intentionally tiny — the latency it reports is end-to-end
+     * (browser → WP server → back), which is what the visitor actually cares
+     * about. We do not measure server-side; that would only measure the
+     * server's view of itself.
+     */
+    public function scan_connection_ping( WP_REST_Request $request ) {
+        $limit = $this->enforce_rate_limit( $request, 'ping', (int) Plugin::instance()->setting( 'rate_limit_ping', 30 ) );
+        if ( is_wp_error( $limit ) ) {
+            return $limit;
+        }
+
+        $response = new WP_REST_Response( array(
+            't' => microtime( true ),
+        ), 200 );
+
+        // Aggressive no-cache — every byte must come from the server so the
+        // browser-side timing includes the full network round-trip, not a
+        // cached response from 30 seconds ago.
+        $response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+        $response->header( 'Pragma', 'no-cache' );
+        $response->header( 'Expires', '0' );
+
+        return $response;
     }
 
     /**

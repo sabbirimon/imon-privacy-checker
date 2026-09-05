@@ -326,6 +326,26 @@ final class PublicAssets {
                 'scoreMid'        => __( 'Some details are exposed. Review the recommendations below.', 'privacy-checker' ),
                 'scoreBad'        => __( 'Significant details are exposed. Follow the priority fixes.', 'privacy-checker' ),
                 'ipReputationLabel'=> __( 'IP Reputation', 'privacy-checker' ),
+
+                // Connection-quality card (Phase 1 of IMON-BUILD-GUIDE.md).
+                // Latency is measured end-to-end in the visitor's browser via
+                // 3 sequential fetches to /scan/connection/ping, timed with
+                // performance.now(). Network Information API is Chromium-only —
+                // Safari / Firefox get an explicit "Not available in this
+                // browser" message rather than a blank/zero row.
+                'cqTitle'              => __( 'Connection Quality', 'privacy-checker' ),
+                'cqLede'               => __( 'End-to-end latency, jitter, and your browser\'s view of the connection.', 'privacy-checker' ),
+                'cqLatencyAvg'         => __( 'Average latency', 'privacy-checker' ),
+                'cqLatencyMin'         => __( 'Minimum latency', 'privacy-checker' ),
+                'cqLatencyMax'         => __( 'Maximum latency', 'privacy-checker' ),
+                'cqLatencyJitter'      => __( 'Jitter', 'privacy-checker' ),
+                'cqSamples'            => __( 'Samples', 'privacy-checker' ),
+                'cqReachability'       => __( 'IP family', 'privacy-checker' ),
+                'cqIPv4'               => __( 'IPv4', 'privacy-checker' ),
+                'cqIPv6'               => __( 'IPv6', 'privacy-checker' ),
+                'cqNetInfo'            => __( 'Browser network info', 'privacy-checker' ),
+                'cqNetInfoUnavailable' => __( 'Not available in this browser.', 'privacy-checker' ),
+
                 'geoTitle'        => __( 'Geo Traceroute', 'privacy-checker' ),
                 'geoLede'         => __( 'Project your connection hops onto a world map. Animated packets trace the path between your device and the destination.', 'privacy-checker' ),
                 'geoRun'          => __( 'Trace Route', 'privacy-checker' ),
