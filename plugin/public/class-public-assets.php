@@ -19,6 +19,61 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class PublicAssets {
 
     /**
+     * Page slugs whose pages should always load scanner assets.
+     *
+     * Single source of truth for: (a) the `is_page()` allowlist inside
+     * `enqueue()`, (b) the URI-substring fallback for sites without pretty
+     * permalinks, and (c) the derived shortcode-tag list. The value is the
+     * shortcode suffix (without the `privacy_checker_` prefix); use an empty
+     * string for the bare `privacy_checker` dashboard shortcode tag.
+     * Adding a new tool now requires one entry here and one shortcode
+     * registration above — `enqueue()` updates itself.
+     *
+     * @var array<string, string>
+     */
+    private const TOOLS = array(
+        'ip-lookup'        => 'ip_lookup',
+        'whois'            => 'whois',
+        'user-agent'       => 'user_agent',
+        'fingerprint'      => 'fingerprint',
+        'dns-leak-test'    => 'dns_test',
+        'webrtc-test'      => 'webrtc',
+        'security-headers' => 'security_headers',
+        'ping'             => 'ping',
+        'port-scan'        => 'port_scan',
+        'anonymity-tips'   => 'anonymity_tips',
+        'geotraceroute'    => 'geotraceroute',
+        'user-guide'       => 'user_guide',
+    );
+
+    /**
+     * Just the slug list (preserves insertion order). Used by `is_page()` and
+     * the URI-substring fallback — neither cares about shortcode tags.
+     *
+     * @return string[]
+     */
+    private static function tool_slugs(): array {
+        return array_keys( self::TOOLS );
+    }
+
+    /**
+     * Shortcode tags for the dashboard plus every tool. The first entry is
+     * always the bare `privacy_checker` dashboard shortcode.
+     *
+     * @return string[]
+     */
+    private static function tool_shortcode_tags(): array {
+        $tags = array( 'privacy_checker' );
+        foreach ( self::TOOLS as $suffix ) {
+            if ( '' === $suffix ) {
+                continue;
+            }
+            $tags[] = 'privacy_checker_' . $suffix;
+        }
+        return $tags;
+    }
+
+    /**
      * Register hooks.
      */
     public function register(): void {
@@ -47,13 +102,13 @@ final class PublicAssets {
         }
         $should_load = ( is_singular() && has_shortcode( get_post()->post_content ?? '', 'privacy_checker' ) )
             || is_front_page()
-            || is_page( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute', 'user-guide' ) );
+            || is_page( self::tool_slugs() );
 
         // Some WP installs don't have pretty permalinks enabled. Fall back to checking
         // by request URI as well, so the scanner assets always load on the tool pages.
         if ( ! $should_load ) {
             $req_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_parse_url( (string) $_SERVER['REQUEST_URI'], PHP_URL_PATH ) : '';
-            foreach ( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute', 'user-guide' ) as $slug ) {
+            foreach ( self::tool_slugs() as $slug ) {
                 if ( '' !== $req_uri && false !== strpos( $req_uri, '/' . $slug . '/' ) ) {
                     $should_load = true;
                     break;
@@ -65,21 +120,7 @@ final class PublicAssets {
             global $post;
             if ( $post instanceof \WP_Post ) {
                 $content = $post->post_content ?? '';
-                foreach ( array(
-                    'privacy_checker',
-                    'privacy_checker_fingerprint',
-                    'privacy_checker_ip_lookup',
-                    'privacy_checker_whois',
-                    'privacy_checker_user_agent',
-                    'privacy_checker_security_headers',
-                    'privacy_checker_dns_test',
-                    'privacy_checker_webrtc',
-                    'privacy_checker_ping',
-                    'privacy_checker_port_scan',
-                    'privacy_checker_anonymity_tips',
-                    'privacy_checker_geotraceroute',
-                    'privacy_checker_user_guide',
-                ) as $tag ) {
+                foreach ( self::tool_shortcode_tags() as $tag ) {
                     if ( has_shortcode( $content, $tag ) ) {
                         $should_load = true;
                         break;
