@@ -11,14 +11,21 @@ composite scoring) see `IMON-BUILD-GUIDE.md`. That guide is split into
 seven phases and is meant to be executed one phase per session with a
 diff review between phases — not all at once.
 
-- [x] **Phase 1 — Connection quality** (`2d1f8ef`). Latency / jitter via
-      3 sequential GETs to `/scan/connection/ping` (timed client-side
-      with `performance.now()`), IP-family reachability derived from the
-      existing `IpDetector::detect()` shape, `navigator.connection`
-      read with explicit "Not available in this browser" fallback for
-      Safari / Firefox. 11 new i18n strings; new
+- [x] **Phase 1 — Connection quality** (`2d1f8ef`, renamed in this commit).
+      Latency / jitter via 3 sequential GETs to `/scan/connection/echo`
+      (timed client-side with `performance.now()`), IP-family reachability
+      derived from the existing `IpDetector::detect()` shape,
+      `navigator.connection` read with explicit "Not available in this
+      browser" fallback for Safari / Firefox. 11 new i18n strings; new
       `NetworkProbe::latency_probe()` + `NetworkProbe::ipv6_reachable()`
       static methods; new `connectionQualityCard()` in `scanner.js`.
+      **Renamed in this commit** (`(this commit)`): route renamed from
+      `/scan/connection/ping` → `/scan/connection/echo` to avoid name
+      collision with the existing TCP-connect `/scan/ping`; jitter
+      computation simplified from std-dev to `max - min` (more honest
+      for the 3-sample window we have); new dedicated
+      `rate_limit_connection_echo` bucket (default 60/min) so the 3
+      per-report echo calls never starve the TCP-connect `ping` bucket.
 - [ ] **Phase 2 — Deep anonymity / proxy / VPN consistency scoring**
       (depends on Phase 1's `browser_timezone` collection point existing
       in `collectFingerprint()`).

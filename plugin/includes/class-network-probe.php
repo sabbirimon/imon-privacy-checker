@@ -119,7 +119,7 @@ final class NetworkProbe {
      */
     public static function latency_probe(): array {
         return array(
-            'endpoint'     => '/wp-json/privacy-checker/v1/scan/connection/ping',
+            'endpoint'     => '/wp-json/privacy-checker/v1/scan/connection/echo',
             'method'       => 'GET',
             'sample_count' => 3,
             'note'         => __( 'Latency is measured end-to-end in the visitor\'s browser using performance.now() around fetch(). Server response is a trivial {t: microtime} payload with no upstream work.', 'privacy-checker' ),

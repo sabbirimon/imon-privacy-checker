@@ -329,7 +329,7 @@ final class PublicAssets {
 
                 // Connection-quality card (Phase 1 of IMON-BUILD-GUIDE.md).
                 // Latency is measured end-to-end in the visitor's browser via
-                // 3 sequential fetches to /scan/connection/ping, timed with
+                // 3 sequential fetches to /scan/connection/echo, timed with
                 // performance.now(). Network Information API is Chromium-only —
                 // Safari / Firefox get an explicit "Not available in this
                 // browser" message rather than a blank/zero row.

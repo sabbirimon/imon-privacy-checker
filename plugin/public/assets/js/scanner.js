@@ -844,7 +844,7 @@
     /* ---------- Connection quality (latency / jitter / Network Information API) ----------
      *
      * Latency is measured end-to-end in the visitor's browser via three
-     * sequential fetch() calls to /scan/connection/ping, timed with
+     * sequential fetch() calls to /scan/connection/echo, timed with
      * performance.now(). Server-side measurement would only capture the
      * server's view of itself, which is not what the visitor cares about.
      *
@@ -857,18 +857,19 @@
      * ------------------------------------------------------------------------- */
 
     /**
-     * Fire N requests to /scan/connection/ping and return per-sample +
+     * Fire N requests to /scan/connection/echo and return per-sample +
      * min/max/avg/jitter in ms. Resolves to an empty object on failure so
      * the calling UI can degrade gracefully ("unable to determine").
      */
     function connectionQualityProbe(sampleCount) {
         var N = Math.max(1, Math.min(5, sampleCount || 3));
         var endpoint = REST_URL
-            ? REST_URL.replace(/\/$/, '') + '/scan/connection/ping'
-            : '/wp-json/privacy-checker/v1/scan/connection/ping';
+            ? REST_URL.replace(/\/$/, '') + '/scan/connection/echo'
+            : '/wp-json/privacy-checker/v1/scan/connection/echo';
 
         // Three sequential samples give us min/max/avg/jitter (jitter =
-        // std-dev-like spread) without serialising forever.
+        // max - min, the simplest and most honest spread for a small-N
+        // sample — std dev on n=3 is too noisy to mean much).
         var samples = [];
         var i = 0;
 
@@ -878,8 +879,7 @@
                 var min = Math.min.apply(null, samples);
                 var max = Math.max.apply(null, samples);
                 var avg = samples.reduce(function (a, b) { return a + b; }, 0) / samples.length;
-                var variance = samples.reduce(function (acc, v) { return acc + Math.pow(v - avg, 2); }, 0) / samples.length;
-                var jitter = Math.sqrt(variance);
+                var jitter = max - min;
                 return Promise.resolve({
                     samples: samples,
                     count:   samples.length,
@@ -990,7 +990,7 @@
             ]));
             tbody.appendChild(el('tr', {}, [
                 el('th', { text: I18N.cqSamples || 'Samples' }),
-                el('td', { text: String(lat.count) + ' × GET /scan/connection/ping', mono: true })
+                el('td', { text: String(lat.count) + ' × GET /scan/connection/echo', mono: true })
             ]));
         } else {
             // Probe failed (network blocked, ad-blocker, CORS) — show

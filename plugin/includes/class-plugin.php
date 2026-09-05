@@ -129,9 +129,10 @@ final class Plugin {
                     'port_scan_timeout_sec'   => 1.0,
 
                     // Per-bucket rate limits for the new probes.
-                    'rate_limit_dns_probe'    => 5,
-                    'rate_limit_ping'         => 30,
-                    'rate_limit_port_scan'    => 10,
+                    'rate_limit_dns_probe'        => 5,
+                    'rate_limit_ping'             => 30,
+                    'rate_limit_port_scan'        => 10,
+                    'rate_limit_connection_echo'  => 60,
                 )
             );
         } else {
@@ -157,9 +158,10 @@ final class Plugin {
                 'port_scan_allowlist'     => array(),
                 'port_scan_default_ports' => array( 80, 443, 8080, 8443 ),
                 'port_scan_timeout_sec'   => 1.0,
-                'rate_limit_dns_probe'    => 5,
-                'rate_limit_ping'         => 30,
-                'rate_limit_port_scan'    => 10,
+                'rate_limit_dns_probe'        => 5,
+                'rate_limit_ping'             => 30,
+                'rate_limit_port_scan'        => 10,
+                'rate_limit_connection_echo'  => 60,
             );
             $needs_update = false;
             foreach ( $backfill as $k => $v ) {

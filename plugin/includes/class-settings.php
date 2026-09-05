@@ -264,9 +264,13 @@ final class Settings {
         $output['port_scan_timeout_sec'] = max( 0.2, min( 5.0, (float) ( $input['port_scan_timeout_sec'] ?? 1.0 ) ) );
 
         // Per-bucket rate limits for the new probes.
-        $output['rate_limit_dns_probe'] = max( 1, min( 60,  (int) ( $input['rate_limit_dns_probe'] ?? 5  ) ) );
-        $output['rate_limit_ping']      = max( 5, min( 300, (int) ( $input['rate_limit_ping']      ?? 30 ) ) );
-        $output['rate_limit_port_scan'] = max( 1, min( 60,  (int) ( $input['rate_limit_port_scan'] ?? 10 ) ) );
+        $output['rate_limit_dns_probe']        = max( 1, min( 60,  (int) ( $input['rate_limit_dns_probe']        ?? 5  ) ) );
+        $output['rate_limit_ping']             = max( 5, min( 300, (int) ( $input['rate_limit_ping']             ?? 30 ) ) );
+        $output['rate_limit_port_scan']        = max( 1, min( 60,  (int) ( $input['rate_limit_port_scan']        ?? 10 ) ) );
+        // Connection echo has its own bucket (separate from `ping`, which is
+        // the TCP-connect endpoint) so the 3 trips per report never starve
+        // the legitimate /scan/ping traffic.
+        $output['rate_limit_connection_echo']  = max( 10, min( 600, (int) ( $input['rate_limit_connection_echo']  ?? 60 ) ) );
 
         // Secret salt: never accept over the wire; only ever rotate via separate endpoint.
         if ( empty( $output['secret_salt'] ) ) {

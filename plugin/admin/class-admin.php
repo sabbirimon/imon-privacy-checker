@@ -368,6 +368,16 @@ final class Admin {
             );
         }, self::MENU_SLUG, 'pc_ping' );
 
+        add_settings_field( 'rate_limit_connection_echo', __( 'Connection echo rate limit (per minute)', 'privacy-checker' ), function () {
+            $value = (int) Plugin::instance()->setting( 'rate_limit_connection_echo', 60 );
+            printf(
+                '<input type="number" min="10" max="600" name="%1$s[rate_limit_connection_echo]" value="%2$d" />',
+                esc_attr( Settings::OPTION_KEY ),
+                $value
+            );
+            echo '<p class="description">' . esc_html__( 'How many round-trip timestamps the browser may request per visitor per minute for its own latency measurement. 3 per report is typical.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_ping' );
+
         add_settings_section( 'pc_port_scan', __( 'Port Scan', 'privacy-checker' ), function () {
             echo '<p>' . esc_html__( 'TCP port probe. By default only the WordPress server\'s own public IP may be probed (self-only mode). Add entries to the allowlist to permit additional targets. SSH (22), SMTP (25), and RDP (3389) are always blocked.', 'privacy-checker' ) . '</p>';
         }, self::MENU_SLUG );

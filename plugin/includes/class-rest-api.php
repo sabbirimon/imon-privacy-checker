@@ -212,10 +212,12 @@ final class RestApi {
         // payload that the visitor's browser uses to measure end-to-end latency
         // (round-trip, jitter) with performance.now() around fetch(). No
         // upstream call, no DB read, no IP detection — just a fast response.
-        // Reuses the `ping` rate-limit bucket.
-        register_rest_route( $ns, '/scan/connection/ping', array(
+        // Dedicated `connection_echo` rate-limit bucket (generous — the client
+        // fires this 3x per report) so it never starves the TCP-connect
+        // `/scan/ping` bucket.
+        register_rest_route( $ns, '/scan/connection/echo', array(
             'methods'             => WP_REST_Server::READABLE,
-            'callback'            => array( $this, 'scan_connection_ping' ),
+            'callback'            => array( $this, 'scan_connection_echo' ),
             'permission_callback' => '__return_true',
         ) );
 
@@ -755,7 +757,7 @@ final class RestApi {
     }
 
     /**
-     * GET /scan/connection/ping
+     * GET /scan/connection/echo
      *
      * Trivial echo endpoint for client-side latency measurement. Returns
      * `{ "t": <server microtime> }` with aggressive no-cache headers so the
@@ -768,8 +770,8 @@ final class RestApi {
      * about. We do not measure server-side; that would only measure the
      * server's view of itself.
      */
-    public function scan_connection_ping( WP_REST_Request $request ) {
-        $limit = $this->enforce_rate_limit( $request, 'ping', (int) Plugin::instance()->setting( 'rate_limit_ping', 30 ) );
+    public function scan_connection_echo( WP_REST_Request $request ) {
+        $limit = $this->enforce_rate_limit( $request, 'connection_echo', (int) Plugin::instance()->setting( 'rate_limit_connection_echo', 60 ) );
         if ( is_wp_error( $limit ) ) {
             return $limit;
         }

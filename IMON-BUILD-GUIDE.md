@@ -61,12 +61,15 @@ Add a "connection quality" check to NetworkProbe (plugin/includes/class-network-
    (from IpDetector::detect(), already used in ScannerOrchestrator::scan()) is IPv4, IPv6, or dual-stack,
    reusing $detected['ipv4'] / $detected['ipv6'] — don't re-implement IP detection, this data already exists
    in the scan() flow.
-3. Add a lightweight REST route `/scan/connection/ping` (see the existing `/scan/ping` route around line
+3. Add a lightweight REST route `/scan/connection/echo` (see the existing `/scan/ping` route around line
    202 of class-rest-api.php for the pattern) that just returns `{ "t": <server microtime> }` with
-   aggressive no-cache headers — used by the client-side latency probe above.
+   aggressive no-cache headers — used by the client-side latency probe above. Use a dedicated
+   `connection_echo` rate-limit bucket (`rate_limit_connection_echo`, default 60/min) so the 3 trips per
+   report don't starve the TCP-connect `ping` bucket.
 4. In scanner.js, add a new module section (follow the existing module-comment convention at the top of the
    file) that:
-   - Fires 3 requests to /scan/connection/ping, computes min/max/avg/jitter client-side.
+   - Fires 3 requests to /scan/connection/echo, computes min/max/avg/jitter client-side (jitter =
+     `max - min`, the simplest honest spread for n=3).
    - Reads navigator.connection?.downlink and navigator.connection?.effectiveType if present (Network
      Information API — Chrome/Android only), and explicitly shows "Not available in this browser" rather
      than a blank/zero value in Safari/Firefox.
