@@ -221,7 +221,7 @@ mock shape so the UI doesn't hard-fail without RDAP access.
 
 ```bash
 composer install        # one-time
-vendor/bin/phpunit      # runs 61 tests, 154 assertions
+vendor/bin/phpunit      # runs 120 tests, 464 assertions
 ```
 
 Coverage is configured for `plugin/includes/` (excluding `plugin/includes/providers/`

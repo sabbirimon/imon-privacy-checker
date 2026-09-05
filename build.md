@@ -62,7 +62,7 @@ Then open http://localhost:8080.
 
 ```bash
 vendor/bin/phpunit --no-coverage
-# 61 tests, 154 assertions
+# 120 tests, 464 assertions
 ```
 
 The bootstrap (`plugin/tests/bootstrap.php`) defines WP constants and stubs

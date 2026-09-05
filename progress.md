@@ -262,6 +262,93 @@ All six tool pages now share a uniform rich card layout:
   to set the serialized string length correctly. The web-based WP installer
   is preferred thereafter.
 
+## Phase 11 — Network Path real-data + vertical layout + share endpoint
+
+Recent work that supersedes / extends Phase 8 (DNS Leak / Ping / Port Scan)
+and Phase 10 (UX polish):
+
+- [x] **Real backend Network Path** — `NetworkProbe::path_hops()` builds an
+      honest hop list from real signals: PTR (reverse DNS of visitor IP),
+      IP-intel (ISP + ASN + country + city), `ProxyDetector` category
+      (Tor/VPN/Hosting/Residential), and the WP server hostname as
+      destination. Each hop carries a `source` field (`ptr`, `ip-intel`,
+      `proxy-detector`, `inferred`, `request`) so the UI can flag estimates.
+      `ScannerOrchestrator::scan()` exposes this as `connection.path_hops`
+      on every `/scan` response.
+- [x] **JS consumes real hops** — `networkPathCard()` now prefers
+      `report.connection.path_hops` and only falls back to the heuristic
+      template when the backend has nothing to surface. Title row gets a
+      `REAL BACKEND DATA` (green) or `ESTIMATED` (amber) pill so visitors
+      can tell the two apart at a glance.
+- [x] **Vertical / multi-row path renderer** — for narrow viewports or hop
+      counts > 8, the diagram collapses to a stacked card list with a
+      vertical connector line. New helpers: `buildVerticalPathDiagram()`,
+      `buildVerticalSidePanel()`. Full Light + Dark CSS for
+      `.pc-network__diagram-vertical`, `.pc-network__vrow`,
+      `.pc-network__vrow-icon`, `.pc-network__vrow-num`, `.pc-network__vrow-block`,
+      `.pc-network__vrow-label`, `.pc-network__vrow-sub`,
+      `.pc-network__vrow-connector`, plus per-type colors and dark-mode
+      overrides.
+- [x] **Server-side share endpoint** — `POST /share` accepts a redacted
+      scan report, stores it as a transient keyed on a short URL-safe ID,
+      returns `{sid, expires_at}`. `GET /share/{sid}` retrieves the
+      redacted payload. `share_enabled` setting controls whether the
+      feature is exposed; `share_ttl_seconds` controls retention
+      (60s..30d, default 7d).
+- [x] **Redaction** — `redact_share_payload()` strips `ipv4`, `ipv6`,
+      `request_ip`, `dns_test.token`, `reverse_dns`, `fingerprint.hashes`
+      and rounds coordinates to 1 decimal (~11 km). Replaces IPs with
+      `0.0.0.0/24`-style subnet only when the share surface demands it.
+- [x] **Multi-format export** — `buildExportMenu()` adds a select for
+      JSON / CSV / TXT / HTML output of the full scan report. Wired into
+      the detailed-report card header.
+- [x] **Country flags on IP / DNS / ASN / Reputation rows** — new
+      `flagify()` + `countryFlag()` helpers (PHP + JS) convert ISO 3166-1
+      alpha-2 codes to regional-indicator emoji. Used in connection rows,
+      detailed report, and Geo Traceroute summary.
+- [x] **Geo Traceroute real-data fixes** — `scan_geo_lookup` now always
+      returns an explicit origin hop, 5 intermediate hops interpolating
+      along the great-circle, and a destination hop with real lat/lng.
+      Visitor loopback/private IP falls back to the WP server's own public
+      IP via `IpFallback::server_self_ip()`. When even that fails
+      (local-dev), origin collapses to target coords with a `SAME HOST`
+      label and a small 0.05° wobble arc so the polyline is visible.
+- [x] **Geo Traceroute country flags** — per-hop `flag` field, plus
+      `target.flag` and `origin.flag`. New `RestApi::country_flag()` PHP
+      helper. JS surfaces flags in origin/destination summary, hop list,
+      and marker popups. CSS adds `.pc-geo__summary-flag`.
+- [x] **3D Globe fix** — `setGeoView()` now un-hides the globe container
+      BEFORE calling `ensureGlobe3d()`, and defers init to the next
+      animation frame so `getBoundingClientRect()` returns the real
+      size. `ensureGlobe3d()` falls back to the parent's rect if its
+      own is still 0×0, with a 320×280 minimum so the canvas is never
+      invisible.
+- [x] **DNS tier fallback chain** — `NetworkProbe::resolver_chain_for_tiers()`
+      and `online_dns_resolvers()` build the resolver map across the four
+      tiers: `free` (Cloudflare / Google / Quad9) → `online` (Mullvad /
+      ControlD / NextDNS) → `paid` (admin-configured endpoint + key) →
+      `local` (admin-configured IP list). Settings: `dns_provider_chain`,
+      `dns_paid_endpoint`, `dns_paid_api_key`, `dns_local_resolvers`.
+- [x] **Local-first User-Agent parsing** — `parseUserAgentLocal()` in JS
+      mirrors the PHP `Fingerprint::parse_user_agent()` shape so visitors
+      can parse arbitrary UA strings client-side. Falls back to the
+      visitor's own `navigator.userAgent` if the textarea is left blank.
+- [x] **IP provider source attribution** — every IP-intel response now
+      carries `source` + `source_label` (the provider key + human label).
+      UI surfaces this in the detailed privacy report.
+- [x] **Test suite repaired** — fixed a missing `'ping_targets' =>` key in
+      `class-plugin.php` defaults that broke every PHPUnit test with a
+      parse error. **All 120 tests pass (464 assertions, 0 failures).**
+
+## Phase 12 — Repo + docs hygiene
+
+- [x] `.gitignore` excludes `wp/`, `vendor/`, `wp-config.php`,
+      `GeoIP Database/`, `vendor-src/`, `tools/`, `Screenshots/`,
+      `.puku-cli/projects/`, `test-results/`, build artifacts, OS-temp.
+- [x] GitHub repo created: https://github.com/sabbirimon/imon-privacy-checker
+- [x] `DEPLOYMENT.md` written for DevOps (server requirements, env vars,
+      nginx/apache configs, cron, log rotation, monitoring, rollback).
+
 ## Open questions
 
 - Should the dashboard tile for ip-api.com reflect the cached result of a recent
@@ -270,10 +357,14 @@ All six tool pages now share a uniform rich card layout:
   one-click with nonce + capability check.)
 - Should `log_retention_days=0` also drop the table on next retention cron, or
   only stop writing? (Currently: only stop writing.)
+- Should `share_enabled=false` also hide the "Share" button client-side, or
+  only 403 server-side? (Currently: client-side still renders the button
+  and shows "Sharing is disabled by the site admin" on click.)
 
 ## Related
 
 - `claude.md` — Agent operating notes
 - `build.md` — Build / install
+- `DEPLOYMENT.md` — DevOps deployment guide
 - `plan.md` — Architecture
 - `puku.md` — Puku CLI
