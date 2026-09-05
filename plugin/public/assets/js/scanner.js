@@ -3688,6 +3688,263 @@
         };
     })();
 
+    /**
+     * User-guide onboarding tour — MANUAL-ONLY driver.
+     *
+     * The tour is opened ONLY when the user clicks a trigger carrying
+     * `data-pc-action="open-guide"` (rendered by the [privacy_checker_user_guide]
+     * shortcode as a floating "?" button). It is never auto-launched: there is
+     * no first-visit hook, no localStorage flag, no scheduled timer, and no
+     * listener that runs `openGuide()` on `DOMContentLoaded`. The only paths
+     * into the overlay are explicit clicks.
+     */
+    function bindUserGuide() {
+        var tour = (window.PC_GUIDE && window.PC_GUIDE.tour) || [];
+        if (!tour.length) return;
+        var overlay = document.querySelector('[data-pc-component="user-guide"]');
+        var fab     = document.querySelector('.pc-guide-fab');
+        if (!overlay || !fab) return;
+
+        var titleEl  = overlay.querySelector('[data-pc-region="tour-title"]');
+        var bodyEl   = overlay.querySelector('[data-pc-region="tour-body"]');
+        var stepEl   = overlay.querySelector('[data-pc-region="tour-step"]');
+        var cardEl   = overlay.querySelector('[data-pc-region="tour-card"]');
+        var prevBtn  = overlay.querySelector('[data-pc-action="prev-step"]');
+        var nextBtn  = overlay.querySelector('[data-pc-action="next-step"]');
+        var endBtn   = overlay.querySelector('[data-pc-action="end-tour"]');
+        var closeEls = overlay.querySelectorAll('[data-pc-action="close-guide"]');
+
+        // Per-session UI state for the tour.
+        var currentIndex = 0;
+        var lastFocus    = null;
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function stepCount() { return tour.length; }
+        function currentStep() { return tour[Math.max(0, Math.min(currentIndex, stepCount() - 1))]; }
+
+        /**
+         * Find the first element matching any of the comma-separated selectors
+         * in `step.target`. Returns null if the page doesn't have a matching
+         * node — in that case we center the card without highlighting.
+         */
+        function resolveTarget(target) {
+            if (!target) return null;
+            var parts = String(target).split(',');
+            for (var i = 0; i < parts.length; i++) {
+                var sel = parts[i].trim();
+                if (!sel) continue;
+                var node = document.querySelector(sel);
+                if (node) return node;
+            }
+            return null;
+        }
+
+        /**
+         * Position the card relative to `target`. If `place` is "center" or
+         * the target is missing, anchor the card to the viewport center.
+         */
+        function positionForStep(step) {
+            // Reset placement classes first.
+            cardEl.classList.remove(
+                'pc-guide-card--center',
+                'pc-guide-card--top',
+                'pc-guide-card--bottom',
+                'pc-guide-card--left',
+                'pc-guide-card--right'
+            );
+
+            var targetNode = resolveTarget(step && step.target);
+            if (!targetNode || (step && step.place === 'center')) {
+                cardEl.classList.add('pc-guide-card--center');
+                return;
+            }
+
+            var place = (step && step.place) || 'bottom';
+            cardEl.classList.add('pc-guide-card--' + place);
+
+            // Defer to next frame so the layout (including class flip) settles.
+            requestAnimationFrame(function () {
+                var rect = targetNode.getBoundingClientRect();
+                var vw = window.innerWidth || document.documentElement.clientWidth;
+                var vh = window.innerHeight || document.documentElement.clientHeight;
+
+                // If the target is off-screen, treat as no highlight.
+                if (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw) {
+                    cardEl.classList.remove('pc-guide-card--top', 'pc-guide-card--bottom',
+                                            'pc-guide-card--left', 'pc-guide-card--right');
+                    cardEl.classList.add('pc-guide-card--center');
+                    return;
+                }
+
+                var cardRect = cardEl.getBoundingClientRect();
+                var cw = cardRect.width  || 360;
+                var ch = cardRect.height || 220;
+                var margin = 16;
+                var top = 0, left = 0;
+
+                switch (place) {
+                    case 'top':
+                        top  = Math.max(margin, rect.top - ch - margin);
+                        left = rect.left + (rect.width / 2) - (cw / 2);
+                        break;
+                    case 'left':
+                        top  = rect.top + (rect.height / 2) - (ch / 2);
+                        left = Math.max(margin, rect.left - cw - margin);
+                        break;
+                    case 'right':
+                        top  = rect.top + (rect.height / 2) - (ch / 2);
+                        left = rect.right + margin;
+                        break;
+                    case 'bottom':
+                    default:
+                        top  = rect.bottom + margin;
+                        left = rect.left + (rect.width / 2) - (cw / 2);
+                        break;
+                }
+
+                // Clamp into viewport.
+                var maxLeft = (vw - cw) - margin;
+                var maxTop  = (vh - ch) - margin;
+                if (left < margin) left = margin;
+                if (left > maxLeft) left = Math.max(margin, maxLeft);
+                if (top  < margin) top  = margin;
+                if (top  > maxTop)  top  = Math.max(margin, maxTop);
+
+                cardEl.style.left = Math.round(left) + 'px';
+                cardEl.style.top  = Math.round(top)  + 'px';
+            });
+        }
+
+        function renderStep() {
+            var step    = currentStep();
+            var i18n    = (window.PC_SCAN && window.PC_SCAN.i18n) || {};
+            var next    = i18n.guideNext  || 'Next';
+            var prev    = i18n.guidePrev  || 'Previous';
+            var done    = i18n.guideDone  || 'Got it';
+            var stepTpl = i18n.guideStepOf || 'Step %1$d of %2$d';
+
+            titleEl.textContent = step.title || '';
+            bodyEl.innerHTML    = '<p>' + escapeHtml(step.body || '') + '</p>';
+            stepEl.textContent  = stepTpl
+                .replace('%1$d', String(currentIndex + 1))
+                .replace('%2$d', String(stepCount()));
+
+            prevBtn.disabled = (currentIndex === 0);
+            var isLast = (currentIndex === stepCount() - 1);
+            nextBtn.hidden = isLast;
+            endBtn.hidden  = !isLast;
+            nextBtn.textContent = next;
+            prevBtn.textContent = prev;
+            endBtn.textContent  = done;
+
+            positionForStep(step);
+        }
+
+        function openGuide() {
+            if (!overlay.hidden) return;
+            lastFocus = document.activeElement;
+            currentIndex = 0;
+            overlay.hidden = false;
+            document.body.classList.add('pc-guide-open');
+            renderStep();
+            // Move focus into the card for keyboard navigation.
+            try { cardEl.focus(); } catch (e) { /* noop */ }
+        }
+
+        function closeGuide() {
+            if (overlay.hidden) return;
+            overlay.hidden = true;
+            document.body.classList.remove('pc-guide-open');
+            cardEl.classList.remove(
+                'pc-guide-card--center',
+                'pc-guide-card--top',
+                'pc-guide-card--bottom',
+                'pc-guide-card--left',
+                'pc-guide-card--right'
+            );
+            cardEl.style.left = '';
+            cardEl.style.top  = '';
+            if (lastFocus && typeof lastFocus.focus === 'function') {
+                try { lastFocus.focus(); } catch (e) { /* noop */ }
+            }
+        }
+
+        function nextStep() {
+            if (currentIndex < stepCount() - 1) {
+                currentIndex++;
+                renderStep();
+            }
+        }
+
+        function prevStep() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderStep();
+            }
+        }
+
+        function endTour() {
+            closeGuide();
+        }
+
+        // --- Wiring (manual-only launch) -----------------------------
+
+        fab.addEventListener('click', function (e) {
+            e.preventDefault();
+            openGuide();
+        });
+
+        // Any in-page element with data-pc-action="open-guide" also opens
+        // the tour. This is opt-in: nothing fires unless a page author or
+        // a visitor click hit one of these elements.
+        document.addEventListener('click', function (e) {
+            var trigger = e.target && e.target.closest
+                ? e.target.closest('[data-pc-action="open-guide"]:not(.pc-guide-fab)')
+                : null;
+            if (trigger) {
+                e.preventDefault();
+                openGuide();
+            }
+        });
+
+        closeEls.forEach(function (el_) {
+            el_.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeGuide();
+            });
+        });
+
+        nextBtn.addEventListener('click', function (e) { e.preventDefault(); nextStep(); });
+        prevBtn.addEventListener('click', function (e) { e.preventDefault(); prevStep(); });
+        endBtn.addEventListener('click',  function (e) { e.preventDefault(); endTour(); });
+
+        // Keyboard: Esc closes, arrows navigate (when focus is inside the overlay).
+        overlay.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                e.preventDefault();
+                closeGuide();
+            } else if (e.key === 'ArrowRight' || e.keyCode === 39) {
+                if (!nextBtn.hidden) { e.preventDefault(); nextStep(); }
+            } else if (e.key === 'ArrowLeft' || e.keyCode === 37) {
+                if (!prevBtn.disabled) { e.preventDefault(); prevStep(); }
+            } else if (e.key === 'Enter' && document.activeElement === cardEl) {
+                e.preventDefault();
+                if (!nextBtn.hidden) { nextStep(); } else { endTour(); }
+            }
+        });
+
+        // Re-position on resize / scroll while the guide is open so the card
+        // stays attached to its target.
+        var reposition = function () { if (!overlay.hidden) { positionForStep(currentStep()); } };
+        window.addEventListener('resize', reposition);
+        window.addEventListener('scroll', reposition, { passive: true });
+    }
+
     /* ---------- Boot ---------- */
 
     function bindGeotraceroute() {
@@ -4810,5 +5067,6 @@
         bindPing();
         bindPortScan();
         bindGeotraceroute();
+        bindUserGuide();
     });
 })();

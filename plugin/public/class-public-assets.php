@@ -35,6 +35,7 @@ final class PublicAssets {
         add_shortcode( 'privacy_checker_port_scan', array( $this, 'port_scan_shortcode' ) );
         add_shortcode( 'privacy_checker_anonymity_tips', array( $this, 'anonymity_tips_shortcode' ) );
         add_shortcode( 'privacy_checker_geotraceroute', array( $this, 'geotraceroute_shortcode' ) );
+        add_shortcode( 'privacy_checker_user_guide', array( $this, 'user_guide_shortcode' ) );
     }
 
     /**
@@ -46,13 +47,13 @@ final class PublicAssets {
         }
         $should_load = ( is_singular() && has_shortcode( get_post()->post_content ?? '', 'privacy_checker' ) )
             || is_front_page()
-            || is_page( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute' ) );
+            || is_page( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute', 'user-guide' ) );
 
         // Some WP installs don't have pretty permalinks enabled. Fall back to checking
         // by request URI as well, so the scanner assets always load on the tool pages.
         if ( ! $should_load ) {
             $req_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_parse_url( (string) $_SERVER['REQUEST_URI'], PHP_URL_PATH ) : '';
-            foreach ( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute' ) as $slug ) {
+            foreach ( array( 'ip-lookup', 'whois', 'user-agent', 'fingerprint', 'dns-leak-test', 'webrtc-test', 'security-headers', 'ping', 'port-scan', 'anonymity-tips', 'geotraceroute', 'user-guide' ) as $slug ) {
                 if ( '' !== $req_uri && false !== strpos( $req_uri, '/' . $slug . '/' ) ) {
                     $should_load = true;
                     break;
@@ -77,6 +78,7 @@ final class PublicAssets {
                     'privacy_checker_port_scan',
                     'privacy_checker_anonymity_tips',
                     'privacy_checker_geotraceroute',
+                    'privacy_checker_user_guide',
                 ) as $tag ) {
                     if ( has_shortcode( $content, $tag ) ) {
                         $should_load = true;
@@ -179,6 +181,7 @@ final class PublicAssets {
             'portPageUrl'  => esc_url_raw( home_url( '/port-scan/' ) ),
             'tipsPageUrl'  => esc_url_raw( home_url( '/anonymity-tips/' ) ),
             'geoPageUrl'   => esc_url_raw( home_url( '/geotraceroute/' ) ),
+            'guidePageUrl' => esc_url_raw( home_url( '/user-guide/' ) ),
             'i18n'      => array(
                 'scanning'        => __( 'Scanning…', 'privacy-checker' ),
                 'rescan'          => __( 'Run Privacy Check', 'privacy-checker' ),
@@ -313,6 +316,20 @@ final class PublicAssets {
                 'geoMethodology'  => __( 'Methodology', 'privacy-checker' ),
                 'geoMethodologyBody' => __( 'Hop locations are inferred from reverse DNS, GeoIP consistency across multiple databases, latency-based plausibility, and a Bayesian weighting pass. No hops are stored. ML-assisted rDNS parsing is used as a last resort.', 'privacy-checker' ),
                 'geoLegendTitle'  => __( 'Latency color scale', 'privacy-checker' ),
+
+                // User-guide onboarding tour (manual-only; launched via the
+                // floating "?" button — never auto-shown).
+                'guideButtonTitle'   => __( 'Open user guide', 'privacy-checker' ),
+                'guideAriaLabel'     => __( 'User guide', 'privacy-checker' ),
+                'guideTitle'         => __( 'Welcome to IMON', 'privacy-checker' ),
+                'guideSubtitle'      => __( 'A short tour of what each card on this page tells you. Open this guide any time from the ? button.', 'privacy-checker' ),
+                'guideNext'          => __( 'Next', 'privacy-checker' ),
+                'guidePrev'          => __( 'Previous', 'privacy-checker' ),
+                'guideDone'          => __( 'Got it', 'privacy-checker' ),
+                'guideClose'         => __( 'Close', 'privacy-checker' ),
+                'guideStepOf'        => __( 'Step %1$d of %2$d', 'privacy-checker' ),
+                'guideSkip'          => __( 'Skip tour', 'privacy-checker' ),
+                'guideRestart'       => __( 'Restart tour', 'privacy-checker' ),
                 'geoLegendFast'   => __( 'fast', 'privacy-checker' ),
                 'geoLegendAvg'    => __( 'average', 'privacy-checker' ),
                 'geoLegendSlow'   => __( 'slow', 'privacy-checker' ),
@@ -339,6 +356,99 @@ final class PublicAssets {
                 'geoConnectedHops'=> __( 'Connected (%s hops received)', 'privacy-checker' ),
                 'geoLongWait'     => __( 'Taking longer than expected… still working!', 'privacy-checker' ),
                 'geoInferring'    => __( 'Inferring physical path…', 'privacy-checker' ),
+            ),
+        ) );
+
+        // Tour config — manual-only. The tour is launched by the floating "?"
+        // button. Steps map to live CSS selectors that exist on the homepage
+        // dashboard; selectors that don't match a node simply skip without
+        // breaking the tour.
+        wp_localize_script( 'pc-scanner', 'PC_GUIDE', array(
+            'tour' => array(
+                array(
+                    'id'      => 'intro',
+                    'title'   => __( 'Welcome to IMON', 'privacy-checker' ),
+                    'body'    => __( 'IMON shows what your connection looks like to the websites you visit. Click through this 8-step tour to see what every card on the page means — or close it and explore on your own.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="dashboard"]',
+                    'place'   => 'center',
+                ),
+                array(
+                    'id'      => 'run',
+                    'title'   => __( 'Run the scan', 'privacy-checker' ),
+                    'body'    => __( 'Click "Run Privacy Check" to collect your connection data. Nothing leaves your browser except what is required to look up the public IP — no analytics, no trackers.', 'privacy-checker' ),
+                    'target'  => '[data-pc-action="run-scan"], [data-pc-action="rescan"]',
+                    'place'   => 'bottom',
+                ),
+                array(
+                    'id'      => 'connection',
+                    'title'   => __( 'Your connection', 'privacy-checker' ),
+                    'body'    => __( 'This card shows your public IP, reverse DNS, ISP, ASN, country, region, and city. Every field has a country flag next to it. The flag is a regional-indicator emoji derived from the ISO country code.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="connection"]',
+                    'place'   => 'right',
+                ),
+                array(
+                    'id'      => 'reputation',
+                    'title'   => __( 'IP reputation', 'privacy-checker' ),
+                    'body'    => __( 'We check your IP against Spamhaus and Iphub. A "clean" verdict means you are not on any of the lists we cross-reference. "Listed" means your IP is flagged somewhere — that is not always a bad thing; many ISP customers are.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="reputation"]',
+                    'place'   => 'right',
+                ),
+                array(
+                    'id'      => 'fingerprint',
+                    'title'   => __( 'Browser fingerprint', 'privacy-checker' ),
+                    'body'    => __( 'Your browser leaks dozens of passive signals: language, timezone, screen size, fonts, Canvas/WebGL hashes. This card shows the exposure level so you know what tracking systems can see.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="fingerprint"]',
+                    'place'   => 'right',
+                ),
+                array(
+                    'id'      => 'webrtc',
+                    'title'   => __( 'WebRTC leaks', 'privacy-checker' ),
+                    'body'    => __( 'WebRTC can reveal your real local network address (and sometimes your public IP) even behind a VPN. This card runs locally in your browser — no remote STUN/TURN servers are contacted.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="webrtc"]',
+                    'place'   => 'right',
+                ),
+                array(
+                    'id'      => 'dns',
+                    'title'   => __( 'DNS leak test', 'privacy-checker' ),
+                    'body'    => __( 'Click "Run DNS Leak Test" to query Cloudflare, Google, and Quad9 over DNS-over-HTTPS and confirm your resolver answers match your expected network. We never log the responses — only the resolver and round-trip time.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="dns-leak"], [data-pc-action="dns-test-run"], [data-pc-action="dns-run"]',
+                    'place'   => 'left',
+                ),
+                array(
+                    'id'      => 'path',
+                    'title'   => __( 'Network Path', 'privacy-checker' ),
+                    'body'    => __( 'The path card shows the real backend-derived hops your connection crosses: PTR (reverse DNS), the ISP/ASN edge, the destination. A green pill means "Real backend data"; an amber pill means estimated.', 'privacy-checker' ),
+                    'target'  => '.pc-network',
+                    'place'   => 'top',
+                ),
+                array(
+                    'id'      => 'map',
+                    'title'   => __( 'Approximate location & path', 'privacy-checker' ),
+                    'body'    => __( 'Your IP-derived location on a 2D world map with a stylized traceroute. Open the Geo Traceroute page for a fully interactive experience, including a 3D globe.', 'privacy-checker' ),
+                    'target'  => '.pc-map-card',
+                    'place'   => 'top',
+                ),
+                array(
+                    'id'      => 'report',
+                    'title'   => __( 'Detailed privacy report', 'privacy-checker' ),
+                    'body'    => __( 'A Whoer-style breakdown with a grade (A–F), per-category scores, and prioritised recommendations. Use the Export menu for JSON / CSV / TXT / HTML, or Share to publish a redacted, short-lived link.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="detailed-report"]',
+                    'place'   => 'top',
+                ),
+                array(
+                    'id'      => 'tips',
+                    'title'   => __( 'Anonymity tips', 'privacy-checker' ),
+                    'body'    => __( 'Concrete, prioritised steps to improve your setup — VPN selection, browser hardening, Tor, anti-detect browsers, email aliases, virtual phone numbers, and dedicated OSes like Tails and Whonix.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="anonymity-tips"]',
+                    'place'   => 'top',
+                ),
+                array(
+                    'id'      => 'finished',
+                    'title'   => __( 'That is the whole page', 'privacy-checker' ),
+                    'body'    => __( 'You can re-open this guide from the ? button in the bottom-right corner. Each tool has its own dedicated page (DNS leak, WebRTC, IP lookup, WHOIS, ping, port scan, Geo Traceroute) linked from the navigation.', 'privacy-checker' ),
+                    'target'  => '[data-pc-component="dashboard"]',
+                    'place'   => 'center',
+                ),
             ),
         ) );
     }
@@ -954,6 +1064,78 @@ final class PublicAssets {
                 </select>
             </div>
         </section>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * User-guide onboarding tour — MANUAL-ONLY.
+     *
+     * Renders a floating "?" action button plus the tour overlay shell. The
+     * tour is NEVER auto-launched. It opens only when the user clicks the
+     * floating button (or an in-page trigger with `data-pc-action="open-guide"`).
+     * There is no first-visit detection, no localStorage flag, no scheduled
+     * timer, and no autoshow on any hook.
+     */
+    public function user_guide_shortcode( $atts = array() ): string {
+        ob_start();
+        ?>
+        <!-- Floating manual launcher. Always visible when the shortcode is
+             rendered. The tour itself is opt-in: nothing fires until the user
+             clicks this button or an in-page trigger with the same action. -->
+        <button
+            type="button"
+            class="pc-guide-fab"
+            data-pc-action="open-guide"
+            aria-label="<?php esc_attr_e( 'User guide', 'privacy-checker' ); ?>"
+            title="<?php esc_attr_e( 'Open user guide', 'privacy-checker' ); ?>"
+        >
+            <span class="pc-guide-fab__icon" aria-hidden="true">?</span>
+        </button>
+
+        <!-- Overlay shell. Hidden by default. JS toggles `hidden` only when
+             the user explicitly opens the guide, and restores it on close. -->
+        <div
+            class="pc-guide-overlay"
+            data-pc-component="user-guide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pc-guide-title"
+            aria-describedby="pc-guide-body"
+            hidden
+        >
+            <div class="pc-guide-backdrop" data-pc-action="close-guide" aria-hidden="true"></div>
+            <div
+                class="pc-guide-card"
+                role="document"
+                tabindex="-1"
+                data-pc-region="tour-card"
+            >
+                <header class="pc-guide-card__header">
+                    <h2 class="pc-guide-card__title" id="pc-guide-title" data-pc-region="tour-title"><?php esc_html_e( 'Welcome to IMON', 'privacy-checker' ); ?></h2>
+                    <button
+                        type="button"
+                        class="pc-guide-card__close"
+                        data-pc-action="close-guide"
+                        aria-label="<?php esc_attr_e( 'Close', 'privacy-checker' ); ?>"
+                        title="<?php esc_attr_e( 'Close', 'privacy-checker' ); ?>"
+                    >&times;</button>
+                </header>
+
+                <div class="pc-guide-card__body" id="pc-guide-body" data-pc-region="tour-body">
+                    <!-- Step body content injected by JS from PC_GUIDE.tour. -->
+                </div>
+
+                <footer class="pc-guide-card__footer">
+                    <span class="pc-guide-card__step" data-pc-region="tour-step"><?php esc_html_e( 'Step 1 of 1', 'privacy-checker' ); ?></span>
+                    <div class="pc-guide-card__actions">
+                        <button type="button" class="pc-btn pc-btn--ghost" data-pc-action="prev-step"><?php esc_html_e( 'Previous', 'privacy-checker' ); ?></button>
+                        <button type="button" class="pc-btn pc-btn--primary" data-pc-action="next-step"><?php esc_html_e( 'Next', 'privacy-checker' ); ?></button>
+                        <button type="button" class="pc-btn pc-btn--primary" data-pc-action="end-tour" hidden><?php esc_html_e( 'Got it', 'privacy-checker' ); ?></button>
+                    </div>
+                </footer>
+            </div>
+        </div>
         <?php
         return (string) ob_get_clean();
     }
