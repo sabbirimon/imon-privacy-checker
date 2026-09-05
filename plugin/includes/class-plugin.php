@@ -268,6 +268,7 @@ final class Plugin {
             ( new AdminDashboard() )->register();
             ( new Admin\AdminApiTokens() )->register();
             ( new Admin\AdminDatabases() )->register();
+            ( new Admin\AdminPrivacyReport() )->register();
         }
 
         // Public-facing assets and shortcodes.

@@ -2,3 +2,144 @@
 .pc-admin .form-table th { width: 220px; }
 .pc-admin input[type="password"],
 .pc-admin input[type="number"] { max-width: 320px; }
+
+/* Privacy Report Inspector (Phase 8.1) */
+.pc-privacy-report-inspector { max-width: 1100px; }
+.pc-privacy-report-inspector .pc-inspector-banner { margin: 12px 0 20px; }
+.pc-privacy-report-inspector .pc-inspector-summary {
+    display: grid;
+    grid-template-columns: 120px 160px 1fr;
+    gap: 20px;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    padding: 16px 20px;
+    margin: 16px 0 24px;
+}
+.pc-privacy-report-inspector .pc-inspector-score { text-align: center; }
+.pc-privacy-report-inspector .pc-inspector-score__value {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+    color: #1d2327;
+}
+.pc-privacy-report-inspector .pc-inspector-score__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #50575e;
+    margin-top: 4px;
+}
+.pc-privacy-report-inspector .pc-inspector-grade {
+    text-align: center;
+    padding: 12px 0;
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+}
+.pc-privacy-report-inspector .pc-inspector-grade--a { color: #00a32a; }
+.pc-privacy-report-inspector .pc-inspector-grade--b { color: #4ab866; }
+.pc-privacy-report-inspector .pc-inspector-grade--c { color: #dba617; }
+.pc-privacy-report-inspector .pc-inspector-grade--d { color: #d63638; }
+.pc-privacy-report-inspector .pc-inspector-grade--e,
+.pc-privacy-report-inspector .pc-inspector-grade--f { color: #b32d2e; }
+.pc-privacy-report-inspector .pc-inspector-confidence {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: #50575e;
+    text-transform: lowercase;
+    margin-top: 4px;
+}
+.pc-privacy-report-inspector .pc-inspector-headline p { margin: 0 0 4px; }
+.pc-privacy-report-inspector .pc-inspector-headline .description { color: #50575e; font-size: 12px; }
+.pc-privacy-report-inspector .pc-inspector-table { margin-top: 8px; }
+.pc-privacy-report-inspector .pc-inspector-table .num { text-align: right; }
+.pc-privacy-report-inspector .pc-inspector-table th code {
+    font-family: var(--pc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    background: #f0f0f1;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+.pc-privacy-report-inspector .pc-inspector-tag {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #f0f0f1;
+    color: #50575e;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+.pc-privacy-report-inspector .pc-status {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+.pc-privacy-report-inspector .pc-status--good    { background: #dff5e0; color: #14532d; }
+.pc-privacy-report-inspector .pc-status--warning { background: #fff3cd; color: #6b4f00; }
+.pc-privacy-report-inspector .pc-status--bad     { background: #fde2e1; color: #6b1a1a; }
+.pc-privacy-report-inspector .pc-inspector-source {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11px;
+    color: #8c8f94;
+    font-style: italic;
+}
+.pc-privacy-report-inspector .pc-inspector-row--surface td,
+.pc-privacy-report-inspector .pc-inspector-row--surface th { color: #50575e; }
+.pc-privacy-report-inspector .pc-inspector-formula {
+    background: #f6f7f7;
+    border-left: 4px solid #2271b1;
+    padding: 12px 16px;
+    font-family: var(--pc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 13px;
+    overflow-x: auto;
+}
+.pc-privacy-report-inspector .pc-inspector-recs { list-style: none; padding: 0; }
+.pc-privacy-report-inspector .pc-inspector-rec {
+    padding: 8px 12px;
+    margin: 0 0 6px;
+    background: #fff;
+    border-left: 4px solid #c3c4c7;
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 12px;
+    align-items: center;
+}
+.pc-privacy-report-inspector .pc-inspector-rec--high    { border-left-color: #d63638; }
+.pc-privacy-report-inspector .pc-inspector-rec--medium  { border-left-color: #dba617; }
+.pc-privacy-report-inspector .pc-inspector-rec--low     { border-left-color: #c3c4c7; }
+.pc-privacy-report-inspector .pc-inspector-rec__priority {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: center;
+}
+.pc-privacy-report-inspector .pc-inspector-rec--high   .pc-inspector-rec__priority { color: #d63638; }
+.pc-privacy-report-inspector .pc-inspector-rec--medium .pc-inspector-rec__priority { color: #b88800; }
+.pc-privacy-report-inspector .pc-inspector-rec--low    .pc-inspector-rec__priority { color: #50575e; }
+.pc-privacy-report-inspector .pc-inspector-footer { margin-top: 24px; }
+
+/* Scoring Parameters reference card (Phase 8.2) */
+.pc-scoring-ref {
+    border-collapse: collapse;
+    font-family: var(--pc-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+    margin: 8px 0;
+}
+.pc-scoring-ref th, .pc-scoring-ref td {
+    border: 1px solid #c3c4c7;
+    padding: 4px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+.pc-scoring-ref th { background: #f0f0f1; font-weight: 600; }
+.pc-scoring-ref td.num { text-align: right; }
