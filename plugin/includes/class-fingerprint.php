@@ -22,6 +22,53 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Fingerprint {
 
     /**
+     * Bit-assignments for fingerprint entropy estimation.
+     *
+     * Per IMON-BUILD-GUIDE.md Phase 3: these are ROUGH PROXIES based
+     * on Panopticlick / EFF Cover-Your-Tracks family cardinality
+     * estimates. They will over- or under-count against any real
+     * population, but they give an intuitive "more signals = more
+     * unique" readout. Replace with measured -log2(p) values when
+     * population stats exist; entropy_estimate() is the only call
+     * site that needs to change.
+     *
+     * Exposed via entropy_bit_assignments() so the Phase 8 admin
+     * "Scoring Parameters" reference card can render these without
+     * duplicating the constants in admin-only HTML.
+     *
+     * Shape: `signal_name => bits`. Special values:
+     *   - `font_per_extra` is a per-font delta applied beyond the
+     *     baseline count (not a one-shot add).
+     *   - `font_baseline` is the baseline font count that contributes
+     *     zero bits.
+     *   - `webgl_renderer_masked` is a NEGATIVE bonus (reward) when
+     *     the browser explicitly masks the WebGL renderer.
+     *
+     * @var array<string,int>
+     */
+    private const ENTROPY_BIT_ASSIGNMENTS = array(
+        'canvas_hash'          => 15,
+        'audio_hash'           => 15,
+        'webgl_renderer'       => 6,
+        'webgl_renderer_masked'=> -5,
+        'font_per_extra'       => 1,
+        'font_baseline'        => 8,
+        'timezone'             => 4,
+        'language'             => 4,
+        'languages'            => 2,
+        'cap_bits'             => 100,
+    );
+
+    /**
+     * Public getter for the entropy bit-assignment table.
+     *
+     * @return array<string,int>
+     */
+    public static function entropy_bit_assignments(): array {
+        return self::ENTROPY_BIT_ASSIGNMENTS;
+    }
+
+    /**
      * Parse a User-Agent string into a small, UI-friendly structure.
      *
      * @param string $ua

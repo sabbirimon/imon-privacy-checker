@@ -443,4 +443,59 @@ final class PrivacyReportTest extends TestCase {
 		$this->assertSame( 'unknown', $cq['status_source'] );
 		$this->assertSame( 0,         $cq['weight'] );
 	}
+
+	/**
+	 * Phase 8: the public category_weights() getter exposes the
+	 * canonical weight map for the admin "Scoring Parameters"
+	 * reference card. Pin the values so a future refactor doesn't
+	 * accidentally drop or reorder them — these are the exact
+	 * numbers visitors see drive their overall score.
+	 */
+	public function test_category_weights_getter_returns_all_twelve_keys(): void {
+		$w = PrivacyReport::category_weights();
+
+		// All 12 categories must be present (matches $categories in build()).
+		$expected = array(
+			'ip', 'reputation', 'dns', 'webrtc', 'fingerprint',
+			'user_agent', 'ipv6', 'consistency', 'security_posture',
+			'proxy', 'connection_quality', 'local_network',
+		);
+		foreach ( $expected as $key ) {
+			$this->assertArrayHasKey( $key, $w, "missing category: $key" );
+		}
+		$this->assertCount( count( $expected ), $w, 'unexpected extra keys' );
+
+		// Pin the canonical weights per Phase 6 spec.
+		$this->assertSame( 4, $w['consistency'] );        // highest
+		$this->assertSame( 3, $w['security_posture'] );
+		$this->assertSame( 3, $w['webrtc'] );
+		$this->assertSame( 3, $w['dns'] );
+		$this->assertSame( 3, $w['reputation'] );
+		$this->assertSame( 2, $w['fingerprint'] );
+		$this->assertSame( 2, $w['ip'] );
+		$this->assertSame( 2, $w['proxy'] );
+		$this->assertSame( 2, $w['user_agent'] );
+		$this->assertSame( 2, $w['ipv6'] );
+
+		// Surface-only categories MUST stay at weight 0 — they
+		// appear in the breakdown but never move the privacy overall.
+		$this->assertSame( 0, $w['connection_quality'] );
+		$this->assertSame( 0, $w['local_network'] );
+	}
+
+	public function test_category_weights_consistency_is_highest_weighted(): void {
+		// Pin the Phase 6 invariant that consistency (the
+		// anonymity-consistency scorer) outranks every other category.
+		$w = PrivacyReport::category_weights();
+		foreach ( $w as $key => $weight ) {
+			if ( 'consistency' === $key ) {
+				continue;
+			}
+			$this->assertLessThanOrEqual(
+				$w['consistency'],
+				$weight,
+				"category $key ($weight) outranks consistency ({$w['consistency']})"
+			);
+		}
+	}
 }

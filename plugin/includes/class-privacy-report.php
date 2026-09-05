@@ -29,6 +29,58 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class PrivacyReport {
 
     /**
+     * Canonical category weights, keyed by category.
+     *
+     * These are the "primary" weights shown in the Phase 8 admin
+     * reference card. Per-category score_*() methods may pass a
+     * different weight for a specific verdict (e.g. dns_bad = 3 vs
+     * the dns_did_not_run default of 2). This map is the canonical
+     * source-of-truth reference for admins — the per-verdict
+     * overrides are documented inline in the score_*() methods.
+     *
+     * Per IMON-BUILD-GUIDE.md Phase 6:
+     *   - consistency (4)        highest — "are you actually private"
+     *   - security_posture (3)   outdated TLS / very-old browser
+     *   - webrtc (3)             public-IP leak
+     *   - dns (3)                resolver leak
+     *   - reputation (3)         listed / suspicious IPs
+     *   - fingerprint (2)        entropy / uniqueness
+     *   - ip (2)                 geo + ASN visibility
+     *   - proxy (2)              VPN/hosting/tor detection
+     *   - user_agent (2)         detail in UA string
+     *   - ipv6 (2)               v6 leakage
+     *   - connection_quality (0) surface-only — connection health
+     *   - local_network (0)      surface-only — LAN exposure
+     *
+     * @var array<string,int>
+     */
+    private const CATEGORY_WEIGHTS = array(
+        'consistency'        => 4,
+        'security_posture'   => 3,
+        'webrtc'             => 3,
+        'dns'                => 3,
+        'reputation'         => 3,
+        'fingerprint'        => 2,
+        'ip'                 => 2,
+        'proxy'              => 2,
+        'user_agent'         => 2,
+        'ipv6'               => 2,
+        'connection_quality' => 0,
+        'local_network'      => 0,
+    );
+
+    /**
+     * Public getter — used by the Phase 8 admin "Scoring Parameters"
+     * reference card and by the Privacy Report inspector's
+     * weighted-avg transparency panel.
+     *
+     * @return array<string,int>
+     */
+    public static function category_weights(): array {
+        return self::CATEGORY_WEIGHTS;
+    }
+
+    /**
      * Build the full report from a scan result.
      *
      * @param array<string,mixed> $scan Full ScannerOrchestrator::scan() output.

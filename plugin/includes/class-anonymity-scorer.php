@@ -29,6 +29,44 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class AnonymityScorer {
 
     /**
+     * Per-signal deductions applied to the 100-point anonymity base.
+     *
+     * These are INTENTIONALLY HARDCODED — they're not user-overridable.
+     * Exposed via signal_weights() so the Phase 8 admin "Scoring
+     * Parameters" reference card can render the values from this
+     * single source of truth rather than duplicating them in admin
+     * HTML.
+     *
+     * - timezone:    medium-severity mismatch between IP-geo and
+     *                browser-reported timezone.
+     * - webrtc:      high-severity — public IP leak through WebRTC.
+     *                Heaviest because it's an active exposure.
+     * - dns:         high-severity — DNS resolvers on a different
+     *                network than the visible connection (tunnel
+     *                bypass).
+     * - proxy:       0 — confirmed VPN/proxy is not penalised on its
+     *                own (often the user's intent). It only matters
+     *                in combination with the leaks above.
+     *
+     * @var array<string,int>
+     */
+    private const SIGNAL_WEIGHTS = array(
+        'timezone' => 20,
+        'webrtc'   => 40,
+        'dns'      => 30,
+        'proxy'    => 0,
+    );
+
+    /**
+     * Public getter for the per-signal weight table.
+     *
+     * @return array<string,int>
+     */
+    public static function signal_weights(): array {
+        return self::SIGNAL_WEIGHTS;
+    }
+
+    /**
      * Score anonymity consistency across the four signals that already exist
      * in an ordinary scan report.
      *

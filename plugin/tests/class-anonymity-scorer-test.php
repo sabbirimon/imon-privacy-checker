@@ -292,4 +292,44 @@ final class AnonymityScorerTest extends TestCase {
 		$this->assertSame( 100, $result['score'] );
 		$this->assertSame( array(), $result['mismatches'] );
 	}
+
+	/**
+	 * Phase 8: the public signal_weights() getter exposes the
+	 * per-signal deduction table for the admin "Scoring Parameters"
+	 * reference card. Pin the values so the reference card and
+	 * score() can't drift apart.
+	 */
+	public function test_signal_weights_getter_returns_canonical_values(): void {
+		$w = AnonymityScorer::signal_weights();
+
+		// Phase 4 documented deductions.
+		$this->assertSame( 20, $w['timezone'] );
+		$this->assertSame( 40, $w['webrtc'] );
+		$this->assertSame( 30, $w['dns'] );
+
+		// Proxy is INTENTIONALLY 0 — detected-and-intentional proxy
+		// use is not penalised on its own; it only matters when
+		// combined with the leaks above.
+		$this->assertSame( 0, $w['proxy'] );
+	}
+
+	public function test_signal_weights_match_actual_score_deductions(): void {
+		// The getter and score() must agree on the deduction values
+		// — otherwise the admin reference card would mislead.
+		$w = AnonymityScorer::signal_weights();
+
+		// Timezone-only mismatch → score drops by the timezone weight.
+		$intel    = array( 'timezone' => 'America/Los_Angeles' );
+		$browser  = 'Europe/Berlin'; // different UTC offset
+		$result   = AnonymityScorer::score( $intel, array(), array(), $browser, null );
+		$this->assertSame( 100 - $w['timezone'], $result['score'] );
+
+		// WebRTC only → drops by the webrtc weight.
+		$webrtc = array(
+			'verdict'      => 'potential_exposure',
+			'public_addrs' => array( '1.2.3.4' ),
+		);
+		$result = AnonymityScorer::score( array(), $webrtc, array(), '', null );
+		$this->assertSame( 100 - $w['webrtc'], $result['score'] );
+	}
 }

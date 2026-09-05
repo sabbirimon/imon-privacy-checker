@@ -240,4 +240,53 @@ final class FingerprintTest extends TestCase {
 		$n = (int) str_replace( ',', '', $m[1] );
 		$this->assertLessThanOrEqual( 10000000, $n );
 	}
+
+	/**
+	 * Phase 8: the public entropy_bit_assignments() getter exposes the
+	 * bit-assignment table for the admin "Scoring Parameters" reference
+	 * card. Pin the values so the reference card and entropy_estimate()
+	 * can't drift apart in a future refactor.
+	 */
+	public function test_entropy_bit_assignments_getter_returns_canonical_values(): void {
+		$a = Fingerprint::entropy_bit_assignments();
+
+		// Phase 3 documented values.
+		$this->assertSame( 15,  $a['canvas_hash'] );
+		$this->assertSame( 15,  $a['audio_hash'] );
+		$this->assertSame( 6,   $a['webgl_renderer'] );
+		$this->assertSame( -5,  $a['webgl_renderer_masked'] ); // reward for anti-fp
+		$this->assertSame( 1,   $a['font_per_extra'] );
+		$this->assertSame( 8,   $a['font_baseline'] );
+		$this->assertSame( 4,   $a['timezone'] );
+		$this->assertSame( 4,   $a['language'] );
+		$this->assertSame( 2,   $a['languages'] );
+		$this->assertSame( 100, $a['cap_bits'] );
+	}
+
+	public function test_entropy_bit_assignments_match_actual_entropy_estimate(): void {
+		// The getter and entropy_estimate() must agree on the bit
+		// values — otherwise the admin reference card would mislead.
+		$a = Fingerprint::entropy_bit_assignments();
+
+		// canvas + audio + webgl + timezone + language + languages
+		// (no fonts, baseline=0) = 15 + 15 + 6 + 4 + 4 + 2 = 46 bits.
+		$signals = array(
+			'canvas_hash'    => 'abc12345',
+			'audio_hash'     => 'def67890',
+			'webgl_renderer' => 'ANGLE (NVIDIA)',
+			'timezone'       => 'UTC',
+			'language'       => 'en',
+			'languages'      => array( 'en' ),
+		);
+		$e = Fingerprint::entropy_estimate( $signals );
+		$this->assertSame( 46, $e['bits'] );
+
+		// Masked webgl is a REWARD: 15 + 15 + (-5) + 4 + 4 + 2 = 35 bits.
+		$signals['webgl_renderer'] = 'masked-by-browser';
+		$e = Fingerprint::entropy_estimate( $signals );
+		$this->assertSame( 35, $e['bits'] );
+
+		// Sanity: the assignment table actually contains the keys we used.
+		$this->assertArrayHasKey( 'webgl_renderer_masked', $a );
+	}
 }

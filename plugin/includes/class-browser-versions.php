@@ -135,4 +135,18 @@ final class BrowserVersions {
             'message' => $message,
         );
     }
+
+    /**
+     * Public getter for the threshold table — exposed for the Phase 8
+     * admin "Scoring Parameters" reference card so the values shown
+     * there come from this single source of truth rather than being
+     * duplicated in admin-only HTML.
+     *
+     * Shape: `[ browser_name => [ 'current' => int, 'outdated_cutoff' => int ], ... ]`
+     *
+     * @return array<string,array{current:int, outdated_cutoff:int}>
+     */
+    public static function thresholds(): array {
+        return self::THRESHOLDS;
+    }
 }
