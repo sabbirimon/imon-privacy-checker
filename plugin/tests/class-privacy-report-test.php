@@ -376,4 +376,71 @@ final class PrivacyReportTest extends TestCase {
 			$weights['consistency']
 		);
 	}
+
+	public function test_connection_quality_with_client_payload_promotes_to_measured(): void {
+		// Phase 7 wiring: when the client POSTs a valid connection_quality
+		// payload (from connectionQualityProbe + navigatorConnectionSnapshot),
+		// the orchestrator threads it onto $scan['connection_quality'] and
+		// the privacy-report category source is 'measured' (not 'unknown'),
+		// with a status that reflects the actual readings.
+		$scan = $this->good_scan();
+		$scan['connection_quality'] = array(
+			'latency' => array(
+				'avg_ms'    => 42.0,
+				'min_ms'    => 38.0,
+				'max_ms'    => 50.0,
+				'jitter_ms' => 12.0,
+				'count'     => 3,
+			),
+			'network' => array(
+				'available'      => true,
+				'downlink_mbps'  => 50.0,
+				'effective_type' => '4g',
+				'rtt_ms'         => 80,
+			),
+		);
+
+		$report = PrivacyReport::build( $scan );
+		$cq      = $report['categories']['connection_quality'];
+
+		$this->assertSame( 'measured', $cq['status_source'] );
+		// 42 ms avg + 12 ms jitter → good band.
+		$this->assertSame( 'good',     $cq['status'] );
+		$this->assertSame( 0,          $cq['weight'] );
+		// Payload is passed through to the row's details so the UI
+		// can render the same numbers it shows in connectionQualityCard().
+		$this->assertSame( 42.0,       $cq['details']['latency']['avg_ms'] );
+		$this->assertSame( '4g',       $cq['details']['network']['effective_type'] );
+	}
+
+	public function test_connection_quality_high_jitter_promotes_to_warning(): void {
+		$scan = $this->good_scan();
+		$scan['connection_quality'] = array(
+			'latency' => array(
+				'avg_ms'    => 300.0,
+				'min_ms'    => 100.0,
+				'max_ms'    => 600.0,
+				'jitter_ms' => 500.0,
+				'count'     => 3,
+			),
+		);
+
+		$report = PrivacyReport::build( $scan );
+		$cq      = $report['categories']['connection_quality'];
+
+		$this->assertSame( 'measured', $cq['status_source'] );
+		// 300 ms / 500 ms jitter → falls into the >250/jitter>80 warning band.
+		$this->assertSame( 'warning',  $cq['status'] );
+	}
+
+	public function test_connection_quality_missing_payload_remains_unknown(): void {
+		// When the client doesn't supply a connection_quality payload
+		// (older builds, JS disabled, probe rejected), the category
+		// source stays 'unknown' and the weight-0 exclusion holds.
+		$report = PrivacyReport::build( $this->good_scan() );
+		$cq      = $report['categories']['connection_quality'];
+
+		$this->assertSame( 'unknown', $cq['status_source'] );
+		$this->assertSame( 0,         $cq['weight'] );
+	}
 }

@@ -109,6 +109,38 @@ final class ScannerOrchestrator {
                 : array(),
         );
 
+        // Connection quality — the visitor's own browser is the only
+        // observer with meaningful end-to-end latency numbers (the server
+        // can only see its own hop). The client POSTs a small payload
+        // from connectionQualityProbe() + navigatorConnectionSnapshot()
+        // under the `connection_quality` key. We carry it onto the scan
+        // verbatim (after light structural validation) so the privacy
+        // report's connection_quality category — added in Phase 6 —
+        // can populate. The dedicated connectionQualityCard() reads
+        // from the same field client-side, so this is one source of
+        // truth for the whole report.
+        $connection_quality = array();
+        if ( isset( $client_signals['connection_quality'] ) && is_array( $client_signals['connection_quality'] ) ) {
+            $cq = $client_signals['connection_quality'];
+            if ( isset( $cq['latency'] ) && is_array( $cq['latency'] ) && isset( $cq['latency']['avg_ms'] ) && is_numeric( $cq['latency']['avg_ms'] ) ) {
+                $connection_quality['latency'] = array(
+                    'min_ms'    => isset( $cq['latency']['min_ms'] )    && is_numeric( $cq['latency']['min_ms'] )    ? (float) $cq['latency']['min_ms']    : null,
+                    'max_ms'    => isset( $cq['latency']['max_ms'] )    && is_numeric( $cq['latency']['max_ms'] )    ? (float) $cq['latency']['max_ms']    : null,
+                    'avg_ms'    => (float) $cq['latency']['avg_ms'],
+                    'jitter_ms' => isset( $cq['latency']['jitter_ms'] ) && is_numeric( $cq['latency']['jitter_ms'] ) ? (float) $cq['latency']['jitter_ms'] : null,
+                    'count'     => isset( $cq['latency']['count'] )     && is_numeric( $cq['latency']['count'] )     ? (int)   $cq['latency']['count']     : null,
+                );
+            }
+            if ( isset( $cq['network'] ) && is_array( $cq['network'] ) ) {
+                $connection_quality['network'] = array(
+                    'available'      => ! empty( $cq['network']['available'] ),
+                    'downlink_mbps'  => isset( $cq['network']['downlink_mbps'] )  && is_numeric( $cq['network']['downlink_mbps'] )  ? (float) $cq['network']['downlink_mbps']  : null,
+                    'effective_type' => isset( $cq['network']['effective_type'] ) && is_string(  $cq['network']['effective_type'] )   ? (string) $cq['network']['effective_type'] : null,
+                    'rtt_ms'         => isset( $cq['network']['rtt_ms'] )         && is_numeric( $cq['network']['rtt_ms'] )         ? (int)   $cq['network']['rtt_ms']         : null,
+                );
+            }
+        }
+
         $webrtc_summary = Webrtc::summarize( $client_signals['webrtc'] ?? array() );
 
         // Anonymity consistency — correlates IP-geo timezone, browser-reported
@@ -165,6 +197,7 @@ final class ScannerOrchestrator {
             'fingerprint_hashes' => $fingerprint_hashes,
             'webrtc'        => $webrtc_summary,
             'dns_test'      => $dns_test_state,
+            'connection_quality' => $connection_quality,
             'scores'        => $score,
             'recommendations' => self::recommendations( array(
                 'connection' => $connection,

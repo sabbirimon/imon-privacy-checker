@@ -770,7 +770,7 @@ final class RestApi {
      * about. We do not measure server-side; that would only measure the
      * server's view of itself.
      */
-    public function scan_connection_echo( WP_REST_Request $request ) {
+    public function scan_connection_echo( WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
         $limit = $this->enforce_rate_limit( $request, 'connection_echo', (int) Plugin::instance()->setting( 'rate_limit_connection_echo', 60 ) );
         if ( is_wp_error( $limit ) ) {
             return $limit;
@@ -1234,7 +1234,7 @@ final class RestApi {
         if ( ! is_array( $json ) ) {
             return array();
         }
-        $allowed_top = array( 'user_agent', 'screen', 'color_depth', 'pixel_ratio', 'timezone', 'language', 'languages', 'platform', 'hardware_concurrency', 'device_memory', 'touch_support', 'cookies', 'do_not_track', 'webgl', 'canvas', 'audio', 'fonts', 'webrtc', 'dns_test_result', 'canvas_hash', 'audio_hash', 'webgl_renderer', 'webgl_vendor', 'font_list' );
+        $allowed_top = array( 'user_agent', 'screen', 'color_depth', 'pixel_ratio', 'timezone', 'language', 'languages', 'platform', 'hardware_concurrency', 'device_memory', 'touch_support', 'cookies', 'do_not_track', 'webgl', 'canvas', 'audio', 'fonts', 'webrtc', 'dns_test_result', 'canvas_hash', 'audio_hash', 'webgl_renderer', 'webgl_vendor', 'font_list', 'connection_quality' );
         $out = array();
         foreach ( $allowed_top as $key ) {
             if ( isset( $json[ $key ] ) ) {
