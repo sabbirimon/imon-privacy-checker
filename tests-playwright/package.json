@@ -1,0 +1,15 @@
+{
+  "name": "privacy-checker-playwright",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end Playwright suite for the Privacy Checker WordPress site.",
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:headed": "playwright test --project=chromium --headed",
+    "install-browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  }
+}

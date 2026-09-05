@@ -1,0 +1,200 @@
+/* IMON admin dashboard styles. */
+
+.pc-admin-dashboard {
+	color: #1d2327;
+}
+
+.pc-admin-dashboard .pc-section {
+	margin: 1.5rem 0 2rem;
+	padding: 1rem 1.25rem;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+}
+
+.pc-admin-dashboard h2 {
+	margin-top: 0;
+	font-size: 1.1rem;
+}
+
+/* Status tiles */
+.pc-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 0.75rem;
+	list-style: none;
+	padding: 0;
+	margin: 0.5rem 0 0;
+}
+.pc-tile {
+	border: 1px solid #dcdcde;
+	border-left: 4px solid #dcdcde;
+	background: #fafafa;
+	padding: 0.8rem 1rem;
+	border-radius: 4px;
+}
+.pc-tile--active {
+	border-left-color: #36c98c;
+	background: #f3fbf6;
+}
+.pc-tile--idle {
+	border-left-color: #f6b54a;
+	background: #fff8eb;
+}
+.pc-tile__title {
+	margin: 0;
+	font-size: 0.95rem;
+}
+.pc-tile__note {
+	margin: 0.25rem 0;
+	font-size: 0.8rem;
+	color: #50575e;
+}
+.pc-tile__state {
+	margin: 0;
+	font-size: 0.8rem;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+.pc-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #dcdcde;
+}
+.pc-tile--active .pc-dot {
+	background: #36c98c;
+}
+.pc-tile--idle .pc-dot {
+	background: #f6b54a;
+}
+
+/* Chain list */
+.pc-chain {
+	list-style: none;
+	padding: 0;
+	margin: 0.5rem 0;
+}
+.pc-chain__item {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	margin-bottom: 0.4rem;
+	background: #fff;
+}
+.pc-chain__pos {
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: #2271b1;
+	color: #fff;
+	font-weight: 600;
+	font-size: 0.85rem;
+}
+.pc-chain__name {
+	font-weight: 600;
+}
+.pc-chain__key {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	color: #50575e;
+	font-size: 0.8rem;
+}
+
+/* Tables */
+.pc-admin-dashboard table.widefat {
+	margin-top: 0.5rem;
+}
+.pc-files code,
+.pc-events code {
+	background: #f0f0f1;
+	padding: 1px 4px;
+	border-radius: 3px;
+}
+
+/* Levels */
+.pc-level {
+	display: inline-block;
+	padding: 0 0.4em;
+	border-radius: 3px;
+	font-size: 0.8em;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+.pc-level--info {
+	background: #e5f0fa;
+	color: #135e96;
+}
+.pc-level--warning {
+	background: #fff3cd;
+	color: #8a6500;
+}
+.pc-level--error {
+	background: #fbe6e6;
+	color: #a02020;
+}
+
+/* Charts */
+.pc-charts {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+	gap: 1rem;
+}
+.pc-chart {
+	margin: 0;
+	padding: 0.6rem 0.8rem;
+	background: #fafafa;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+.pc-chart figcaption {
+	font-weight: 600;
+	margin-bottom: 0.4rem;
+}
+.pc-chart svg {
+	max-width: 100%;
+	height: auto;
+}
+.pc-chart--empty {
+	color: #50575e;
+}
+.pc-pie-row {
+	display: flex;
+	gap: 0.8rem;
+	align-items: center;
+}
+.pc-pie-legend {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	font-size: 0.85rem;
+}
+.pc-pie-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	margin-right: 0.4rem;
+	vertical-align: middle;
+}
+
+/* Tools */
+.pc-tools {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.pc-attribution {
+	font-size: 0.78rem;
+	color: #50575e;
+	border-top: 1px dashed #dcdcde;
+	padding-top: 0.5rem;
+	margin-top: 1rem;
+}

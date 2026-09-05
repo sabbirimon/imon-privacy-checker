@@ -1,0 +1,51 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Puku CLI session state (not source)
+.puku-cli/projects/
+
+# PHP
+vendor/
+*.log
+.phpunit.cache/
+
+# Test artifacts
+test-results/
+phpunit.xml
+
+# WordPress core (installed separately)
+wp/
+wp-content/
+
+# Local config — NEVER commit real secrets
+wp-config.php
+wp-config-*.php
+
+# Local databases / uploads
+*.sqlite
+*.sql
+
+# Downloaded data files (GeoIP / IP2Location)
+GeoIP Database/
+All tld list/
+
+# OS-temp / cache
+node_modules/
+.cache/
+
+# Build / packaging
+*.tgz
+*.tar.gz
+*.zip
+
+# Reference / dev-only artifacts (downloaded sources, screenshots)
+vendor-src/
+Screenshots/
+tools/

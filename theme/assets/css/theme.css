@@ -1,0 +1,568 @@
+/*
+Theme Name: Privacy Checker
+Theme URI: https://example.com/privacy-checker-theme
+Author: Privacy Checker Team
+Description: Custom theme for the Privacy Checker diagnostic platform, inspired by Whoer.net's clean, light, teal-accented design language. Provides the visual shell only — all scanner functionality lives in the privacy-checker plugin.
+Version: 1.0.0
+Requires at least: 6.2
+Tested to: 6.6
+Requires PHP: 8.1
+License: GPL-2.0-or-later
+Text Domain: privacy-checker-theme
+Tags: light, teal, privacy, dashboard
+*/
+
+/* =========================================================
+   1.  Reset & base
+   ========================================================= */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+:root,
+:root[data-pc-theme="light"] {
+    /* Surfaces — light, airy */
+    --pc-bg:        #f4f7fa;
+    --pc-bg-2:      #ffffff;
+    --pc-surface:   #ffffff;
+    --pc-surface-2: #fafcfd;
+    --pc-surface-3: #f1f5f8;
+    --pc-border:    #e2e8ef;
+    --pc-border-2:  #d0d8e0;
+
+    /* Text */
+    --pc-text:      #1f2c3a;
+    --pc-text-dim:  #5a6779;
+    --pc-text-mute: #8896a8;
+    --pc-text-faint:#b0bac8;
+
+    /* Accents — Whoer teal */
+    --pc-accent:    #17a2b8;
+    --pc-accent-2:  #138496;
+    --pc-accent-3:  #1ec8de;
+    --pc-accent-soft: #e3f4f8;
+
+    /* Navy header */
+    --pc-navy:      #143b52;
+    --pc-navy-2:    #0f3245;
+
+    /* Status */
+    --pc-success:   #28a745;
+    --pc-success-bg: #e6f7ec;
+    --pc-warning:   #f0a020;
+    --pc-warning-bg: #fdf3df;
+    --pc-danger:    #dc3545;
+    --pc-danger-bg: #fbe7ea;
+    --pc-info:      #17a2b8;
+    --pc-info-bg:   #e3f4f8;
+    --pc-unknown:   #8896a8;
+    --pc-unknown-bg:#eef1f5;
+
+    /* Disguise gradient (orange → yellow → green like Whoer's score strip) */
+    --pc-disguise:  linear-gradient(90deg, #dc3545 0%, #f0a020 40%, #f6c14a 60%, #28a745 100%);
+
+    /* Type */
+    --pc-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    --pc-font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+
+    /* Shape */
+    --pc-radius:    10px;
+    --pc-radius-sm: 6px;
+    --pc-radius-pill: 999px;
+    --pc-shadow-1:  0 2px 6px rgba(20, 59, 82, 0.06);
+    --pc-shadow-2:  0 8px 24px rgba(20, 59, 82, 0.10);
+
+    --pc-maxw: 1200px;
+}
+
+/* Dark theme — Whoer's actual dark teal palette */
+:root[data-pc-theme="dark"] {
+    --pc-bg:        #20586f;
+    --pc-bg-2:      #1a4659;
+    --pc-surface:   #ffffff;
+    --pc-surface-2: #f5f8fa;
+    --pc-surface-3: #e3edf2;
+    --pc-border:    rgba(255, 255, 255, 0.10);
+    --pc-border-2:  rgba(255, 255, 255, 0.20);
+
+    /* Text on dark — white / muted teal-grey */
+    --pc-text:      #ffffff;
+    --pc-text-dim:  #b8c7cd;
+    --pc-text-mute: #94a8b1;
+    --pc-text-faint:#7c8e96;
+
+    /* Accents — brighter on dark for contrast */
+    --pc-accent:    #2a8a9a;
+    --pc-accent-2:  #1ec8de;
+    --pc-accent-3:  #3ddccd;
+    --pc-accent-soft: rgba(42, 138, 154, 0.18);
+
+    /* Navy header (matches body) */
+    --pc-navy:      #143b52;
+    --pc-navy-2:    #0f3245;
+
+    /* Status — slightly desaturated for dark backgrounds */
+    --pc-success:   #5fcf80;
+    --pc-success-bg: rgba(95, 207, 128, 0.20);
+    --pc-warning:   #f6c14a;
+    --pc-warning-bg: rgba(246, 193, 74, 0.18);
+    --pc-danger:    #ff5470;
+    --pc-danger-bg: rgba(255, 84, 112, 0.18);
+    --pc-info:      #5db5ff;
+    --pc-info-bg:   rgba(93, 181, 255, 0.18);
+    --pc-unknown:   #94a8b1;
+    --pc-unknown-bg:rgba(148, 168, 177, 0.18);
+
+    --pc-disguise:  linear-gradient(90deg, #ff5470 0%, #f6c14a 40%, #f6c14a 60%, #5fcf80 100%);
+
+    --pc-shadow-1:  0 2px 6px rgba(0, 0, 0, 0.20);
+    --pc-shadow-2:  0 8px 24px rgba(0, 0, 0, 0.30);
+}
+
+html {
+    background: var(--pc-bg);
+    color: var(--pc-text);
+    font-family: var(--pc-font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--pc-bg);
+    color: var(--pc-text);
+    transition: background 0.25s ease, color 0.25s ease;
+}
+:root[data-pc-theme="dark"] body {
+    background:
+        radial-gradient(1100px 600px at 80% -10%, rgba(30, 200, 222, 0.15), transparent 60%),
+        radial-gradient(900px 500px at -10% 30%, rgba(61, 220, 205, 0.10), transparent 60%),
+        var(--pc-bg);
+}
+
+a {
+    color: var(--pc-accent);
+    text-decoration: none;
+}
+a:hover,
+a:focus-visible {
+    text-decoration: underline;
+}
+
+img { max-width: 100%; height: auto; }
+button { font: inherit; color: inherit; }
+
+:focus-visible {
+    outline: 2px solid var(--pc-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* =========================================================
+   2.  Layout
+   ========================================================= */
+.pc-skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--pc-accent);
+    color: #fff;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    z-index: 999;
+}
+.pc-skip-link:focus {
+    left: 1rem;
+    top: 1rem;
+}
+
+.pc-container {
+    max-width: var(--pc-maxw);
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}
+
+/* =========================================================
+   3.  Header — Whoer-style navy bar
+   ========================================================= */
+/* =========================================================
+   Header — Apple-style glassmorphism with dynamic theme colors
+   ========================================================= */
+.pc-header {
+    /* Light-theme frosted glass */
+    --pc-glass-bg: rgba(255, 255, 255, 0.55);
+    --pc-glass-bg-strong: rgba(255, 255, 255, 0.85);
+    --pc-glass-border: rgba(255, 255, 255, 0.7);
+    --pc-glass-text: #143b52;
+    --pc-glass-text-dim: rgba(20, 59, 82, 0.7);
+    --pc-glass-hover: rgba(23, 162, 184, 0.12);
+    --pc-glass-active: linear-gradient(135deg, #17a2b8, #20586f);
+    --pc-glass-shadow: 0 4px 24px rgba(20, 59, 82, 0.10);
+    --pc-glass-glow: 0 0 0 1px rgba(23, 162, 184, 0.18), 0 8px 32px rgba(23, 162, 184, 0.15);
+    --pc-glass-divider: rgba(20, 59, 82, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--pc-glass-bg);
+    color: var(--pc-glass-text);
+    border-bottom: 1px solid var(--pc-glass-divider);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    box-shadow: var(--pc-glass-shadow);
+    transition:
+        background 0.45s ease,
+        color 0.35s ease,
+        border-color 0.35s ease,
+        box-shadow 0.45s ease;
+}
+:root[data-pc-theme="dark"] .pc-header {
+    /* Dark-theme frosted glass — deep teal-tinted */
+    --pc-glass-bg: rgba(13, 32, 45, 0.55);
+    --pc-glass-bg-strong: rgba(20, 40, 56, 0.92);
+    --pc-glass-border: rgba(120, 160, 200, 0.18);
+    --pc-glass-text: #e6edf3;
+    --pc-glass-text-dim: rgba(230, 237, 243, 0.7);
+    --pc-glass-hover: rgba(23, 162, 184, 0.22);
+    --pc-glass-active: linear-gradient(135deg, #17a2b8, #2a8a9a);
+    --pc-glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+    --pc-glass-glow: 0 0 0 1px rgba(23, 162, 184, 0.35), 0 8px 32px rgba(23, 162, 184, 0.25);
+    --pc-glass-divider: rgba(120, 160, 200, 0.12);
+    background: var(--pc-glass-bg);
+    border-bottom-color: var(--pc-glass-divider);
+}
+.pc-header__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 1.5rem;
+    max-width: var(--pc-maxw);
+    margin: 0 auto;
+}
+.pc-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--pc-glass-text);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+.pc-brand:hover { text-decoration: none; color: var(--pc-accent); }
+.pc-brand__mark { display: none; }
+
+/* Horizontal nav on web */
+.pc-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.pc-nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.pc-nav-list li {
+    display: inline-flex;
+}
+.pc-nav-list a,
+.pc-nav a {
+    color: var(--pc-glass-text-dim);
+    padding: 0.45rem 0.9rem;
+    border-radius: var(--pc-radius-pill);
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    text-decoration: none;
+    display: inline-block;
+}
+.pc-nav a::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--pc-glass-hover);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    border-radius: inherit;
+    pointer-events: none;
+}
+.pc-nav a:hover,
+.pc-nav a:focus-visible {
+    color: var(--pc-glass-text);
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+.pc-nav a:hover::before,
+.pc-nav a:focus-visible::before { opacity: 1; }
+.pc-nav a.is-current {
+    color: #ffffff;
+    background: var(--pc-glass-active);
+    text-decoration: none;
+    box-shadow: var(--pc-glass-glow);
+}
+
+/* 3-dot toggle for mobile */
+.pc-nav-toggle {
+    appearance: none;
+    display: none;
+    background: var(--pc-glass-bg-strong);
+    border: 1px solid var(--pc-glass-border);
+    border-radius: var(--pc-radius-pill);
+    width: 40px;
+    height: 40px;
+    color: var(--pc-glass-text);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.pc-nav-toggle:hover {
+    border-color: var(--pc-accent);
+    transform: scale(1.05);
+}
+.pc-nav-toggle span.dot {
+    width: 5px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 50%;
+    display: block;
+    transition: transform 0.2s ease;
+}
+.pc-nav-toggle[aria-expanded="true"] span.dot:nth-child(1) { transform: translateY(9px) rotate(45deg); }
+.pc-nav-toggle[aria-expanded="true"] span.dot:nth-child(2) { opacity: 0; }
+.pc-nav-toggle[aria-expanded="true"] span.dot:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
+
+/* Theme toggle (sun / moon) — also glassmorphic */
+.pc-theme-toggle {
+    appearance: none;
+    background: var(--pc-glass-bg-strong);
+    border: 1px solid var(--pc-glass-border);
+    border-radius: var(--pc-radius-pill);
+    width: 40px;
+    height: 40px;
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+    color: var(--pc-glass-text);
+    transition: background 0.25s ease, transform 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+    margin-left: 0.4rem;
+    flex: 0 0 auto;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.pc-theme-toggle:hover {
+    background: var(--pc-glass-hover);
+    border-color: var(--pc-accent);
+    color: var(--pc-accent);
+    transform: rotate(20deg);
+}
+.pc-theme-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.30);
+}
+.pc-theme-toggle svg { width: 18px; height: 18px; }
+.pc-theme-toggle .icon-moon { display: none; }
+:root[data-pc-theme="dark"] .pc-theme-toggle .icon-sun  { display: none; }
+:root[data-pc-theme="dark"] .pc-theme-toggle .icon-moon { display: block; }
+
+/* Mobile: 3-dot menu, vertical flyout with frosted glass */
+@media (max-width: 820px) {
+    .pc-nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 1rem;
+        left: 1rem;
+        background: var(--pc-glass-bg-strong);
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0.5rem;
+        border: 1px solid var(--pc-glass-border);
+        border-radius: 14px;
+        backdrop-filter: saturate(180%) blur(20px);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        box-shadow: var(--pc-glass-glow);
+        animation: pc-nav-pop 0.18s ease both;
+    }
+    .pc-nav.is-open { display: flex; }
+    .pc-nav-list { flex-direction: column; align-items: stretch; gap: 0.15rem; width: 100%; }
+    .pc-nav-list li { width: 100%; display: block; }
+    .pc-nav a,
+    .pc-nav-list a {
+        text-align: left;
+        padding: 0.7rem 0.85rem;
+        border-radius: 10px;
+        display: block;
+        width: 100%;
+        white-space: nowrap;
+    }
+    .pc-nav-toggle { display: inline-flex; }
+    @keyframes pc-nav-pop {
+        from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+}
+
+/* Color-changing pulse on header (subtle) */
+@keyframes pc-header-shine {
+    0%, 100% { box-shadow: var(--pc-glass-shadow); }
+    50%      { box-shadow: var(--pc-glass-glow); }
+}
+.pc-header.is-changing {
+    animation: pc-header-shine 0.6s ease;
+}
+
+/* =========================================================
+   4.  Footer
+   ========================================================= */
+.pc-footer {
+    margin-top: 4rem;
+    border-top: 1px solid var(--pc-border);
+    background: var(--pc-surface);
+    color: var(--pc-text-dim);
+    padding: 2rem 0;
+    font-size: 0.9rem;
+}
+.pc-footer__grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 2rem;
+}
+@media (max-width: 720px) {
+    .pc-footer__grid { grid-template-columns: 1fr; }
+}
+.pc-footer h4 {
+    color: var(--pc-text);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.6rem;
+}
+.pc-footer ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.pc-footer li { margin: 0.25rem 0; }
+.pc-footer__bottom {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--pc-border);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.8rem;
+    color: var(--pc-text-faint);
+}
+
+/* =========================================================
+   5.  Section titles (Whoer-style: teal uppercase + underline)
+   ========================================================= */
+.pc-section__title {
+    display: inline-block;
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--pc-accent);
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--pc-accent);
+}
+.pc-section__lede {
+    color: var(--pc-text-dim);
+    margin: 0 0 1.2rem;
+    font-size: 0.95rem;
+    max-width: 64ch;
+    line-height: 1.6;
+}
+
+/* =========================================================
+   6.  Utility
+   ========================================================= */
+.pc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Buttons */
+.pc-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    border-radius: var(--pc-radius-pill);
+    border: 1px solid var(--pc-border-2);
+    background: var(--pc-surface);
+    color: var(--pc-text);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    white-space: nowrap;
+    user-select: none;
+}
+.pc-btn:hover  { background: var(--pc-surface-3); border-color: var(--pc-accent); transform: translateY(-1px); }
+.pc-btn:active { transform: translateY(0); }
+.pc-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.25); }
+.pc-btn[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.pc-btn--primary {
+    background: var(--pc-accent);
+    color: #ffffff;
+    border-color: var(--pc-accent);
+    box-shadow: 0 2px 6px rgba(23, 162, 184, 0.30);
+}
+.pc-btn--primary:hover {
+    background: var(--pc-accent-2);
+    border-color: var(--pc-accent-2);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(23, 162, 184, 0.40);
+}
+.pc-btn--danger {
+    background: var(--pc-danger);
+    color: #fff;
+    border-color: var(--pc-danger);
+}
+.pc-btn--danger:hover {
+    background: #c82333;
+    border-color: #c82333;
+    color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}

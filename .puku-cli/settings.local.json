@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer install:*)",
+      "Bash(curl -sL https://github.com/wp-cli/wp-cli/releases/download/v2.11.0/wp-cli-2.11.0.phar -o tools/wp-cli-phar/wp)",
+      "Bash(chmod +x tools/wp-cli-phar/wp)",
+      "Bash(tools/wp-cli-phar/wp --info)",
+      "Bash(mysql -uroot -e \"CREATE DATABASE IF NOT EXISTS wp_privacy_checker CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS ''wp_user''@''localhost'' IDENTIFIED BY ''wp_pass''; GRANT ALL PRIVILEGES ON wp_privacy_checker.* TO ''wp_user''@''localhost''; FLUSH PRIVILEGES;\")",
+      "Bash(curl -sL https://wordpress.org/latest.tar.gz -o wp.tar.gz)",
+      "Bash(tar -xzf wp.tar.gz)",
+      "Bash(cp -r theme wp-content/themes/privacy-checker-theme)",
+      "Bash(cp -r plugin wp-content/plugins/privacy-checker)"
+    ]
+  }
+}

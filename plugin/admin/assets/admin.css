@@ -1,0 +1,4 @@
+/* IMON admin styles */
+.pc-admin .form-table th { width: 220px; }
+.pc-admin input[type="password"],
+.pc-admin input[type="number"] { max-width: 320px; }

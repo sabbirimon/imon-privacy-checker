@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    bootstrap="plugin/tests/bootstrap.php"
+    backupGlobals="false"
+    colors="true"
+    convertErrorsToExceptions="true"
+    convertNoticesToExceptions="true"
+    convertWarningsToExceptions="true"
+    processIsolation="false"
+    stopOnFailure="false"
+    cacheResultFile=".phpunit.cache/test-results"
+>
+    <testsuites>
+        <testsuite name="Privacy Checker">
+            <directory suffix="-test.php">plugin/tests</directory>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <include>
+            <directory suffix=".php">plugin/includes</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">plugin/includes/providers</directory>
+            <directory suffix=".php">plugin/tests</directory>
+        </exclude>
+    </coverage>
+</phpunit>
