@@ -398,34 +398,36 @@ Bugs surfaced by a code audit on the Geo Traceroute / 3D globe path.
 Each is being addressed as its own small commit so the review surface
 stays bounded.
 
-- [~] **DRY tool-slug list** — `PublicAssets::enqueue()` repeats the same
-      array of tool slugs (`ip-lookup`, `whois`, … `geotraceroute`,
-      `user-guide`) three separate times (page-slug check, URI substring
-      fallback, shortcode-tag fallback). Easy to add a new tool and
-      forget one spot. Collapsing into a single `private const TOOL_SLUGS`
-      + derived shortcode-tag list.
-- [ ] **Lazy availability check** — `globeState.available` is currently
-      evaluated once at `bindGeotraceroute()` and gates every later call
-      to `ensureGlobe3d()`. If the libraries haven't finished loading yet
-      (slow CDN, ad-blocker, dropped request) the cached `false` strands
-      the toggle as permanently "unavailable" for the rest of the page's
-      life. Replacing with a fresh `typeof window.THREE / window.ThreeGlobe`
-      check inside `ensureGlobe3d()`, plus a bounded retry (every 250 ms
-      up to 5 s) so a late CDN response still gets picked up.
-- [ ] **Self-host the globe textures** — `scanner.js` currently calls
-      `.globeImageUrl('https://unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg')`,
-      `.bumpImageUrl(...)`, `.backgroundImageUrl(...)` even though the
-      surrounding comment explicitly says we self-host three.js + three-
-      globe to support corporate / airgapped / GDPR-strict networks. On
-      exactly those networks the texture fetches fail and the user sees
-      a black sphere — perceived as "3D doesn't work." Dropping the three
-      images under `plugin/public/assets/img/` and referencing them via
-      `PRIVACY_CHECKER_URL`.
-- [ ] **Real console diagnostics** — every failure currently collapses
-      into the same generic "3D Globe is unavailable; using the 2D map"
-      toast. Adding `console.warn` / `console.error` distinguishing
-      library-load / WebGL-context-creation / texture-load failures so
-      the next debug isn't guesswork.
+- [x] **DRY tool-slug list** — `PublicAssets::enqueue()` repeats the same
+      array of tool slugs three separate times. Replaced with a single
+      `private const TOOLS` map (slug → shortcode suffix) plus two
+      derived accessors `tool_slugs()` and `tool_shortcode_tags()`.
+      Adding a new tool now requires one entry in `TOOLS` and one
+      shortcode registration above. (`da6f0ad`)
+- [x] **Lazy availability check** — replaced the once-at-bind-time
+      `globeState.available` snapshot with a fresh
+      `isGlobeLibraryAvailable()` re-check called every time
+      `ensureGlobe3d()` and `setGeoView()` need a verdict. `setGeoView()`
+      now also does a bounded retry (every 250 ms up to 5 s) so a late
+      library load still gets picked up. Fixes the silent breakage where
+      a slow CDN / ad-blocker stranded the globe toggle as permanently
+      "unavailable". (`c1c6854`)
+- [x] **Self-host the globe textures** — vendored
+      `earth-blue-marble.jpg` (1.4 MB), `earth-topology.png` (372 KB),
+      `night-sky.png` (884 KB) under `plugin/public/assets/img/` with a
+      provenance README. JS now references them via
+      `globeTextureUrl(name)`, with the base read from
+      `window.PC_SCAN.assetUrl` (newly localized from
+      `PRIVACY_CHECKER_URL`) and a same-origin fallback. Removes the
+      last unpkg.com dependency for the 3D globe. (`c1c6854`)
+- [x] **Real console diagnostics** — three distinct console messages:
+      - `console.error('[IMON globe] WebGL renderer init failed: …')`
+        on scene-construction throws
+      - `console.warn('[IMON globe] texture fetch failed: <url>')` per
+        pre-flighted texture (HEAD with `no-cors` so a 404 surfaces
+        clearly instead of silently rendering a black sphere)
+      - `console.error('[IMON globe] three.js / three-globe library did
+        not load within 5s.')` on retry exhaustion. (`c1c6854`)
 - [ ] **Phase 7 (QA pass) of `IMON-BUILD-GUIDE.md` checklist #4** —
       audit all frontend network calls (Leaflet CSS/JS from unpkg too)
       and decide consistently: vendor everything locally or document
