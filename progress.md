@@ -223,6 +223,98 @@ diff review between phases — not all at once.
 - [ ] **Phase 7 — QA pass** (audit all added code for conventions,
       shown-back-to-user, fail-closed behavior, external-CDN policy).
 
+## Phase 8 (admin track) — Admin visibility for Phases 1-7
+
+Three deliverables ship on top of the closed visitor-side seven-phase
+track (`IMON-BUILD-GUIDE.md`). Goal: make the new scoring machinery
+discoverable to admins without making it user-tunable.
+
+- [x] **8.2a — Public getters for hardcoded scoring constants.**
+      Visitors see a 12-category weighted composite (`PrivacyReport`,
+      Phase 6) plus entropy / anonymity scorers (Phases 3-4) but
+      admins had no view of the constants driving them. Added four
+      public getters backed by single-source-of-truth `const`
+      tables:
+      - `BrowserVersions::thresholds(): array<string,array{current:int,outdated_cutoff:int}>`
+      - `PrivacyReport::category_weights(): array<string,int>` (consistency=4 highest, connection_quality=0/local_network=0 surface-only)
+      - `Fingerprint::entropy_bit_assignments(): array<string,int>` (canvas +15, audio +15, webgl +6/-5 masked, font +1 beyond baseline 8, timezone +4, language +4, languages +2, cap 100)
+      - `AnonymityScorer::signal_weights(): array<string,int>` (timezone -20, WebRTC -40, DNS -30, proxy 0)
+      Seven new tests pin the canonical values; both getter and
+      source-of-truth method are exercised in the same test where
+      practical so the reference card can never drift from the
+      computation. **+7 tests / +96 assertions, 188 tests / 766 assertions.**
+- [x] **8.1 — Privacy Report inspector** (new admin submenu page).
+      File: `plugin/admin/class-admin-privacy-report.php` +
+      `plugin/admin/views/privacy-report-inspector.php`. New
+      submenu **Privacy Checker → Privacy Report**, positioned
+      between Dashboard and Settings. Renders
+      `PrivacyReport::build()` against a server-side self-scan
+      payload built from `IpDetector::detect()` +
+      `IpFallback::lookup()` + `ProxyDetector::classify_with_lists()`
+      + `Reputation::check()` + `Fingerprint::parse_user_agent()` +
+      `TlsInfo::current_request_info()` + `BrowserVersions::check()`
+      + `AnonymityScorer::score()`. No client signals (no
+      `collectFingerprint()` / `WebRTC` / `connectionQualityProbe()` /
+      `scanLocalNetwork()` available in admin context) — those
+      categories get empty / unknown defaults, same fail-closed
+      pattern used everywhere else, banner at top makes this
+      explicit. Renders overall / grade / confidence / headline,
+      a per-category table (key, percent, status, weight, weighted
+      contribution, message) with surface-only rows visibly tagged,
+      a weighted-avg **arithmetic transparency panel** that shows
+      the literal formula `(sum of percent*weight) / sum_of_weight =
+      overall` with the actual numbers, and the deduplicated
+      recommendations list with priority badges. Wired in via
+      `Plugin::init()` adding `new AdminPrivacyReport()` alongside
+      the other admin classes. CSS for the inspector + the new
+      `.pc-scoring-ref` reference table live in
+      `plugin/admin/assets/admin.css`. Nine new tests exercise
+      `build_self_scan()` (top-level shape, IP read, fingerprint
+      unknown, WebRTC no-leak, security posture, UA parse, full
+      PrivacyReport integration, arithmetic-panel match, MENU_SLUG
+      distinctness). **+9 tests / +42 assertions, 197 tests / 808
+      assertions.**
+- [x] **8.2b — Scoring parameters reference card** (settings page
+      section). Appended `pc_scoring` section as the very last
+      settings section in `class-admin.php::register_settings()`,
+      positioned as an "appendix" of hardcoded constants the admin
+      should be aware of. Four read-only reference tables, each
+      rendering values straight from the source module's public
+      getter (no duplication in HTML):
+      - **Anonymity consistency weights** — signal + deduction
+        + human label (timezone/WebRTC/DNS/proxy).
+      - **Fingerprint entropy bit assignments** — signal + notes
+        + bits (canvas/audio/webgl/font/timezone/language/languages/cap).
+      - **Browser EOL thresholds** — family + current + outdated
+        cutoff (Chrome/Firefox/Safari/Edge).
+      - **Composite report weights** — category + weight + notes
+        (all 12, with surface-only rows visibly tagged).
+      All values are rendered via the public getters from 8.2a,
+      so the reference card can never drift from the source code.
+      No new settings keys. CSS for `.pc-scoring-ref` added to
+      `admin.css`. Zero new tests (covered transitively by the 8.2a
+      getter tests).
+- [x] **8.3 — Diagnostics summary tile** (dashboard widget).
+      Appended a 4th `rate_limits` entry to `$diagnostics_tiles`
+      in `plugin/admin/views/dashboard.php`. One-line summary of
+      every rate-limit knob shipped across Phases 1 + 8:
+      `Scan 60 · Lookup 30 · Security 10 · Echo 60 · DNS 5 · Ping 30 ·
+      Port 10` (values pulled from settings, sensible defaults).
+      Link anchors at `#pc_rate` (the master Rate Limiting section
+      that already renders scan/lookup/security). Other knobs
+      remain in their respective sections — this tile is an
+      at-a-glance summary, not a duplication. No new tests (view
+      template only, low regression risk).
+
+**Verification**: `vendor/bin/phpunit` → **197 tests / 808 assertions,
+all green** (up from 181/670 at end of Phase 7). `php -l` clean on
+every modified file. `node --check scanner.js` N/A (no JS changes
+in this phase). No new composer / npm dependencies. No new REST
+routes. No new settings keys. No new secrets, no PII handling, no
+write paths.
+
+## Phase 10 — UX polish: IMON rebrand, scan progress, styled tool results
+
 ## Phase 10 — UX polish: IMON rebrand, scan progress, styled tool results
 
 ### Theme & branding

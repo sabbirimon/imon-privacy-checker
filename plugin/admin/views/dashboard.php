@@ -142,6 +142,27 @@ $diagnostics_tiles = array(
 		'note'   => $port_note,
 		'link'   => admin_url( 'admin.php?page=' . \PrivacyChecker\Admin\AdminDashboard::SETTINGS_SLUG . '#pc_port_scan' ),
 	),
+	'rate_limits' => array(
+		// Phase 8.3 — at-a-glance summary of every rate-limit knob
+		// shipped across Phases 1 + 8 (scan / lookup / security /
+		// connection_echo / dns_probe / ping / port_scan). The link
+		// anchors at #pc_rate where the master Rate Limiting section
+		// already renders scan/lookup/security; the others live in
+		// their respective sections and aren't re-rendered here.
+		'title'  => __( 'Rate Limits', 'privacy-checker' ),
+		'state'  => array( 'class' => 'active', 'label' => __( 'Configured', 'privacy-checker' ) ),
+		'note'   => sprintf(
+			'Scan %1$d · Lookup %2$d · Security %3$d · Echo %4$d · DNS %5$d · Ping %6$d · Port %7$d',
+			(int) Plugin::instance()->setting( 'rate_limit_scan', 60 ),
+			(int) Plugin::instance()->setting( 'rate_limit_lookup', 30 ),
+			(int) Plugin::instance()->setting( 'rate_limit_security', 10 ),
+			(int) Plugin::instance()->setting( 'rate_limit_connection_echo', 60 ),
+			(int) Plugin::instance()->setting( 'rate_limit_dns_probe', 5 ),
+			(int) Plugin::instance()->setting( 'rate_limit_ping', 30 ),
+			(int) Plugin::instance()->setting( 'rate_limit_port_scan', 10 )
+		),
+		'link'   => admin_url( 'admin.php?page=' . \PrivacyChecker\Admin\AdminDashboard::SETTINGS_SLUG . '#pc_rate' ),
+	),
 );
 
 $cache_hits = array();

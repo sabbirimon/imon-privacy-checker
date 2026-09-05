@@ -474,6 +474,108 @@ final class Admin {
                 $value
             );
         }, self::MENU_SLUG, 'pc_api_access' );
+
+        // Phase 8.2 — read-only reference card. Positioned last so it
+        // reads as an "appendix" of hardcoded constants the admin should
+        // be aware of. No inputs here — values come from the source
+        // modules via their public getters (BrowserVersions::thresholds(),
+        // PrivacyReport::category_weights(), Fingerprint::entropy_bit_assignments(),
+        // AnonymityScorer::signal_weights()). No new settings keys.
+        add_settings_section( 'pc_scoring', __( 'Scoring Parameters (reference)', 'privacy-checker' ), function () {
+            echo '<p>' . esc_html__( 'Read-only reference. The values below are hardcoded in the plugin source — they are intentionally not user-tunable. This panel exists so site admins can see what the scanner is actually computing without grepping the codebase.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG );
+
+        add_settings_field( 'ref_anonymity_weights', __( 'Anonymity consistency weights', 'privacy-checker' ), function () {
+            $weights = \PrivacyChecker\AnonymityScorer::signal_weights();
+            echo '<table class="pc-scoring-ref"><thead><tr><th>' . esc_html__( 'Signal', 'privacy-checker' ) . '</th><th class="num">' . esc_html__( 'Deduction', 'privacy-checker' ) . '</th></tr></thead><tbody>';
+            $labels = array(
+                'timezone' => __( 'IP-geo vs browser timezone mismatch', 'privacy-checker' ),
+                'webrtc'   => __( 'WebRTC leaked public IP', 'privacy-checker' ),
+                'dns'      => __( 'DNS resolver on a different network than visible connection', 'privacy-checker' ),
+                'proxy'    => __( 'Confirmed VPN/proxy (intentional use is not penalised)', 'privacy-checker' ),
+            );
+            foreach ( $weights as $key => $value ) {
+                printf(
+                    '<tr><td><code>%1$s</code> — %2$s</td><td class="num">%3$d</td></tr>',
+                    esc_html( $key ),
+                    esc_html( $labels[ $key ] ?? '' ),
+                    (int) $value
+                );
+            }
+            echo '</tbody></table>';
+            echo '<p class="description">' . esc_html__( 'Applied to a 100-point baseline. Score is clamped to [0, 100].', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_scoring' );
+
+        add_settings_field( 'ref_entropy_bits', __( 'Fingerprint entropy bit assignments', 'privacy-checker' ), function () {
+            $bits = \PrivacyChecker\Fingerprint::entropy_bit_assignments();
+            echo '<table class="pc-scoring-ref"><thead><tr><th>' . esc_html__( 'Signal', 'privacy-checker' ) . '</th><th>' . esc_html__( 'Notes', 'privacy-checker' ) . '</th><th class="num">' . esc_html__( 'Bits', 'privacy-checker' ) . '</th></tr></thead><tbody>';
+            $notes = array(
+                'canvas_hash'           => __( 'Non-empty canvas fingerprint hash', 'privacy-checker' ),
+                'audio_hash'            => __( 'Non-empty audio context hash', 'privacy-checker' ),
+                'webgl_renderer'        => __( 'WebGL renderer string present and not masked', 'privacy-checker' ),
+                'webgl_renderer_masked' => __( 'Reward when browser explicitly masks WebGL (negative bits)', 'privacy-checker' ),
+                'font_per_extra'        => __( 'Per-font bits added beyond the baseline count', 'privacy-checker' ),
+                'font_baseline'         => __( 'Fonts at or below this count contribute 0 bits', 'privacy-checker' ),
+                'timezone'              => __( 'IANA timezone string present', 'privacy-checker' ),
+                'language'              => __( 'Primary language tag present', 'privacy-checker' ),
+                'languages'             => __( 'Secondary language list non-empty', 'privacy-checker' ),
+                'cap_bits'              => __( 'Upper bound on total entropy bits', 'privacy-checker' ),
+            );
+            foreach ( $bits as $key => $value ) {
+                printf(
+                    '<tr><td><code>%1$s</code></td><td>%2$s</td><td class="num">%3$d</td></tr>',
+                    esc_html( $key ),
+                    esc_html( $notes[ $key ] ?? '' ),
+                    (int) $value
+                );
+            }
+            echo '</tbody></table>';
+            echo '<p class="description">' . esc_html__( 'Rough proxies based on Panopticlick / EFF Cover-Your-Tracks cardinality estimates. Replace with measured -log2(p) values when population stats are available.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_scoring' );
+
+        add_settings_field( 'ref_browser_eol', __( 'Browser EOL thresholds', 'privacy-checker' ), function () {
+            $thresholds = \PrivacyChecker\BrowserVersions::thresholds();
+            echo '<table class="pc-scoring-ref"><thead><tr><th>' . esc_html__( 'Family', 'privacy-checker' ) . '</th><th class="num">' . esc_html__( 'Current', 'privacy-checker' ) . '</th><th class="num">' . esc_html__( 'Outdated cutoff', 'privacy-checker' ) . '</th></tr></thead><tbody>';
+            foreach ( $thresholds as $family => $row ) {
+                printf(
+                    '<tr><td>%1$s</td><td class="num">%2$d</td><td class="num">%3$d</td></tr>',
+                    esc_html( $family ),
+                    (int) $row['current'],
+                    (int) $row['outdated_cutoff']
+                );
+            }
+            echo '</tbody></table>';
+            echo '<p class="description">' . esc_html__( 'Version >= current → "current". Version >= outdated_cutoff → "outdated". Below outdated_cutoff → "very_outdated".', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_scoring' );
+
+        add_settings_field( 'ref_privacy_categories', __( 'Composite report weights', 'privacy-checker' ), function () {
+            $weights = \PrivacyChecker\PrivacyReport::category_weights();
+            echo '<table class="pc-scoring-ref"><thead><tr><th>' . esc_html__( 'Category', 'privacy-checker' ) . '</th><th class="num">' . esc_html__( 'Weight', 'privacy-checker' ) . '</th><th>' . esc_html__( 'Notes', 'privacy-checker' ) . '</th></tr></thead><tbody>';
+            $notes = array(
+                'consistency'        => __( 'Highest — "are you actually as private as you think".', 'privacy-checker' ),
+                'security_posture'   => __( 'TLS + browser EOL.', 'privacy-checker' ),
+                'webrtc'             => __( 'Public-IP leak.', 'privacy-checker' ),
+                'dns'                => __( 'Resolver leak.', 'privacy-checker' ),
+                'reputation'         => __( 'Blocklist hits.', 'privacy-checker' ),
+                'fingerprint'        => __( 'Entropy / uniqueness.', 'privacy-checker' ),
+                'ip'                 => __( 'Geo + ASN visibility.', 'privacy-checker' ),
+                'proxy'              => __( 'VPN/hosting/tor detection.', 'privacy-checker' ),
+                'user_agent'         => __( 'Detail in UA string.', 'privacy-checker' ),
+                'ipv6'               => __( 'IPv6 leakage.', 'privacy-checker' ),
+                'connection_quality' => __( 'Surface-only — does not contribute to overall.', 'privacy-checker' ),
+                'local_network'      => __( 'Surface-only — does not contribute to overall.', 'privacy-checker' ),
+            );
+            foreach ( $weights as $key => $value ) {
+                printf(
+                    '<tr><td><code>%1$s</code></td><td class="num">%2$d</td><td>%3$s</td></tr>',
+                    esc_html( $key ),
+                    (int) $value,
+                    esc_html( $notes[ $key ] ?? '' )
+                );
+            }
+            echo '</tbody></table>';
+            echo '<p class="description">' . esc_html__( 'Overall = round( sum(percent * weight) / sum(weight) ), excluding surface-only categories.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_scoring' );
     }
 
     /**

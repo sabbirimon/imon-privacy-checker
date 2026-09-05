@@ -182,7 +182,7 @@ Key entries:
       reputation rows + Geo Traceroute hops.
 - [x] Multi-format export (JSON / CSV / TXT / HTML).
 - [x] Manual-only user-guide onboarding tour — FAB + 12-step overlay.
-- [x] PHPUnit suite green (**181 tests / 670 assertions**, 0 failures).
+- [x] PHPUnit suite green (**197 tests / 808 assertions**, 0 failures).
 - [x] All secrets stripped from `/settings` GET response.
 - [x] No raw IPs ever persisted anywhere.
 - [x] Self-hosted Three.js, three-globe, and globe textures — no
