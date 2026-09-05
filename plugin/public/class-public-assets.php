@@ -354,6 +354,19 @@ final class PublicAssets {
                 'anonymityAllConsistent' => __( 'No inconsistencies found between the signals checked.', 'privacy-checker' ),
                 'anonymityNoData'        => __( 'No completed signal checks yet.', 'privacy-checker' ),
 
+                // Advanced fingerprint card (Phase 3 of IMON-BUILD-GUIDE.md).
+                'fpCanvasHash'         => __( 'Canvas hash', 'privacy-checker' ),
+                'fpAudioHash'          => __( 'Audio hash', 'privacy-checker' ),
+                'fpWebglRenderer'      => __( 'WebGL renderer', 'privacy-checker' ),
+                'fpWebglVendor'        => __( 'WebGL vendor', 'privacy-checker' ),
+                'fpWebglMasked'        => __( 'browser is blocking this — good sign', 'privacy-checker' ),
+                'fpFontCount'          => __( 'Installed fonts', 'privacy-checker' ),
+                'fpFontCountInstalled' => __( 'fonts detected', 'privacy-checker' ),
+                'fpShowFonts'          => __( 'Show list', 'privacy-checker' ),
+                'fpHideFonts'          => __( 'Hide list', 'privacy-checker' ),
+                'fpEntropyLabel'       => __( 'Fingerprint entropy', 'privacy-checker' ),
+                'fpUnavailable'        => __( 'unavailable', 'privacy-checker' ),
+
                 'geoTitle'        => __( 'Geo Traceroute', 'privacy-checker' ),
                 'geoLede'         => __( 'Project your connection hops onto a world map. Animated packets trace the path between your device and the destination.', 'privacy-checker' ),
                 'geoRun'          => __( 'Trace Route', 'privacy-checker' ),

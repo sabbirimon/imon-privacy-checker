@@ -1234,7 +1234,7 @@ final class RestApi {
         if ( ! is_array( $json ) ) {
             return array();
         }
-        $allowed_top = array( 'user_agent', 'screen', 'color_depth', 'pixel_ratio', 'timezone', 'language', 'languages', 'platform', 'hardware_concurrency', 'device_memory', 'touch_support', 'cookies', 'do_not_track', 'webgl', 'canvas', 'audio', 'fonts', 'webrtc', 'dns_test_result' );
+        $allowed_top = array( 'user_agent', 'screen', 'color_depth', 'pixel_ratio', 'timezone', 'language', 'languages', 'platform', 'hardware_concurrency', 'device_memory', 'touch_support', 'cookies', 'do_not_track', 'webgl', 'canvas', 'audio', 'fonts', 'webrtc', 'dns_test_result', 'canvas_hash', 'audio_hash', 'webgl_renderer', 'webgl_vendor', 'font_list' );
         $out = array();
         foreach ( $allowed_top as $key ) {
             if ( isset( $json[ $key ] ) ) {

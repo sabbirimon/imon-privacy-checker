@@ -249,6 +249,21 @@ if ( ! function_exists( '__' ) ) {
     function __( string $text, string $domain = 'default' ): string {
         return $text;
     }
+
+    // Translate with context — used by 4.x for disambiguation. Returns
+    // just the text in the test environment; full WP supports a separate
+    // context lookup table.
+    function _x( string $text, string $context, string $domain = 'default' ): string {
+        return $text;
+    }
+
+    if ( ! function_exists( 'number_format_i18n' ) ) {
+        function number_format_i18n( $number, int $decimals = 0 ): string {
+            // Use PHP's locale-aware number formatter in tests; the stub
+            // returns the same result as the no-locale number_format.
+            return number_format( (float) $number, $decimals );
+        }
+    }
 }
 if ( ! function_exists( 'esc_html__' ) ) {
     function esc_html__( string $text, string $domain = 'default' ): string {

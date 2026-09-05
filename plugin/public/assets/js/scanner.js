@@ -180,10 +180,18 @@
 
     /* ---------- Fingerprint collector ---------- */
 
+    /**
+     * Collect all browser-side fingerprint signals. ASYNC because the
+     * audio hash needs an OfflineAudioContext render. The synchronous
+     * signals are populated immediately; audio_hash is resolved later
+     * and merged into the returned object via the audio promise.
+     *
+     * @return {Promise<object>}
+     */
     function collectFingerprint() {
         var nav = navigator || {};
         var screen = window.screen || {};
-        return {
+        var fp = {
             user_agent: nav.userAgent || '',
             language: nav.language || '',
             languages: Array.isArray(nav.languages) ? nav.languages.slice() : [],
@@ -200,10 +208,220 @@
             webgl: !!document.createElement('canvas').getContext('webgl'),
             canvas: true,    // We can render to canvas; signal presence.
             audio: !!(window.AudioContext || window.webkitAudioContext),
+            // Kept for backward compatibility with the existing report card;
+            // the granular fontList below is the real fingerprint signal.
             fonts: typeof document.fonts !== 'undefined' && document.fonts && document.fonts.size
                 ? document.fonts.size
-                : 0
+                : 0,
+
+            // ---- Phase 3: real fingerprinting signals ----
+            // Hashes are 32-bit FNV-1a encoded as 8-char hex strings. They
+            // are NOT unique IDs (collisions are easy to engineer); they're
+            // consistency tokens — if two visitors' hashes match, they share
+            // a rendering/audio pipeline family. The server-side entropy
+            // estimator treats presence-of-hash as the rarity signal, not
+            // the hash value itself.
+            canvas_hash: '',
+            audio_hash:  '',
+            // WebGL renderer/vendor strings. Explicitly set to the literal
+            // "masked-by-browser" when the extension is blocked — that is
+            // itself an anti-fingerprinting signal and counts as a GOOD
+            // sign in the entropy estimator (not as missing data).
+            webgl_renderer: '',
+            webgl_vendor:   '',
+            // Installed-font detection. ~40 fonts are tested by measuring
+            // rendered text width against a sans-serif fallback; entries
+            // that produced a different width are reported as installed.
+            font_list: []
         };
+        try { fp.canvas_hash = computeCanvasHash();   } catch (e) { /* sandboxed or unsupported */ }
+        try {
+            var w = readWebglInfo();
+            fp.webgl_renderer = w.renderer;
+            fp.webgl_vendor   = w.vendor;
+        } catch (e) { /* leave empty */ }
+        try { fp.font_list   = detectInstalledFonts(); } catch (e) { /* leave empty */ }
+
+        // Audio hash is async — return a promise that resolves to fp
+        // with audio_hash filled in. Synchronous fields are already set
+        // on fp so callers that race the .then() still get a complete
+        // object via the merge below.
+        var audioPromise;
+        try {
+            audioPromise = computeAudioHash();
+        } catch (e) {
+            audioPromise = Promise.resolve('');
+        }
+        if (!audioPromise || typeof audioPromise.then !== 'function') {
+            audioPromise = Promise.resolve(audioPromise || '');
+        }
+        return audioPromise.then(function (hash) {
+            fp.audio_hash = hash || '';
+            return fp;
+        });
+    }
+
+    /**
+     * 32-bit FNV-1a hash over a string. Returns the value as an 8-char
+     * hex string (zero-padded). Not cryptographic — fingerprinting
+     * doesn't need cryptographic strength, just good distribution.
+     */
+    function fnv1a32(str) {
+        var h = 0x811c9dc5;
+        for (var i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            // Multiply by FNV prime, keeping within 32 bits.
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        var hex = (h >>> 0).toString(16);
+        while (hex.length < 8) hex = '0' + hex;
+        return hex;
+    }
+
+    /**
+     * Render a fixed text+shapes scene to an offscreen 2D canvas, return
+     * a FNV-1a hash of the data URL. The fixed scene is chosen so most
+     * rendering differences (font hinting, anti-aliasing, GPU
+     * acceleration, text shaping) appear in the output pixels.
+     */
+    function computeCanvasHash() {
+        var c = document.createElement('canvas');
+        c.width = 280; c.height = 60;
+        var ctx = c.getContext('2d');
+        if (!ctx) return '';
+        ctx.textBaseline = 'top';
+        ctx.font = "16px 'Arial'";
+        ctx.fillStyle = '#f60';
+        ctx.fillRect(125, 1, 62, 20);
+        ctx.fillStyle = '#069';
+        ctx.fillText('IMON-fingerprint ✓ 漢字', 2, 15);
+        ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+        ctx.fillText('IMON-fingerprint ✓ 漢字', 4, 17);
+        ctx.beginPath();
+        ctx.arc(50, 30, 20, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,0,255,0.5)';
+        ctx.fill();
+        // toDataURL can throw in some sandboxes (tainted canvas, e.g.
+        // when an extension blocks canvas readback); fnv1a32 over the
+        // data URL gives us a stable token across browsers.
+        var data = c.toDataURL();
+        return fnv1a32(data);
+    }
+
+    /**
+     * Render a short OfflineAudioContext chain (oscillator →
+     * dynamicsCompressor → destination) and hash the resulting
+     * Float32Array. Floating-point audio processing is famously
+     * hardware-and-OS-specific, so even a few samples produce a stable
+     * per-device token.
+     */
+    function computeAudioHash() {
+        var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!OAC) return '';
+        // 1 channel, ~4410 samples ≈ 100ms @ 44.1kHz.
+        var ctx = new OAC(1, 4410, 44100);
+        var osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(10000, ctx.currentTime);
+        var comp = ctx.createDynamicsCompressor();
+        // Aggressive compressor settings that reveal floating-point
+        // rounding differences between implementations.
+        try {
+            comp.threshold.setValueAtTime(-50, ctx.currentTime);
+            comp.knee.setValueAtTime(40, ctx.currentTime);
+            comp.ratio.setValueAtTime(12, ctx.currentTime);
+            comp.attack.setValueAtTime(0, ctx.currentTime);
+            comp.release.setValueAtTime(0.25, ctx.currentTime);
+        } catch (e) { /* some fields may be read-only on older browsers */ }
+        osc.connect(comp);
+        comp.connect(ctx.destination);
+        osc.start(0);
+        // Synchronous Promise wrapper around the callback-style render.
+        return ctx.startRendering().then(function (buffer) {
+            var data = buffer.getChannelData(0);
+            // Sample a few points rather than the whole buffer — the
+            // rounding divergence shows up in the first ~100 samples.
+            var sample = '';
+            for (var i = 0; i < Math.min(200, data.length); i += 10) {
+                sample += data[i].toFixed(8) + ',';
+            }
+            return fnv1a32(sample);
+        }).then(function (hash) { return hash; }, function () { return ''; });
+    }
+
+    /**
+     * Read the WebGL UNMASKED_RENDERER_WEBGL / UNMASKED_VENDOR_WEBGL
+     * strings via the WEBGL_debug_renderer_info extension. If the
+     * extension is blocked (common in Firefox + Brave), return
+     * "masked-by-browser" explicitly — that string is informative,
+     * not an error.
+     */
+    function readWebglInfo() {
+        var canvas = document.createElement('canvas');
+        var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return { renderer: '', vendor: '' };
+        var ext = gl.getExtension && gl.getExtension('WEBGL_debug_renderer_info');
+        if (!ext) {
+            // Browser is intentionally blocking — that's the answer.
+            return { renderer: 'masked-by-browser', vendor: 'masked-by-browser' };
+        }
+        var renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
+        var vendor   = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)   || '';
+        return { renderer: String(renderer), vendor: String(vendor) };
+    }
+
+    /**
+     * Detect installed fonts by measuring rendered text width against a
+     * fallback. The fixed test string + fixed fallback keeps the test
+     * deterministic across calls.
+     */
+    function detectInstalledFonts() {
+        var testFonts = [
+            'Arial', 'Arial Black', 'Arial Narrow', 'Arial Rounded MT Bold',
+            'Calibri', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel',
+            'Courier New', 'Franklin Gothic Medium', 'Garamond', 'Georgia',
+            'Helvetica', 'Helvetica Neue', 'Impact', 'Lucida Console', 'Lucida Sans Unicode',
+            'Microsoft Sans Serif', 'Palatino Linotype', 'Segoe UI', 'Symbol', 'Tahoma',
+            'Times New Roman', 'Trebuchet MS', 'Verdana', 'Webdings', 'Wingdings',
+            // Common Adobe / Google Fonts.
+            'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Source Sans Pro', 'Noto Sans',
+            'PT Sans', 'Oswald'
+        ];
+        var baseFonts = ['monospace', 'sans-serif', 'serif'];
+        var testText = 'mmmmmmmmmmlli';
+        var testSize = '72px';
+        var body = document.body || document.documentElement;
+        var span = document.createElement('span');
+        span.style.position   = 'absolute';
+        span.style.left       = '-9999px';
+        span.style.fontSize   = testSize;
+        span.style.lineHeight = 'normal';
+        span.textContent      = testText;
+        body.appendChild(span);
+
+        // Baseline widths for the three generic families.
+        var defaults = {};
+        baseFonts.forEach(function (family) {
+            span.style.fontFamily = family;
+            defaults[family] = span.offsetWidth;
+        });
+
+        var installed = [];
+        for (var i = 0; i < testFonts.length; i++) {
+            var f = testFonts[i];
+            var matched = false;
+            for (var j = 0; j < baseFonts.length; j++) {
+                span.style.fontFamily = "'" + f + "'," + baseFonts[j];
+                if (span.offsetWidth !== defaults[baseFonts[j]]) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) installed.push(f);
+        }
+        body.removeChild(span);
+        return installed;
     }
 
     /* ---------- WebRTC collector ---------- */
@@ -1110,6 +1328,8 @@
         var tbl = el('table', { class: 'pc-info-table' });
         var ua = report.user_agent || {};
         var fp = report.fingerprint || {};
+        var hashes = report.fingerprint_hashes || {};
+        var entropy = fp.entropy || {};
         var vis = (fp.level || 'low');
         var rows = [
             ['Browser',   ua.browser || '\u2014'],
@@ -1128,6 +1348,99 @@
                 el('td', { text: r[1] })
             ]));
         });
+
+        // ---- Phase 3 rows: real hash / renderer / font signals ----
+        // Canvas hash (with the "this is your ID" framing from the guide).
+        var canvasHash = hashes.canvas_hash || '';
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.fpCanvasHash || 'Canvas hash' }),
+            el('td', { mono: true, text: canvasHash || (I18N.fpUnavailable || 'unavailable') })
+        ]));
+        // Audio hash.
+        var audioHash = hashes.audio_hash || '';
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.fpAudioHash || 'Audio hash' }),
+            el('td', { mono: true, text: audioHash || (I18N.fpUnavailable || 'unavailable') })
+        ]));
+        // WebGL renderer — explicit "browser is blocking this — good
+        // sign" messaging when the sentinel value is returned.
+        var renderer = hashes.webgl_renderer || '';
+        var isMasked = renderer === 'masked-by-browser';
+        var rendererCell;
+        if (isMasked) {
+            rendererCell = el('td', {}, [
+                document.createTextNode(renderer + ' '),
+                el('span', { class: 'pc-badge pc-badge--ok', text: I18N.fpWebglMasked || 'browser is blocking this — good sign' })
+            ]);
+        } else {
+            rendererCell = el('td', { mono: true, text: renderer || (I18N.fpUnavailable || 'unavailable') });
+        }
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.fpWebglRenderer || 'WebGL renderer' }),
+            rendererCell
+        ]));
+        // WebGL vendor (smaller value; no special treatment for masked
+        // because the renderer line already conveys it).
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.fpWebglVendor || 'WebGL vendor' }),
+            el('td', { mono: true, text: hashes.webgl_vendor || (I18N.fpUnavailable || 'unavailable') })
+        ]));
+        // Installed fonts — count + expandable full list.
+        var fontList = Array.isArray(hashes.font_list) ? hashes.font_list : [];
+        var fontCount = fontList.length;
+        var fontCountCell = el('td', {}, [
+            el('strong', { text: String(fontCount) }),
+            fontCount > 0 ? document.createTextNode(' ' + (I18N.fpFontCountInstalled || 'fonts detected')) : document.createTextNode('')
+        ]);
+        if (fontCount > 0) {
+            var expandBtn = el('button', {
+                type: 'button',
+                class: 'pc-btn pc-btn--ghost pc-fp-list__toggle',
+                text: I18N.fpShowFonts || 'Show list',
+                'aria-expanded': 'false'
+            });
+            var listWrap = el('div', { class: 'pc-fp-list', hidden: true });
+            var listInner = el('ul', { class: 'pc-fp-list__items' });
+            fontList.forEach(function (name) {
+                listInner.appendChild(el('li', { class: 'pc-fp-list__item', text: name }));
+            });
+            listWrap.appendChild(listInner);
+            expandBtn.addEventListener('click', function () {
+                var hidden = listWrap.hasAttribute('hidden');
+                if (hidden) {
+                    listWrap.removeAttribute('hidden');
+                    expandBtn.textContent = I18N.fpHideFonts || 'Hide list';
+                    expandBtn.setAttribute('aria-expanded', 'true');
+                } else {
+                    listWrap.setAttribute('hidden', '');
+                    expandBtn.textContent = I18N.fpShowFonts || 'Show list';
+                    expandBtn.setAttribute('aria-expanded', 'false');
+                }
+            });
+            var btnWrap = el('div', { style: 'margin-top: 0.4rem;' });
+            btnWrap.appendChild(expandBtn);
+            btnWrap.appendChild(listWrap);
+            fontCountCell.appendChild(btnWrap);
+        }
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.fpFontCount || 'Installed fonts' }),
+            fontCountCell
+        ]));
+
+        // Entropy readout (bits + uniqueness estimate) — one combined row.
+        if (entropy && typeof entropy.bits === 'number') {
+            var entropyCell = el('td', {}, [
+                el('strong', { text: entropy.bits + ' bits' }),
+                entropy.uniqueness_estimate
+                    ? document.createTextNode(' — ' + entropy.uniqueness_estimate)
+                    : document.createTextNode('')
+            ]);
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.fpEntropyLabel || 'Fingerprint entropy' }),
+                entropyCell
+            ]));
+        }
+
         tbl.appendChild(tbody);
         card.appendChild(tbl);
         return card;
@@ -1902,20 +2215,21 @@
             region.innerHTML = '';
             region.appendChild(statusBanner('loading', 'Collecting browser signals…'));
             button.disabled = true;
-            var fp = collectFingerprint();
-            // Send to /scan with the fingerprint payload so the server can
-            // normalize it through the same scoring engine the dashboard uses.
-            api('scan', {
-                method: 'POST',
-                body: { fingerprint: fp }
-            }).then(function (resp) {
-                region.innerHTML = '';
-                button.disabled = false;
-                if (!resp.ok || !resp.data) {
-                    region.appendChild(statusBanner('error', (resp.data && (resp.data.message || resp.data.error)) || 'Fingerprint failed.'));
-                    return;
-                }
-                renderFingerprintResult(region, fp, resp.data);
+            collectFingerprint().then(function (fp) {
+                // Send to /scan with the fingerprint payload so the server can
+                // normalize it through the same scoring engine the dashboard uses.
+                return api('scan', {
+                    method: 'POST',
+                    body: { fingerprint: fp }
+                }).then(function (resp) {
+                    region.innerHTML = '';
+                    button.disabled = false;
+                    if (!resp.ok || !resp.data) {
+                        region.appendChild(statusBanner('error', (resp.data && (resp.data.message || resp.data.error)) || 'Fingerprint failed.'));
+                        return;
+                    }
+                    renderFingerprintResult(region, fp, resp.data);
+                });
             }).catch(function () {
                 region.innerHTML = '';
                 button.disabled = false;
@@ -3809,7 +4123,7 @@
         }
 
         advance(); // ip
-        var fingerprint = collectFingerprint();
+        var fingerprint = collectFingerprint().then(function (fp) { return fp; });
 
         // Run WebRTC in parallel; UI updates sequentially.
         var webrtcPromise = runWebrtcTest();
@@ -3834,10 +4148,12 @@
             complete('reputation');
             if (resp.ok) {
                 advance(); // fingerprint
-                return webrtcPromise.then(function (webrtcData) {
+                return Promise.all([fingerprint, webrtcPromise]).then(function (results) {
+                    var fp = results[0] || {};
+                    var webrtcData = results[1] || {};
                     return api('scan', {
                         method: 'POST',
-                        body: Object.assign({}, fingerprint, { webrtc: webrtcData })
+                        body: Object.assign({}, fp, { webrtc: webrtcData })
                     });
                 });
             }

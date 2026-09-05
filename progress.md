@@ -48,6 +48,38 @@ diff review between phases — not all at once.
       `dns_test_result` added to the `collect_client_signals()`
       allowlist so the JS can pass a completed test back in. 14 new
       PHPUnit tests (135 total, all green).
+- [x] **Phase 3 — Advanced fingerprint exposure module** (`(this commit)`).
+      Real fingerprint computation in the browser, replacing the old
+      boolean presence flags. New `collectFingerprint()` is async
+      (offline-audio render takes a tick) and computes:
+      - `canvas_hash` — FNV-1a 32-bit over `toDataURL()` of a fixed
+        text+shapes scene (~15 bits of entropy).
+      - `audio_hash` — FNV-1a 32-bit over first 200 samples (10-step
+        stride) of an `OfflineAudioContext` triangle-osc → compressor
+        → destination render (~15 bits).
+      - `webgl_renderer` / `webgl_vendor` — read via
+        `WEBGL_debug_renderer_info`, or explicit `"masked-by-browser"`
+        sentinel when the extension is blocked (~6 bits unmasked; the
+        masked sentinel counts as an anti-fingerprinting GOOD sign).
+      - `font_list` — 38 common fonts tested by width comparison against
+        `monospace`/`sans-serif`/`serif` fallbacks; baseline of 8 is
+        free, each additional font is +1 bit (~2 bits for a typical
+        install).
+      Added `Fingerprint::entropy_estimate()` that sums signal bits
+      (capped at 100), produces a human-readable "Roughly 1 in N
+      visitors share this fingerprint — ..." line, and a per-signal
+      breakdown dict. `estimate_visibility()` now averages the old
+      boolean-flag score with the entropy score so the existing
+      consumers (`exposure_score`, `level`, `signals`) keep their
+      meaning. New top-level `masked_signals` list for the UI to
+      distinguish "browser blocking this — good" from missing data.
+      The orchestrator echoes the raw hashes back under
+      `report.fingerprint_hashes` so the JS card can render them. Card
+      gets 6 new rows (canvas hash, audio hash, WebGL renderer/vendor
+      with masked pill, font count + expandable list, entropy line). 11
+      new i18n strings, new CSS for `.pc-fp-list__*`. 11 new PHPUnit
+      tests (146 total, all green). TODO comment in `entropy_estimate()`
+      marks the seam for future population-stats wiring.
 - [ ] **Phase 3 — Advanced fingerprint exposure module** (real canvas /
       WebGL / audio hashing + entropy score). Largest single chunk,
       splits in two sub-sessions per the guide: JS collection first,

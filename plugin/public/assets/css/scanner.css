@@ -1951,6 +1951,12 @@
 .pc-severity--medium .pc-mismatch-list__badge { background: rgba(240,160,32,0.15); color: #b87c0a; }
 .pc-severity--high .pc-mismatch-list__badge   { background: rgba(220,53,69,0.15); color: #dc3545; }
 
+/* Installed-font list (Phase 3) — collapsible under the fingerprint card. */
+.pc-fp-list                { margin-top: 0.4rem; max-height: 240px; overflow-y: auto; background: var(--pc-surface); border: 1px solid var(--pc-border); border-radius: 6px; padding: 0.4rem 0.6rem; }
+.pc-fp-list__items         { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.pc-fp-list__item          { font-size: 0.74rem; font-family: var(--pc-font-mono); padding: 2px 8px; border-radius: 4px; background: rgba(15, 23, 42, 0.04); border: 1px solid var(--pc-border); color: var(--pc-text); }
+.pc-fp-list__toggle        { font-size: 0.78rem; padding: 2px 10px; }
+
 /* =========================================================
    23. Dashboard CTA row
    ========================================================= */

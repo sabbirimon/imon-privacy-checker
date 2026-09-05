@@ -83,6 +83,21 @@ final class ScannerOrchestrator {
 
         $visibility = Fingerprint::estimate_visibility( $client_signals );
 
+        // Surface the raw Phase 3 fingerprint signals alongside the score
+        // so the JS card can render them (canvas/audio hashes, WebGL
+        // renderer/vendor, font list). These are echoed back verbatim —
+        // no transformation here; the entropy estimator already folded
+        // them into $visibility['entropy'].
+        $fingerprint_hashes = array(
+            'canvas_hash'    => isset( $client_signals['canvas_hash'] )    ? (string) $client_signals['canvas_hash'] : '',
+            'audio_hash'     => isset( $client_signals['audio_hash'] )     ? (string) $client_signals['audio_hash']  : '',
+            'webgl_renderer' => isset( $client_signals['webgl_renderer'] ) ? (string) $client_signals['webgl_renderer'] : '',
+            'webgl_vendor'   => isset( $client_signals['webgl_vendor'] )   ? (string) $client_signals['webgl_vendor']   : '',
+            'font_list'      => ( isset( $client_signals['font_list'] ) && is_array( $client_signals['font_list'] ) )
+                ? array_values( array_map( 'strval', $client_signals['font_list'] ) )
+                : array(),
+        );
+
         $webrtc_summary = Webrtc::summarize( $client_signals['webrtc'] ?? array() );
 
         // Anonymity consistency — correlates IP-geo timezone, browser-reported
@@ -134,7 +149,8 @@ final class ScannerOrchestrator {
             'connection'    => $connection,
             'reputation'    => $reputation,
             'user_agent'    => $ua_parsed,
-            'fingerprint'   => $visibility,
+            'fingerprint'      => $visibility,
+            'fingerprint_hashes' => $fingerprint_hashes,
             'webrtc'        => $webrtc_summary,
             'dns_test'      => $dns_test_state,
             'scores'        => $score,
