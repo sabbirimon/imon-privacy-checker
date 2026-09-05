@@ -84,8 +84,30 @@ diff review between phases — not all at once.
       WebGL / audio hashing + entropy score). Largest single chunk,
       splits in two sub-sessions per the guide: JS collection first,
       pause for review, then PHP scoring.
-- [ ] **Phase 4 — Security posture panel** (TLS version/cipher,
-      browser EOL check, reusing `class-security-headers.php`).
+- [x] **Phase 4 — Security posture panel** (`(this commit)`). Two
+      small pure-data classes (no I/O) and a new compact card in the
+      scan-report right column. Surfaces the TLS protocol version +
+      negotiated cipher for the connection that's currently serving the
+      page, plus a browser EOL check (Chrome / Firefox / Safari / Edge)
+      based on the visitor's `navigator.userAgent`. Reads
+      `$_SERVER['SSL_PROTOCOL']` / `'SSL_CIPHER'` (Apache / LiteSpeed) +
+      `HTTPS_TLS_VERSION` / `HTTPS_TLS_CIPHER` (nginx via
+      `fastcgi_param`); treats proxy-forwarded keys cautiously — only
+      what the web server saw on the local socket counts. When no TLS
+      info is available (visitor is behind a TLS-terminating proxy that
+      didn't forward the handshake), returns explicit `'unknown'`
+      status with a human-readable note rather than guessing. TLS
+      classification: TLSv1.3 → `modern`, TLSv1.2 → `acceptable`, older
+      TLS / SSL → `outdated`. Browser thresholds per family:
+      Chrome 130/100, Firefox 125/100, Safari 17/14, Edge 130/100 (Edge
+      shares Chrome's cycle). Status mapped to pill colours
+      (`pc-pill--pass/info/warning/danger/unknown`) and a one-line
+      advisory. New files: `class-tls-info.php` + `class-browser-versions.php`
+      + their PHPUnit suites (10 + 14 tests). `ScannerOrchestrator::scan()`
+      returns `security_posture: {tls, browser}` on every `/scan`
+      response. 10 new `sp*` i18n strings; `securityPostureCard()`
+      renders between `fingerprintTableCard()` and
+      `scoreBreakdownCard()`. **170 tests / 600 assertions, all green.**
 - [ ] **Phase 5 — Local network exposure** (LAN self-scan,
       RFC1918-scoped only, pure client-side).
 - [ ] **Phase 6 — Composite report assembly** (integrates Phases 1-5

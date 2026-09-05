@@ -793,6 +793,7 @@
             } catch (e) { /* noop — leave the placeholder */ }
         });
         rightCol.appendChild(fingerprintTableCard(report));
+        rightCol.appendChild(securityPostureCard(report));
         rightCol.appendChild(scoreBreakdownCard(report));
 
         cols.appendChild(leftCol);
@@ -1313,6 +1314,103 @@
             });
             card.appendChild(list);
         }
+        return card;
+    }
+
+    /**
+     * Security Posture card (Phase 4 of IMON-BUILD-GUIDE.md).
+     * Reports the TLS protocol + cipher negotiated for the current request,
+     * plus a browser EOL advisory based on the visitor's User-Agent.
+     * Both pieces of data come from report.security_posture.{tls,browser}.
+     *
+     * Renders a compact data table with severity-coded status pills. When
+     * the TLS info is unavailable (e.g. plain HTTP or a proxy that didn't
+     * forward the handshake), we show an explicit informational row — not
+     * a missing-data error.
+     */
+    function securityPostureCard(report) {
+        var sp = (report && report.security_posture) || {};
+        var tls = sp.tls || {};
+        var browser = sp.browser || {};
+
+        var card = el('section', { class: 'pc-card', 'data-pc-component': 'security-posture' });
+        var head = el('div', { class: 'pc-card__head' });
+        head.appendChild(el('div', { class: 'pc-card__icon', 'aria-hidden': 'true', text: '\u{1F6E1}' }));
+        head.appendChild(el('div', { class: 'pc-card__title-block' }, [
+            el('h3', { class: 'pc-card__title', text: I18N.spTitle || 'SECURITY POSTURE' }),
+            el('p',  { class: 'pc-card__subtitle', text: I18N.spLede || 'TLS version, cipher, and your browser\'s update status — for the connection you\'re using right now.' })
+        ]));
+        card.appendChild(head);
+
+        var tbl = el('table', { class: 'pc-info-table' });
+        var tbody = el('tbody');
+
+        // ---- TLS row ----
+        var tlsPill = ({
+            modern: 'pc-pill--pass', acceptable: 'pc-pill--info', outdated: 'pc-pill--danger', unknown: 'pc-pill--unknown'
+        })[tls.status] || 'pc-pill--unknown';
+        var tlsPillText = ({
+            modern: 'Modern', acceptable: 'Acceptable', outdated: 'Outdated', unknown: 'Unknown'
+        })[tls.status] || (I18N.unable || '\u2014');
+
+        // Protocol value cell: status pill + protocol string + cipher.
+        var tlsCellContents = [
+            el('span', { class: 'pc-pill ' + tlsPill, text: tlsPillText })
+        ];
+        if (tls.protocol) {
+            tlsCellContents.push(el('span', { 'is-mono': true, 'style': 'margin-left: 6px;', text: tls.protocol }));
+        }
+        if (tls.cipher && tls.cipher !== tls.protocol) {
+            tlsCellContents.push(el('span', { class: 'pc-pill-soft', 'style': 'margin-left: 6px; font-size: 0.7rem;', text: tls.cipher }));
+        }
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.spTlsLabel || 'TLS' }),
+            el('td', {}, tlsCellContents)
+        ]));
+        // Cipher sub-row (only when there's something separate from the protocol).
+        if (tls.note) {
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.spTlsNote || 'Note' }),
+                el('td', { text: tls.note })
+            ]));
+        }
+
+        // ---- Browser EOL row ----
+        var browserPill = ({
+            current: 'pc-pill--pass',
+            outdated: 'pc-pill--warning',
+            very_outdated: 'pc-pill--danger',
+            unknown_family: 'pc-pill--unknown',
+            unknown_version: 'pc-pill--unknown'
+        })[browser.status] || 'pc-pill--unknown';
+        var browserPillText = ({
+            current: I18N.spStatusCurrent || 'Current',
+            outdated: I18N.spStatusOutdated || 'Outdated',
+            very_outdated: I18N.spStatusVeryOutdated || 'Very outdated',
+            unknown_family: I18N.spStatusUnknown || 'Unknown',
+            unknown_version: I18N.spStatusUnknown || 'Unknown'
+        })[browser.status] || (I18N.unable || '\u2014');
+
+        var browserLabel = browser.browser || '\u2014';
+        if (browser.version) {
+            browserLabel += ' ' + browser.version;
+        }
+        tbody.appendChild(el('tr', {}, [
+            el('th', { text: I18N.spBrowserLabel || 'Browser status' }),
+            el('td', {}, [
+                el('span', { class: 'pc-pill ' + browserPill, text: browserPillText }),
+                el('span', { 'style': 'margin-left: 6px;', text: browserLabel })
+            ])
+        ]));
+        if (browser.message) {
+            tbody.appendChild(el('tr', {}, [
+                el('th', { text: I18N.spBrowserNote || 'Advisory' }),
+                el('td', { text: browser.message })
+            ]));
+        }
+
+        tbl.appendChild(tbody);
+        card.appendChild(tbl);
         return card;
     }
 

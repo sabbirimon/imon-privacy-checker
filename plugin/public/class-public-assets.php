@@ -367,6 +367,18 @@ final class PublicAssets {
                 'fpEntropyLabel'       => __( 'Fingerprint entropy', 'privacy-checker' ),
                 'fpUnavailable'        => __( 'unavailable', 'privacy-checker' ),
 
+                // Security posture card (Phase 4 of IMON-BUILD-GUIDE.md).
+                'spTitle'              => __( 'Security Posture', 'privacy-checker' ),
+                'spLede'               => __( 'TLS version, cipher, and your browser\'s update status — for the connection you\'re using right now.', 'privacy-checker' ),
+                'spTlsLabel'           => __( 'TLS', 'privacy-checker' ),
+                'spTlsNote'            => __( 'Note', 'privacy-checker' ),
+                'spBrowserLabel'       => __( 'Browser status', 'privacy-checker' ),
+                'spBrowserNote'        => __( 'Advisory', 'privacy-checker' ),
+                'spStatusCurrent'      => __( 'Current', 'privacy-checker' ),
+                'spStatusOutdated'     => __( 'Outdated', 'privacy-checker' ),
+                'spStatusVeryOutdated' => __( 'Very outdated', 'privacy-checker' ),
+                'spStatusUnknown'      => __( 'Unknown', 'privacy-checker' ),
+
                 'geoTitle'        => __( 'Geo Traceroute', 'privacy-checker' ),
                 'geoLede'         => __( 'Project your connection hops onto a world map. Animated packets trace the path between your device and the destination.', 'privacy-checker' ),
                 'geoRun'          => __( 'Trace Route', 'privacy-checker' ),

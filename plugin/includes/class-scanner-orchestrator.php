@@ -81,6 +81,17 @@ final class ScannerOrchestrator {
         $ua = (string) ( $_SERVER['HTTP_USER_AGENT'] ?? '' );
         $ua_parsed = Fingerprint::parse_user_agent( $ua );
 
+        // Security posture — TLS info for the current request + browser
+        // EOL advisory. Both classes are pure data, no I/O. Reuses the
+        // already-parsed $ua_parsed so we don't re-parse the UA.
+        $security_posture = array(
+            'tls'     => TlsInfo::current_request_info(),
+            'browser' => BrowserVersions::check(
+                (string) ( $ua_parsed['browser'] ?? '' ),
+                self::major_version_from_string( $ua_parsed['version'] ?? null )
+            ),
+        );
+
         $visibility = Fingerprint::estimate_visibility( $client_signals );
 
         // Surface the raw Phase 3 fingerprint signals alongside the score
@@ -147,6 +158,7 @@ final class ScannerOrchestrator {
                 'is_mock'   => Plugin::instance()->is_dev_mode(),
             ),
             'connection'    => $connection,
+            'security_posture' => $security_posture,
             'reputation'    => $reputation,
             'user_agent'    => $ua_parsed,
             'fingerprint'      => $visibility,
@@ -236,6 +248,22 @@ final class ScannerOrchestrator {
             'anonymity' => $anonymity,
             'breakdown' => $breakdown,
         );
+    }
+
+    /**
+     * Convert a Fingerprint::parse_user_agent()['version'] string like
+     * "130.0.1" into a major-version integer (130). Returns null for
+     * null/empty/non-numeric input.
+     *
+     * @param mixed $version
+     * @return int|null
+     */
+    private static function major_version_from_string( $version ): ?int {
+        if ( ! is_string( $version ) || '' === $version ) {
+            return null;
+        }
+        $head = explode( '.', $version, 2 )[0];
+        return ctype_digit( $head ) ? (int) $head : null;
     }
 
     /**
