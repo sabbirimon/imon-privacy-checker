@@ -173,6 +173,31 @@ final class PublicAssetsV2 {
                 'recTitle'         => __( 'What you can do', 'privacy-checker' ),
                 'scorePending'     => __( 'Score pending', 'privacy-checker' ),
                 'dnsNotRun'        => __( 'DNS test not yet run — the probe runs automatically with each scan.', 'privacy-checker' ),
+                // Plain-language (ELI5) labels — when the visitor flips the
+                // "Explain simply" toggle, the card titles and finding
+                // messages use these instead of the technical names.
+                'eli5'             => array(
+                    'ip'                 => __( 'Your Internet Address', 'privacy-checker' ),
+                    'reputation'         => __( 'How others see your address', 'privacy-checker' ),
+                    'dns'                => __( 'Who looks up websites for you', 'privacy-checker' ),
+                    'webrtc'             => __( 'Video-call leak risk', 'privacy-checker' ),
+                    'fingerprint'        => __( 'How unique your browser looks', 'privacy-checker' ),
+                    'user_agent'         => __( 'What your browser tells websites', 'privacy-checker' ),
+                    'ipv6'               => __( 'Modern Internet address', 'privacy-checker' ),
+                    'consistency'        => __( 'Do your signals agree?', 'privacy-checker' ),
+                    'security_posture'   => __( 'Are you using a secure browser?', 'privacy-checker' ),
+                    'proxy'              => __( 'Are you hiding behind a relay?', 'privacy-checker' ),
+                    'connection_quality' => __( 'How stable is your connection', 'privacy-checker' ),
+                    'local_network'      => __( 'Your home network', 'privacy-checker' ),
+                    'ip_exposure'        => __( 'How visible your address is', 'privacy-checker' ),
+                    'dns_leak'           => __( 'Are DNS requests leaking', 'privacy-checker' ),
+                    'connection'         => __( 'How you connect', 'privacy-checker' ),
+                    'anonymity'          => __( 'How anonymous you look', 'privacy-checker' ),
+                    'browser'            => __( 'About your browser', 'privacy-checker' )
+                ),
+                'eli5ToggleLabel'  => __( 'Explain simply', 'privacy-checker' ),
+                'eli5ToggleOn'     => __( 'Showing plain-language explanations', 'privacy-checker' ),
+                'eli5ToggleOff'    => __( 'Showing technical details', 'privacy-checker' ),
             ),
         ) );
     }
@@ -204,6 +229,15 @@ final class PublicAssetsV2 {
                     <a href="<?php echo esc_url( home_url( '/user-guide/' ) ); ?>"><?php esc_html_e( 'About', 'privacy-checker' ); ?></a>
                 </nav>
                 <div class="pcv2__header-actions">
+                    <button
+                        type="button"
+                        class="pcv2__eli5-toggle"
+                        data-pcv2-action="eli5-cycle"
+                        aria-pressed="false"
+                        title="<?php esc_attr_e( 'Explain simply', 'privacy-checker' ); ?>"
+                    >
+                        <span class="pcv2__eli5-toggle-label"><?php esc_html_e( 'ELI5', 'privacy-checker' ); ?></span>
+                    </button>
                     <button
                         type="button"
                         class="pcv2__theme-toggle"

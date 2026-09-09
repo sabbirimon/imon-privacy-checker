@@ -553,7 +553,14 @@
         items.forEach(function (it) {
             var pct = pctOrNull(it.value);
             var tone = severityFromScore(pct);
-            var li = el('li', { class: 'pcv2__bar-chart-row', 'data-pcv2-tone': tone });
+            var liAttrs = { class: 'pcv2__bar-chart-row', 'data-pcv2-tone': tone };
+            // Stash the raw category key on the row so the ELI5 toggle
+            // can re-label without re-rendering. `it.key` is supplied by
+            // the caller; fall back to a label-derived slug.
+            if (it.key) {
+                liAttrs['data-pcv2-key'] = it.key;
+            }
+            var li = el('li', liAttrs);
             li.appendChild(el('span', { class: 'pcv2__bar-chart-label', text: it.label }));
             var track = el('span', {
                 class: 'pcv2__bar-chart-track',
@@ -626,7 +633,13 @@
      * Build a sub-score "mini card" with its own little ring + label.
      */
     function renderMiniScoreCard(opts) {
-        var card = el('div', { class: 'pcv2__mini-card' });
+        var cardAttrs = { class: 'pcv2__mini-card' };
+        if (opts.key) {
+            // Stash the raw category key so the ELI5 toggle can find
+            // and re-label this card without a re-render.
+            cardAttrs['data-pcv2-key'] = opts.key;
+        }
+        var card = el('div', cardAttrs);
         var tone = severityFromScoreTone(opts.value);
         var ring = renderRingGauge({
             size: 'mini',
@@ -688,7 +701,8 @@
             var pct = (v && typeof v === 'object') ? (v.score || v.percent) : v;
             grid.appendChild(renderMiniScoreCard({
                 value: pct,
-                label: prettySubLabel(k)
+                label: prettySubLabel(k),
+                key: k
             }));
         });
         if (keys.length === 0) {
@@ -699,7 +713,8 @@
                 var c = cats[k];
                 grid.appendChild(renderMiniScoreCard({
                     value: c && (c.score || c.percent),
-                    label: prettySubLabel(k)
+                    label: prettySubLabel(k),
+                    key: k
                 }));
             });
         }
@@ -734,6 +749,13 @@
         browser:            'Browser'
     };
     function prettySubLabel(k) {
+        // ELI5 mode: when the visitor enabled the "Explain simply"
+        // toggle, return the plain-language label from the i18n
+        // dictionary. Falls through to the technical label if no ELI5
+        // entry exists for this key.
+        if (PCV2.eli5Enabled && PCV2.i18n && PCV2.i18n.eli5 && PCV2.i18n.eli5[k]) {
+            return PCV2.i18n.eli5[k];
+        }
         if (CATEGORY_LABELS[k]) return CATEGORY_LABELS[k];
         return String(k)
             .replace(/_/g, ' ')
@@ -966,7 +988,7 @@
                 subKeys.forEach(function (k) {
                     var v = subs[k] || {};
                     var pct = typeof v === 'object' ? (v.score || v.percent) : v;
-                    barItems.push({ label: prettySubLabel(k), value: pct });
+                    barItems.push({ label: prettySubLabel(k), value: pct, key: k });
                 });
                 var barChart = renderBarChart(barItems);
                 renderCard(card, PCV2.i18n.overviewTitle || 'Overview', el('div', null, [ovSummary, barChart]));
@@ -1125,7 +1147,13 @@
             var sev = severityFromScore(scoreVal);
 
             // Native <details> wrapper for a11y + keyboard support out of the box.
-            var details = el('details', { class: 'pcv2__finding', 'data-pcv2-severity': sev });
+            var detailsAttrs = {
+                class: 'pcv2__finding',
+                'data-pcv2-severity': sev,
+                'data-pcv2-key': k,
+                'data-pcv2-score': String(scoreVal)
+            };
+            var details = el('details', detailsAttrs);
 
             // Summary row (always visible, clickable).
             var summary = el('summary', { class: 'pcv2__finding-summary' });
@@ -1478,6 +1506,118 @@
 
     /* ---------- boot ---------------------------------------------------- */
 
+    /**
+     * Read the persisted "Explain simply" preference. The toggle is
+     * per-session: localStorage. Default is OFF (technical labels).
+     */
+    function readEli5Pref() {
+        try { return window.localStorage.getItem('pcv2_eli5') === '1'; }
+        catch (_e) { return false; }
+    }
+    function storeEli5Pref(on) {
+        try { window.localStorage.setItem('pcv2_eli5', on ? '1' : '0'); }
+        catch (_e) { /* localStorage blocked — preference is best-effort */ }
+    }
+
+    function initEli5Toggle() {
+        // Apply the stored preference to the live state + DOM. We don't
+        // re-render the whole report here — prettySubLabel() reads
+        // PCV2.eli5Enabled on every call, and the next render (rescan,
+        // theme switch, etc.) will pick it up. But we DO update the
+        // visible labels on the already-rendered cards so the toggle
+        // feels instant.
+        PCV2.eli5Enabled = readEli5Pref();
+        syncEli5Button();
+
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-pcv2-action="eli5-cycle"]');
+            if (!btn) return;
+            PCV2.eli5Enabled = !PCV2.eli5Enabled;
+            storeEli5Pref(PCV2.eli5Enabled);
+            syncEli5Button();
+            // Re-run the report render so every visible label
+            // (overview bar chart, finding rows, mini-card titles)
+            // reflects the new mode. We pull the last report out of
+            // the bar's __report stash, or fall back to a re-scan.
+            reapplyEli5Labels();
+        });
+    }
+
+    function syncEli5Button() {
+        var btn = document.querySelector('.pcv2 [data-pcv2-action="eli5-cycle"]');
+        if (!btn) return;
+        btn.setAttribute('aria-pressed', PCV2.eli5Enabled ? 'true' : 'false');
+        btn.title = PCV2.eli5Enabled
+            ? (PCV2.i18n.eli5ToggleOn || 'Showing plain-language explanations')
+            : (PCV2.i18n.eli5ToggleOff || 'Showing technical details');
+        var lbl = btn.querySelector('.pcv2__eli5-toggle-label');
+        if (lbl) lbl.textContent = PCV2.eli5Enabled ? 'ELI5 ✓' : 'ELI5';
+    }
+
+    /**
+     * Re-render the score hero + bar chart + findings + cards using
+     * the current ELI5 mode. We don't have a stored last-report handle
+     * at module scope, so we walk the rendered DOM and rewrite the
+     * static label slots. This is cheap and avoids re-running the
+     * scan network round-trip.
+     */
+    function reapplyEli5Labels() {
+        var dashboard = document.querySelector('[data-pcv2-component="dashboard"]');
+        if (!dashboard) return;
+
+        // Card titles — the cards are rendered server-side as static
+        // articles with `data-pcv2-card`. We re-render the title only;
+        // the body is more expensive to walk and the dynamic bits
+        // (status chips, key/value rows) are data-bound.
+        var titles = {
+            overview:    PCV2.i18n.overviewTitle   || 'Overview',
+            connection:  PCV2.i18n.connectionTitle || 'Connection',
+            anonymity:   PCV2.i18n.anonymityTitle  || 'Anonymity',
+            dns:         PCV2.i18n.dnsTitle        || 'DNS Resolver',
+            browser:     PCV2.i18n.browserTitle    || 'Browser Privacy',
+            security:    PCV2.i18n.securityTitle   || 'Security Findings'
+        };
+        Object.keys(titles).forEach(function (key) {
+            var card = dashboard.querySelector('[data-pcv2-card="' + key + '"]');
+            if (!card) return;
+            var h = card.querySelector('[data-pcv2-region="card-title"]');
+            if (h) h.textContent = titles[key];
+        });
+
+        // Bar chart labels — these are the per-category rows on the
+        // Overview card. We have to know the original keys to map
+        // them to the new labels, so we read the data attribute that
+        // we stashed on each bar row during render (see
+        // renderBarChart()).
+        var bars = dashboard.querySelectorAll('.pcv2__bar-chart-row[data-pcv2-key]');
+        bars.forEach(function (row) {
+            var key = row.getAttribute('data-pcv2-key');
+            var lbl = row.querySelector('.pcv2__bar-chart-label');
+            if (key && lbl) lbl.textContent = prettySubLabel(key);
+        });
+
+        // Finding rows — the expandable Privacy Findings list also
+        // stores the original key.
+        var findings = dashboard.querySelectorAll('.pcv2__finding[data-pcv2-key]');
+        findings.forEach(function (f) {
+            var key = f.getAttribute('data-pcv2-key');
+            var title = f.querySelector('.pcv2__finding-title');
+            if (!key || !title) return;
+            // The original title is "Label — NN / 100". Re-build it
+            // from the stored score so we don't lose the number.
+            var score = f.getAttribute('data-pcv2-score') || '';
+            title.textContent = prettySubLabel(key) + (score ? ' — ' + score + ' / 100' : '');
+        });
+
+        // Mini-card labels on the score hero (sub-score titles).
+        var miniCards = dashboard.querySelectorAll('.pcv2__mini-card[data-pcv2-key]');
+        miniCards.forEach(function (c) {
+            var key = c.getAttribute('data-pcv2-key');
+            var lbl = c.querySelector('.pcv2__mini-card-label');
+            if (key && lbl) lbl.textContent = prettySubLabel(key);
+        });
+    }
+
     function initThemeToggle() {
         applyTheme(readStoredTheme());
         // React to system theme changes while in 'system' mode.
@@ -1526,6 +1666,7 @@
     }
 
     ready(function () {
+        initEli5Toggle();
         initThemeToggle();
         initDashboard();
         PCV2.initialized = true;

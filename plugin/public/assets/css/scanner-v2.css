@@ -346,6 +346,37 @@
   transform: translateY(-1px);
 }
 
+/* ELI5 (Explain Like I'm Five) toggle — sibling of the theme toggle,
+   pill-shaped with a text label so it's discoverable. */
+.pcv2__eli5-toggle {
+  height: 38px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface);
+  color: var(--pcv2-text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.pcv2__eli5-toggle:hover {
+  background: var(--pcv2-surface-strong);
+  transform: translateY(-1px);
+}
+.pcv2__eli5-toggle[aria-pressed="true"] {
+  background: var(--pcv2-action);
+  border-color: var(--pcv2-action);
+  color: var(--pcv2-action-fg);
+}
+.pcv2__eli5-toggle-label {
+  display: inline-block;
+  line-height: 1;
+}
+
 /* ============================================================== */
 /* Buttons                                                        */
 /* ============================================================== */
