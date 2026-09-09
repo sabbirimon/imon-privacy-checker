@@ -245,6 +245,34 @@ final class Fingerprint {
     }
 
     /**
+     * Pluggable seam: return a histogram of signal values seen across the
+     * visitor population, or [] to fall back to the constants in
+     * `entropy_bit_assignments()`.
+     *
+     * Backed by the site-wide Cache (transients). Key convention:
+     *   pc_fp_hist_{$signal}
+     * TTL: DAY_IN_SECONDS. Future work can swap the empty collector
+     * (the inner `fn() => []`) for a real rolling-histogram store
+     * without needing to touch `entropy_estimate()`.
+     *
+     * Phase 3 guide explicitly defers the actual collector. This seam
+     * lands the lookup path so the eventual collector has a stable
+     * integration point.
+     *
+     * @param string $signal  e.g. 'canvas_hash', 'audio_hash', 'webgl_renderer'.
+     * @return array<string,int> histogram buckets, or [] when no data exists.
+     */
+    public static function population_histogram( string $signal ): array {
+        return Cache::remember(
+            'pc_fp_hist_' . $signal,
+            static function (): array {
+                return array();
+            },
+            DAY_IN_SECONDS
+        );
+    }
+
+    /**
      * Estimate fingerprint entropy in bits from the new Phase 3 signals.
      *
      * IMPORTANT: This is a ROUGH PROXY, not measured against real traffic.
@@ -258,7 +286,10 @@ final class Fingerprint {
      * TODO: when population stats exist (e.g. a Cache-backed rolling
      * histogram per signal), replace these constants with measured
      * -log2(p) values. The seam is here — entropy_estimate() is the only
-     * place that needs to change.
+     * place that needs to change. The plumbing for that seam is now in
+     * place via `Fingerprint::population_histogram()` below; the actual
+     * histogram collector is intentionally not implemented yet (Phase 3
+     * guide defers it until real per-signal population data exists).
      *
      * Bit assignments:
      *   - canvas_hash present (non-empty):        +15 bits
@@ -280,6 +311,24 @@ final class Fingerprint {
      * @return array{bits:int, score:int, uniqueness_estimate:string, breakdown:array<string,mixed>, masked_signals:array<int,string>}
      */
     public static function entropy_estimate( array $signals ): array {
+        // Phase 9 / Item C: population-stats seam. Consult the histogram
+        // for each signal we care about. While the histograms are empty
+        // (the default — no collector wired in yet), the existing
+        // constant-based computation below runs unchanged.
+        //
+        // TODO: weight by histogram when non-empty. Future work swaps
+        // the empty collector for a real rolling-histogram store without
+        // needing to touch this method's structure.
+        $histograms = array(
+            'canvas_hash'    => self::population_histogram( 'canvas_hash' ),
+            'audio_hash'     => self::population_histogram( 'audio_hash' ),
+            'webgl_renderer' => self::population_histogram( 'webgl_renderer' ),
+            'timezone'       => self::population_histogram( 'timezone' ),
+            'language'       => self::population_histogram( 'language' ),
+            'languages'      => self::population_histogram( 'languages' ),
+        );
+        $use_histograms = ! empty( array_filter( $histograms ) );
+
         $bits = 0;
         $breakdown = array();
 
@@ -355,6 +404,23 @@ final class Fingerprint {
 
         // Clamp to 0..100 bits.
         $bits    = max( 0, min( 100, $bits ) );
+
+        // Phase 9 / Item C: when population histograms are non-empty,
+        // blend the histogram-weighted estimate into the result. While
+        // the collector returns [], `$use_histograms` is false and this
+        // block is a no-op (preserves existing behaviour exactly). When
+        // a future contributor wires in a real histogram store, this
+        // block re-routes the scoring without needing to restructure
+        // the method.
+        if ( $use_histograms ) {
+            $measured_bits = self::histogram_weighted_bits( $signals, $histograms );
+            // Blend 50/50 — once histograms exist, both signals matter.
+            // The constant branch covers capabilities; the histogram
+            // branch covers observed frequency. Together they're more
+            // honest than either alone.
+            $bits = (int) round( ( $bits + $measured_bits ) / 2 );
+        }
+
         $score   = (int) $bits; // already 0..100
 
         // "1 in N visitors" — cap at a reasonable upper bound so the
@@ -400,5 +466,87 @@ final class Fingerprint {
             'breakdown'            => $breakdown,
             'masked_signals'       => $masked_signals,
         );
+    }
+
+    /**
+     * Histogram-weighted entropy estimator — Phase 9 / Item C seam.
+     *
+     * Given a set of `$histograms` keyed by signal name (each histogram
+     * is `value => observed_count` across the visitor population), and
+     * the current visitor's `$signals`, sum the per-signal
+     * `-log2(max(p, epsilon))` bits where `p = observed_count / total`.
+     *
+     * Returns 0 when called with empty histograms — the caller is
+     * expected to gate this behind `! empty( array_filter( $histograms ) )`,
+     * so the constant-based branch in `entropy_estimate()` keeps
+     * driving the score until a real collector lands.
+     *
+     * @param array<string,mixed> $signals    Current visitor's signals.
+     * @param array<string,array<string,int>> $histograms Signal histograms.
+     * @return int Estimated bits (already clamped to [0, 100]).
+     */
+    private static function histogram_weighted_bits( array $signals, array $histograms ): int {
+        $bits = 0;
+        $eps  = 1e-9;
+
+        // For each signal we know, look up its observation count in
+        // the histogram and compute the entropy contribution.
+        $lookup = static function ( string $signal_key, string $hist_key, $current_value ) use ( $histograms, $eps ) {
+            $hist = $histograms[ $hist_key ] ?? array();
+            if ( empty( $hist ) || empty( $current_value ) ) {
+                return 0.0;
+            }
+            $total = array_sum( $hist );
+            if ( $total <= 0 ) {
+                return 0.0;
+            }
+            // For string-valued signals (canvas_hash, etc.) the visitor's
+            // exact value is the bucket key. For array-valued signals
+            // (languages), the per-element buckets are summed.
+            if ( is_array( $current_value ) ) {
+                $count = 0;
+                foreach ( $current_value as $v ) {
+                    $count += (int) ( $hist[ (string) $v ] ?? 0 );
+                }
+            } else {
+                $count = (int) ( $hist[ (string) $current_value ] ?? 0 );
+            }
+            if ( $count <= 0 ) {
+                // Bucket unobserved in our population — treat as
+                // maximally unique (capped at 20 bits to avoid
+                // runaway totals).
+                return 20.0;
+            }
+            $p        = max( $eps, $count / $total );
+            $bits     = -log( $p, 2 );
+            // Cap per-signal contribution so one outlier can't blow up
+            // the whole estimate.
+            return min( 20.0, $bits );
+        };
+
+        // Canvas hash.
+        $bits += $lookup( 'canvas_hash', 'canvas_hash', $signals['canvas_hash'] ?? '' );
+        // Audio hash.
+        $bits += $lookup( 'audio_hash', 'audio_hash', $signals['audio_hash'] ?? '' );
+        // WebGL renderer (no negative reward here — anti-fp behaviour
+        // is its own category handled in the constant branch).
+        if ( ! empty( $signals['webgl_renderer'] ) && 'masked-by-browser' !== $signals['webgl_renderer'] ) {
+            $bits += $lookup( 'webgl_renderer', 'webgl_renderer', $signals['webgl_renderer'] );
+        }
+        // Timezone, language, languages.
+        $bits += $lookup( 'timezone', 'timezone', $signals['timezone'] ?? '' );
+        $bits += $lookup( 'language', 'language', $signals['language'] ?? '' );
+        $bits += $lookup( 'languages', 'languages', $signals['languages'] ?? array() );
+
+        // Font list: sum per-font entropy bits up to a sensible cap.
+        if ( ! empty( $signals['font_list'] ) && is_array( $signals['font_list'] ) && ! empty( $histograms['fonts'] ) ) {
+            $fonts_bits = 0.0;
+            foreach ( (array) $signals['font_list'] as $font ) {
+                $fonts_bits += $lookup( 'fonts', 'fonts', (string) $font );
+            }
+            $bits += min( 15.0, $fonts_bits );
+        }
+
+        return (int) max( 0, min( 100, (int) round( $bits ) ) );
     }
 }

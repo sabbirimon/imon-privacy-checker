@@ -14,6 +14,25 @@ use Yoast\PHPUnitPolyfills\TestCases\TestCase;
 
 final class FingerprintTest extends TestCase {
 
+	protected function set_up(): void {
+		parent::set_up();
+		// Phase 9 / Item C — clear any fingerprints-seeded Cache entries
+		// so tests that depend on an empty population_histogram() don't
+		// see stale values from earlier tests in this class.
+		\WpState::reset();
+		foreach ( array(
+			'pc_fp_hist_canvas_hash',
+			'pc_fp_hist_audio_hash',
+			'pc_fp_hist_webgl_renderer',
+			'pc_fp_hist_timezone',
+			'pc_fp_hist_language',
+			'pc_fp_hist_languages',
+			'pc_fp_hist_fonts',
+		) as $cache_key ) {
+			\PrivacyChecker\Cache::delete( $cache_key );
+		}
+	}
+
 	public function test_parse_chrome_on_windows(): void {
 		$ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 		$r  = Fingerprint::parse_user_agent( $ua );
@@ -288,5 +307,109 @@ final class FingerprintTest extends TestCase {
 
 		// Sanity: the assignment table actually contains the keys we used.
 		$this->assertArrayHasKey( 'webgl_renderer_masked', $a );
+	}
+
+	/**
+	 * Phase 9 / Item C: population-stats seam.
+	 *
+	 * When the histogram for a signal is empty (the default state until
+	 * a real collector is wired in), `population_histogram()` returns
+	 * `[]` so entropy_estimate() keeps using the constants.
+	 */
+	public function test_population_histogram_initially_empty(): void {
+		// No prior Cache::set for this key — the inner collector
+		// closure returns [] on first read.
+		$h = Fingerprint::population_histogram( 'canvas_hash' );
+		$this->assertSame( array(), $h );
+
+		// Different signal, same expected empty result.
+		$this->assertSame( array(), Fingerprint::population_histogram( 'audio_hash' ) );
+		$this->assertSame( array(), Fingerprint::population_histogram( 'webgl_renderer' ) );
+	}
+
+	public function test_population_histogram_key_naming_convention(): void {
+		// The Cache key is `pc_fp_hist_{$signal}`. Pre-populating
+		// the cache via Cache::set should be readable back through
+		// the seam — proves the convention is stable for future
+		// collectors to write into.
+		\PrivacyChecker\Cache::set(
+			'pc_fp_hist_canvas_hash',
+			array(
+				'abc123' => 1,
+				'def456' => 2,
+				'ghi789' => 3,
+			),
+			DAY_IN_SECONDS
+		);
+
+		$h = Fingerprint::population_histogram( 'canvas_hash' );
+		$this->assertSame(
+			array(
+				'abc123' => 1,
+				'def456' => 2,
+				'ghi789' => 3,
+			),
+			$h
+		);
+	}
+
+	public function test_entropy_estimate_unchanged_without_histogram(): void {
+		// Phase 9 / Item C regression test: with histograms empty
+		// (the default), entropy_estimate() must produce exactly the
+		// same bit values it always has. Golden-value test mirroring
+		// the existing canvas + audio + webgl + timezone + language
+		// + languages fixture.
+		$signals = array(
+			'canvas_hash'    => 'abc12345',
+			'audio_hash'     => 'def67890',
+			'webgl_renderer' => 'ANGLE (NVIDIA)',
+			'timezone'       => 'UTC',
+			'language'       => 'en',
+			'languages'      => array( 'en' ),
+		);
+		$e = Fingerprint::entropy_estimate( $signals );
+
+		// 15 (canvas) + 15 (audio) + 6 (webgl) + 4 (tz) + 4 (lang) + 2 (langs) = 46
+		$this->assertSame( 46, $e['bits'] );
+		$this->assertSame( 46, $e['score'] );
+	}
+
+	public function test_entropy_estimate_with_histogram_blends_measured_and_constant(): void {
+		// Phase 9 / Item C: when at least one signal has a non-empty
+		// histogram, the seam blends the histogram-weighted estimate
+		// with the constant-based estimate (50/50). The exact blend
+		// value depends on the histogram contents, so this test pins
+		// only that the blend happens (entropy_estimate returns a
+		// non-trivial int) without dictating the exact number — the
+		// structural seam is exercised.
+		\PrivacyChecker\Cache::set(
+			'pc_fp_hist_canvas_hash',
+			array(
+				'abc12345' => 1,    // 1/3 — common
+				'xyz99999' => 1,    // 1/3 — common
+				'rare0000' => 1,    // 1/3 — common
+			),
+			DAY_IN_SECONDS
+		);
+
+		$signals = array(
+			'canvas_hash'    => 'abc12345',
+			'audio_hash'     => 'def67890',
+			'webgl_renderer' => 'ANGLE (NVIDIA)',
+			'timezone'       => 'UTC',
+			'language'       => 'en',
+			'languages'      => array( 'en' ),
+		);
+		$e = Fingerprint::entropy_estimate( $signals );
+
+		// The constant-based estimate would be 46 bits. With the
+		// canvas histogram in play, the canvas contribution drops
+		// (a common bucket has low entropy), so the blended result
+		// must be lower than the constant-only value. Pin the
+		// direction of the change rather than the exact number so
+		// future tuning of the blend ratio doesn't break the test.
+		$this->assertLessThan( 46, $e['bits'] );
+		$this->assertGreaterThanOrEqual( 0, $e['bits'] );
+		$this->assertLessThanOrEqual( 100, $e['bits'] );
 	}
 }
