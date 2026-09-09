@@ -516,6 +516,22 @@
         return dl;
     }
 
+    /**
+     * Convert a two-letter ISO country code (US, GB, DE, ...) into
+     * the regional-indicator Unicode pair so we can render 🇺🇸 🇬🇧 🇩🇪
+     * inline without shipping a flag library. Returns the empty
+     * string for missing or invalid codes.
+     */
+    function countryCodeToFlag(cc) {
+        if (!cc || typeof cc !== 'string' || cc.length !== 2) return '';
+        var A = 0x1F1E6;
+        var RIA = 'A'.charCodeAt(0);
+        var c1 = cc.charCodeAt(0);
+        var c2 = cc.charCodeAt(1);
+        if (c1 < 0x41 || c1 > 0x5A || c2 < 0x41 || c2 > 0x5A) return '';
+        return String.fromCodePoint(A + (c1 - RIA), A + (c2 - RIA));
+    }
+
     function renderStatusChip(severity, label) {
         var tone = severity || 'neutral';
         // Backward-compat: map legacy "low"/"medium"/"high"/"unknown" tones
@@ -683,6 +699,10 @@
         svg.setAttribute('focusable', 'false');
         svg.setAttribute('aria-hidden', 'true');
 
+        // Target arc length — computed once, used by both the halo and
+        // the filled arc so they stay in sync.
+        var arcLen = (pct / 100) * C;
+
         // Background track — the dim ring behind everything.
         var bg = document.createElementNS(ns, 'circle');
         bg.setAttribute('cx', cx);
@@ -727,7 +747,6 @@
         fill.setAttribute('class', 'pcv2__score-ring-fill');
         // Rotate -90 so the arc starts at the top.
         fill.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
-        var arcLen = (pct / 100) * C;
         fill.setAttribute('stroke-dasharray', String(arcLen) + ' ' + String(C));
         // Initial dashoffset = arcLen (hidden); CSS/JS animates to 0.
         fill.setAttribute('stroke-dashoffset', String(arcLen));
@@ -1478,46 +1497,165 @@
                 var barChart = renderBarChart(barItems);
                 renderCard(card, PCV2.i18n.overviewTitle || 'Overview', el('div', null, [ovSummary, barChart]));
             } else if (key === 'connection') {
-                // Connection: hero strip with IP + country + ASN + ISP,
-                // then detail rows below.
-                var ipv4 = report.request_ip && report.request_ip.ipv4;
-                var ipv6 = report.request_ip && report.request_ip.ipv6;
-                var country = intel.country_name || intel.country;
-                var asn = intel.asn;
-                var isp = intel.isp;
-                var heroRows = [];
-                if (ipv4 || ipv6) {
-                    heroRows.push(['IP', (ipv4 || ipv6) + (ipv6 ? '  /  ' + ipv6 : '')]);
+                // Connection card — redesigned in Phase 23:
+                //
+                //   ┌─ IP badge (big, gradient, copy-to-clipboard) ─┐
+                //   │  127.0.0.1           [📋 copy]                  │
+                //   └────────────────────────────────────────────────┘
+                //
+                //   ┌─ signal panel ──────────────────────────────────┐
+                //   │  [bars ▌▌▌▌▌]   country flag · city · region   │
+                //   │  ISP · ASN · Timezone · Detected as: VPN?      │
+                //   └────────────────────────────────────────────────┘
+                //
+                //   ┌─ fact tile grid (staggered animation) ──────────┐
+                //   │  ┌─IPv4─┐ ┌─IPv6─┐ ┌─Country─┐ ┌─Timezone─┐  │
+                //   │  └──────┘ └──────┘ └─────────┘ └──────────┘  │
+                //   └────────────────────────────────────────────────┘
+                var ipv4    = report.request_ip && report.request_ip.ipv4;
+                var ipv6    = report.request_ip && report.request_ip.ipv6;
+                var country = intel.country_name || intel.country || '';
+                var cc      = intel.country || (intel.country_code || '').toUpperCase();
+                var asn     = intel.asn;
+                var isp     = intel.isp;
+                var region  = intel.region;
+                var city    = intel.city;
+                var tz      = intel.timezone;
+                var lat     = intel.latitude;
+                var lon     = intel.longitude;
+                var primaryIp = ipv4 || ipv6 || '';
+                var body    = el('div', { class: 'pcv2__connection-body' });
+
+                // ---- IP badge --------------------------------------
+                if (primaryIp) {
+                    var ipBadge = el('div', {
+                        class: 'pcv2__connection-ip',
+                        'data-pcv2-key': 'ip',
+                        'data-pcv2-tone': primaryIp ? 'safe' : 'neutral'
+                    });
+                    var ipLabel = el('span', {
+                        class: 'pcv2__connection-ip-label',
+                        text: ipv4 && ipv6 ? 'IPv4 / IPv6' : (ipv4 ? 'IPv4' : 'IPv6')
+                    });
+                    var ipValue = el('span', {
+                        class: 'pcv2__connection-ip-value mono',
+                        text: ipv4 && ipv6
+                            ? (ipv4 + '  ·  ' + ipv6)
+                            : primaryIp
+                    });
+                    var copyBtn = el('button', {
+                        type: 'button',
+                        class: 'pcv2__connection-ip-copy',
+                        'data-pcv2-action': 'copy-ip',
+                        'data-pcv2-ip': primaryIp,
+                        'aria-label': (PCV2.i18n.copyIpLabel || 'Copy IP address'),
+                        title: (PCV2.i18n.copyIpLabel || 'Copy IP address')
+                    }, '⧉');
+                    ipBadge.appendChild(ipLabel);
+                    ipBadge.appendChild(ipValue);
+                    ipBadge.appendChild(copyBtn);
+                    body.appendChild(ipBadge);
                 }
-                if (country || asn) {
-                    heroRows.push(['Location', [intel.city, intel.region, country].filter(Boolean).join(', ') || '—']);
+
+                // ---- Signal panel ----------------------------------
+                var signalPanel = el('div', { class: 'pcv2__connection-signal' });
+                // Signal strength bar — 5 bars, animated fill from left.
+                var bars = el('div', {
+                    class: 'pcv2__signal-bars',
+                    role: 'img',
+                    'aria-label': (PCV2.i18n.signalAriaLabel || 'Signal strength')
+                });
+                var barCount = 5;
+                for (var i = 0; i < barCount; i++) {
+                    var bar = el('span', {
+                        class: 'pcv2__signal-bar',
+                        'data-pcv2-idx': String(i)
+                    });
+                    bar.style.setProperty('--pcv2-bar-delay', (i * 80) + 'ms');
+                    bars.appendChild(bar);
                 }
-                if (isp)  heroRows.push(['ISP', isp]);
-                if (asn)  heroRows.push(['ASN', asn]);
-                var connectionHero = el('div', { class: 'pcv2__connection-hero' });
-                if (heroRows.length === 0) {
-                    connectionHero.appendChild(el('p', {
-                        class: 'pcv2__row-missing',
-                        text: 'Run the scan to see your connection details.'
+                signalPanel.appendChild(bars);
+
+                var signalText = el('div', { class: 'pcv2__signal-text' });
+                if (country) {
+                    signalText.appendChild(el('span', {
+                        class: 'pcv2__signal-flag',
+                        'data-pcv2-cc': cc || '',
+                        'aria-hidden': 'true',
+                        text: countryCodeToFlag(cc)
+                    }));
+                }
+                var locationParts = [city, region, country].filter(Boolean);
+                if (locationParts.length > 0) {
+                    signalText.appendChild(el('span', {
+                        class: 'pcv2__signal-location',
+                        text: locationParts.join(' · ')
                     }));
                 } else {
-                    heroRows.forEach(function (r) {
-                        var row = el('dl', { class: 'pcv2__connection-hero-row' });
-                        row.appendChild(el('dt', { text: r[0] }));
-                        row.appendChild(el('dd', { text: r[1] }));
-                        connectionHero.appendChild(row);
-                    });
+                    // No geo intel — show a "Geo lookup pending" placeholder
+                    // so the panel still reads as informative. Don't
+                    // show "Awaiting connection…" if we already have an IP.
+                    signalText.appendChild(el('span', {
+                        class: 'pcv2__row-missing',
+                        text: primaryIp
+                            ? (PCV2.i18n.geoPending || 'Geo lookup unavailable')
+                            : (PCV2.i18n.signalPending || 'Awaiting connection…')
+                    }));
                 }
-                renderCard(card, PCV2.i18n.connectionTitle || 'Connection', el('div', null, [
-                    connectionHero,
-                    renderKV([
-                        { label: 'IPv4', value: ipv4, mono: true },
-                        { label: 'IPv6', value: ipv6, mono: true },
-                        { label: 'Region',  value: intel.region },
-                        { label: 'City',    value: intel.city },
-                        { label: 'Timezone',value: intel.timezone }
-                    ])
-                ]));
+                if (isp) {
+                    signalText.appendChild(el('span', {
+                        class: 'pcv2__signal-isp',
+                        text: isp + (asn ? ' · ' + asn : '')
+                    }));
+                }
+                signalPanel.appendChild(signalText);
+
+                // Optional: tiny inline "globe" with a pulsing pin when
+                // we have lat/lon — pure decorative accent.
+                if (typeof lat === 'number' && typeof lon === 'number') {
+                    var globe = el('div', { class: 'pcv2__signal-globe', 'aria-hidden': 'true' });
+                    var pin = el('span', { class: 'pcv2__signal-pin' });
+                    globe.appendChild(pin);
+                    signalPanel.appendChild(globe);
+                }
+                body.appendChild(signalPanel);
+
+                // ---- Fact tile grid -------------------------------
+                var factItems = [
+                    { label: 'IPv4',     value: ipv4,    mono: true, tone: ipv4 ? 'safe' : 'neutral', icon: '4' },
+                    { label: 'IPv6',     value: ipv6,    mono: true, tone: ipv6 ? 'safe' : 'neutral', icon: '6' },
+                    { label: 'Country',  value: country, mono: false, tone: country ? 'safe' : 'neutral', icon: '🌐' },
+                    { label: 'Region',   value: region,  mono: false, tone: region ? 'safe' : 'neutral', icon: '◎' },
+                    { label: 'City',     value: city,    mono: false, tone: city ? 'safe' : 'neutral', icon: '◉' },
+                    { label: 'Timezone', value: tz,      mono: true,  tone: tz ? 'safe' : 'neutral', icon: '⧖' },
+                    { label: 'ISP',      value: isp,     mono: false, tone: isp ? 'safe' : 'neutral', icon: '⚙' },
+                    { label: 'ASN',      value: asn,     mono: true,  tone: asn ? 'safe' : 'neutral', icon: 'ASN' }
+                ];
+                var factGrid = el('div', { class: 'pcv2__connection-facts' });
+                factItems.forEach(function (it, idx) {
+                    var tile = el('div', {
+                        class: 'pcv2__connection-tile',
+                        'data-pcv2-tone': it.tone,
+                        'data-pcv2-key': it.label.toLowerCase()
+                    });
+                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
+                    var iconEl = el('span', {
+                        class: 'pcv2__connection-tile-icon',
+                        'aria-hidden': 'true',
+                        text: it.icon
+                    });
+                    var labelEl = el('div', { class: 'pcv2__connection-tile-label', text: it.label });
+                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
+                    valueEl.appendChild(pcv2DisplayValue(it.value));
+                    if (it.mono) valueEl.classList.add('mono');
+                    tile.appendChild(iconEl);
+                    tile.appendChild(labelEl);
+                    tile.appendChild(valueEl);
+                    factGrid.appendChild(tile);
+                });
+                body.appendChild(factGrid);
+
+                renderCard(card, PCV2.i18n.connectionTitle || 'Connection', body);
             } else if (key === 'anonymity') {
                 // Anonymity: detection pill at top (always visible),
                 // then type + confidence below.
@@ -2173,9 +2311,55 @@
     ready(function () {
         initEli5Toggle();
         initThemeToggle();
+        initCopyIpButtons();
         initDashboard();
         PCV2.initialized = true;
     });
+
+    /**
+     * Wire up the "copy IP" button on the Connection card. We use a
+     * single delegated click listener so we don't have to re-bind on
+     * every scan re-render. The clipboard write is best-effort — if
+     * the Clipboard API is blocked, we flash a "✕" state on the
+     * button so the user knows it didn't work.
+     */
+    function initCopyIpButtons() {
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('[data-pcv2-action="copy-ip"]');
+            if (!btn) return;
+            ev.preventDefault();
+            var ip = btn.getAttribute('data-pcv2-ip') || '';
+            if (!ip) return;
+            var original = btn.textContent;
+            var done = function (ok) {
+                btn.textContent = ok ? '✓' : '✕';
+                btn.classList.add(ok ? 'pcv2__connection-ip-copy--ok' : 'pcv2__connection-ip-copy--err');
+                setTimeout(function () {
+                    btn.textContent = original;
+                    btn.classList.remove('pcv2__connection-ip-copy--ok', 'pcv2__connection-ip-copy--err');
+                }, 1400);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(ip).then(function () { done(true); }, function () { done(false); });
+            } else {
+                // Fallback: hidden textarea + execCommand.
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = ip;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    var ok = document.execCommand && document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    done(!!ok);
+                } catch (_e) {
+                    done(false);
+                }
+            }
+        });
+    }
 
     window.PCV2 = PCV2;
 })();

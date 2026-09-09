@@ -174,6 +174,10 @@ final class PublicAssetsV2 {
                 'scorePending'     => __( 'Score pending', 'privacy-checker' ),
                 'radialAriaLabel'  => __( 'Sub-score breakdown chart', 'privacy-checker' ),
                 'gradeLabel'       => __( 'Grade', 'privacy-checker' ),
+                'copyIpLabel'      => __( 'Copy IP address', 'privacy-checker' ),
+                'signalAriaLabel'  => __( 'Signal strength', 'privacy-checker' ),
+                'signalPending'    => __( 'Awaiting connection…', 'privacy-checker' ),
+                'geoPending'       => __( 'Geo lookup unavailable', 'privacy-checker' ),
                 'dnsNotRun'        => __( 'DNS test not yet run — the probe runs automatically with each scan.', 'privacy-checker' ),
                 // Plain-language (ELI5) labels — when the visitor flips the
                 // "Explain simply" toggle, the card titles and finding
