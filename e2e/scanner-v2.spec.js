@@ -40,11 +40,19 @@ test.describe('v2 experimental UI', () => {
         await page.goto('/?v=2');
         await expect(page.locator('[data-pcv2-component="dashboard"]')).toBeVisible();
 
-        // Trigger the scan.
-        await page.click('[data-pcv2-action="start-scan"]');
-
-        // Wait for the report region to appear (hidden attribute removed).
+        // Autostart runs the scan on page load; wait for the report
+        // region rather than clicking start-scan (which would re-fire
+        // the scan and race with our assertions). Also wait for the
+        // cards themselves to have a non-empty title — renderCard() runs
+        // after renderReport and the title is set during that pass.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
+        await page.waitForFunction(
+            () => document.querySelectorAll('.pcv2__card').length === 6
+               && Array.from(document.querySelectorAll('.pcv2__card [data-pcv2-region="card-title"]'))
+                       .every(el => (el.textContent || '').trim().length > 0),
+            null,
+            { timeout: 15_000 }
+        );
 
         // All six cards must be present and titled.
         const cardTitles = await page.evaluate(() => {
@@ -81,7 +89,7 @@ test.describe('v2 experimental UI', () => {
     test('post-scan action bar shows Copy / Download / Share buttons', async ({ page }) => {
         await page.context().clearCookies();
         await page.goto('/?v=2');
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
 
         // All four buttons must be visible.
@@ -124,6 +132,34 @@ test.describe('v2 experimental UI', () => {
         expect(stored).toBe('system');
     });
 
+    test('v2 dashboard auto-runs the scan on page load', async ({ page }) => {
+        // The dashboard ships with data-pcv2-autostart="1" so a fresh
+        // visit produces a completed scan without any user interaction.
+        // This is the Phase 19.5 default behaviour.
+        await page.context().clearCookies();
+        await page.goto('/?v=2');
+
+        // The progress region appears during the scan, then disappears
+        // when the report renders. We assert the report appears without
+        // any clicks.
+        await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
+
+        // The CTA button text has flipped from "Run Privacy Check" to
+        // the "Re-run scan" label because the scan completed.
+        const ctaText = await page.evaluate(() => {
+            const lbl = document.querySelector('[data-pcv2-region="cta-label"]');
+            return lbl ? (lbl.textContent || '').trim() : '';
+        });
+        expect(ctaText.length).toBeGreaterThan(0);
+        expect(ctaText.toLowerCase()).toContain('re-run');
+        // And the CTA is enabled again so the user can re-run manually.
+        const ctaDisabled = await page.evaluate(() => {
+            const btn = document.querySelector('[data-pcv2-action="start-scan"]');
+            return btn ? btn.disabled : null;
+        });
+        expect(ctaDisabled).toBe(false);
+    });
+
     test('v2 honours prefers-reduced-motion when set', async ({ browser }) => {
         const context = await browser.newContext({ reducedMotion: 'reduce' });
         const page = await context.newPage();
@@ -135,7 +171,7 @@ test.describe('v2 experimental UI', () => {
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
         page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         expect(errors.filter(e => !/favicon|404/.test(e))).toEqual([]);
         await context.close();
@@ -147,7 +183,7 @@ test.describe('v2 experimental UI', () => {
         await page.context().clearCookies();
         await page.goto('/?v=2');
         await expect(page.locator('[data-pcv2-component="dashboard"]')).toBeVisible();
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for the report.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
 
         const overflows = await page.evaluate(() => {

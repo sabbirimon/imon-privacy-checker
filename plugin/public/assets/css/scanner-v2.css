@@ -200,6 +200,11 @@
   min-height: 100vh;
   box-sizing: border-box;
   overflow-x: hidden;
+  /* When the user scrolls back up to use the hero CTA / "Re-run scan"
+     button, the sticky header (z-index 50) sits above the button on the
+     way back into view. Reserve enough scroll-padding so anchor scrolls
+     land below the header. */
+  scroll-padding-top: 5.5rem;
 }
 
 .pcv2 *, .pcv2 *::before, .pcv2 *::after { box-sizing: inherit; }
@@ -402,6 +407,10 @@
   text-align: center;
   padding: 3.5rem 0 2.5rem;
   position: relative;
+  /* Account for the sticky header (≈4rem) plus breathing room when the
+     hero scrolls into view — keeps the CTA visible after the user has
+     scrolled past the report. */
+  scroll-margin-top: 5rem;
 }
 
 .pcv2__eyebrow {
@@ -564,6 +573,15 @@
   font-weight: 600;
   color: var(--pcv2-text-faint);
   margin-left: 0.15rem;
+}
+.pcv2__score-ring-value-pending {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  margin-top: 0.35rem;
 }
 .pcv2__score-ring-label {
   font-size: 0.75rem;
@@ -1544,6 +1562,142 @@
   color: var(--pcv2-text);
 }
 .pcv2__overview-summary-cell-value--grade { font-size: 1.4rem; }
+
+/* Horizontal bar chart used in the Overview card. Each row is a
+   label + animated-fill track + numeric value on the right; tone is
+   driven by data-pcv2-tone on the row, which the JS sets per category
+   score (safe / warning / danger / neutral). */
+.pcv2__bar-chart {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.pcv2__bar-chart-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 30%) 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+}
+.pcv2__bar-chart-row[data-pcv2-tone="safe"]    { border-color: var(--pcv2-safe-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="warning"] { border-color: var(--pcv2-warning-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="danger"]  { border-color: var(--pcv2-danger-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="neutral"] { border-color: var(--pcv2-border-soft); }
+.pcv2__bar-chart-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pcv2-text);
+  letter-spacing: 0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcv2__bar-chart-track {
+  position: relative;
+  display: block;
+  height: 0.55rem;
+  background: var(--pcv2-surface-sunken);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 4rem;
+}
+.pcv2__bar-chart-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pcv2-info-fg);
+  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pcv2__bar-chart-row[data-pcv2-tone="safe"]    .pcv2__bar-chart-fill { background: var(--pcv2-safe-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="warning"] .pcv2__bar-chart-fill { background: var(--pcv2-warning-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="danger"]  .pcv2__bar-chart-fill { background: var(--pcv2-danger-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="neutral"] .pcv2__bar-chart-fill { background: var(--pcv2-text-faint); }
+.pcv2__bar-chart-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-text);
+  min-width: 3rem;
+  text-align: right;
+}
+
+/* DNS Resolver card — resolvers list + verdict row. */
+.pcv2__dns-card {
+  display: grid;
+  gap: 0.75rem;
+}
+.pcv2__dns-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.pcv2__dns-verdict-host {
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  letter-spacing: 0.02em;
+}
+.pcv2__dns-note {
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  margin: 0;
+}
+.pcv2__dns-resolvers {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.pcv2__dns-resolver-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 22%) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  font-size: 0.85rem;
+}
+.pcv2__dns-resolver-row[data-pcv2-tone="safe"]    { border-color: var(--pcv2-safe-border); }
+.pcv2__dns-resolver-row[data-pcv2-tone="warning"] { border-color: var(--pcv2-warning-border); }
+.pcv2__dns-resolver-row[data-pcv2-tone="danger"]  { border-color: var(--pcv2-danger-border); }
+.pcv2__dns-resolver-name {
+  font-weight: 600;
+  color: var(--pcv2-text);
+  text-transform: capitalize;
+}
+.pcv2__dns-resolver-answer {
+  color: var(--pcv2-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pcv2__dns-resolver-row[data-pcv2-tone="danger"] .pcv2__dns-resolver-answer {
+  color: var(--pcv2-danger-fg);
+  font-style: italic;
+}
+.pcv2__dns-resolver-latency {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--pcv2-text-faint);
+  min-width: 4rem;
+  text-align: right;
+}
+@media (max-width: 480px) {
+  .pcv2__bar-chart-row {
+    grid-template-columns: minmax(5.5rem, 35%) 1fr auto;
+    gap: 0.5rem;
+  }
+}
 
 /* ============================================================== */
 /* Reduced motion                                                 */

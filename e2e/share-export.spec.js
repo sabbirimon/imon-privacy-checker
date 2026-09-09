@@ -21,7 +21,7 @@ test.describe('v2 share / export actions', () => {
         await context.clearCookies();
         await page.goto('/?v=2');
         await page.waitForSelector('[data-pcv2-component="dashboard"]');
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         await page.waitForTimeout(500);
     });

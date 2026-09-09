@@ -339,11 +339,67 @@
         var intelPayload = null;
         var connectionPayload = null;
         var reputationPayload = null;
+        var dnsPayload = null;
+
+        // Kick off the DNS-over-HTTPS fan-out alongside the rest of the
+        // scan. We don't block on it (it can take a few seconds) — the
+        // DNS card simply renders the result when it lands.
+        function runDnsProbeAsync() {
+            var url = (window.PC_SCAN && window.PC_SCAN.restUrl || '/wp-json/privacy-checker/v1/') +
+                      'scan/dns-test/run?hostname=cloudflare.com';
+            return fetch(url, { headers: { 'X-WP-Nonce': (window.PC_SCAN && window.PC_SCAN.restNonce) || '' } })
+                .then(function (r) {
+                    if (!r || !r.ok) {
+                        if (window.console && console.warn) console.warn('PCv2 DNS probe failed', r && r.status);
+                        return null;
+                    }
+                    return r.json();
+                })
+                .catch(function (e) {
+                    if (window.console && console.warn) console.warn('PCv2 DNS probe threw', e && e.message);
+                    return null;
+                });
+        }
+
+        /**
+         * Wait for the report region to become visible (i.e. renderReport
+         * to have finished), then call `cb`. Polls every 100 ms and gives
+         * up after 10 s. Used to safely apply async probe results that
+         * land BEFORE the synchronous scan chain has finished re-rendering
+         * the cards.
+         */
+        function waitForReportRegion(root, cb) {
+            var tries = 0;
+            (function poll() {
+                var region = root.querySelector('[data-pcv2-region="report"]');
+                var ready = region && !region.hidden;
+                if (ready) { cb(); return; }
+                if (++tries > 100) return;
+                setTimeout(poll, 100);
+            })();
+        }
 
         var scanPromise = postJSON('scan', {})
             .then(function (scan) {
                 intelPayload = scan;
                 doneStep('ip'); runStep('intel');
+
+                // DNS probe runs in parallel with the rest of the scan
+                // chain. When it resolves, we patch the rendered DNS card
+                // in place. We never throw from here — DNS failure is a
+                // card-level concern, not a scan-failure.
+                runDnsProbeAsync().then(function (probe) {
+                    if (!probe || probe.status !== 'ok') return;
+                    dnsPayload = probe;
+                    // The DNS card is rebuilt by renderReport() AFTER
+                    // runScan() finishes, so the card might not be in the
+                    // DOM yet when this resolves. Wait for the report
+                    // region to render, then patch the DNS card in place.
+                    waitForReportRegion(dashboard, function () {
+                        var card = dashboard.querySelector('[data-pcv2-card="dns"]');
+                        if (card) renderDnsCard(card, probe);
+                    });
+                });
                 // /scan already includes geolocation intel, so mark intel done
                 // immediately on success. The user is informed via i18n.
                 doneStep('intel');
@@ -375,7 +431,8 @@
                 doneStep('score');
                 var combined = Object.assign({}, intelPayload || {}, {
                     connection: connectionPayload,
-                    reputation: reputationPayload
+                    reputation: reputationPayload,
+                    dns_test: dnsPayload
                 });
                 renderReport(dashboard, combined);
                 if (progressRegion) progressRegion.hidden = true;
@@ -405,6 +462,19 @@
         if (score >= 70) return 'warning';
         if (score >= 50) return 'warning';
         return 'danger';
+    }
+
+    /**
+     * Map a numeric score 0..100 to a letter grade. Used only as a
+     * fallback when the backend hasn't provided one; the canonical grade
+     * lives in privacy_report.grade.
+     */
+    function letterGradeFromScore(score) {
+        if (score >= 90) return 'A';
+        if (score >= 80) return 'B';
+        if (score >= 65) return 'C';
+        if (score >= 50) return 'D';
+        return 'F';
     }
 
     function severityFromScoreTone(score) {
@@ -471,6 +541,38 @@
      *   size:     'lg' | 'mini' (default 'lg')
      *   tone:     CSS color expression for the ring fill
      */
+    /**
+     * Render a horizontal bar chart of category scores for the Overview
+     * card. Each row is a category label + a track with a coloured fill
+     * + a numeric value on the right. The chart is built with semantic
+     * HTML (<ul>/<li>) so it stays accessible to screen readers and
+     * keyboard users; visual fill is a CSS-styled <span>.
+     */
+    function renderBarChart(items) {
+        var ul = el('ul', { class: 'pcv2__bar-chart', role: 'list' });
+        items.forEach(function (it) {
+            var pct = pctOrNull(it.value);
+            var tone = severityFromScore(pct);
+            var li = el('li', { class: 'pcv2__bar-chart-row', 'data-pcv2-tone': tone });
+            li.appendChild(el('span', { class: 'pcv2__bar-chart-label', text: it.label }));
+            var track = el('span', {
+                class: 'pcv2__bar-chart-track',
+                role: 'progressbar',
+                'aria-valuemin': '0',
+                'aria-valuemax': '100',
+                'aria-valuenow': pct != null ? String(Math.round(pct)) : '0',
+                'aria-label': it.label + (pct != null ? ': ' + Math.round(pct) + ' of 100' : ': not available')
+            });
+            var fill = el('span', { class: 'pcv2__bar-chart-fill' });
+            if (pct != null) fill.style.width = Math.round(pct) + '%';
+            track.appendChild(fill);
+            li.appendChild(track);
+            li.appendChild(el('span', { class: 'pcv2__bar-chart-value', text: pct != null ? Math.round(pct) + '%' : '—' }));
+            ul.appendChild(li);
+        });
+        return ul;
+    }
+
     function renderRingGauge(opts) {
         var size  = opts.size || 'lg';
         var value = pctOrNull(opts.value);
@@ -502,7 +604,10 @@
                 valueText.textContent = String(Math.round(value));
                 valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-suffix', text: '/100' }));
             } else {
+                // Label the empty state explicitly so it doesn't read as
+                // a broken gauge.
                 valueText.textContent = '—';
+                valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-pending', text: PCV2.i18n.scorePending || 'Score pending' }));
             }
             valueWrap.appendChild(valueText);
             valueWrap.appendChild(el('div', {
@@ -541,9 +646,20 @@
      * Replaces the old `renderScoreGauge`.
      */
     function renderScoreHero(report) {
-        var score = report.privacy_score;
-        var grade = (report.privacy_report && report.privacy_report.grade) || '';
-        var mainTone = severityFromScoreTone(score);
+        // The REST payload puts the aggregate score under
+        // privacy_report.overall — NOT privacy_score. Reading the wrong
+        // key produced the bare "—" in earlier screenshots while the
+        // per-category scores rendered fine. Fall back to
+        // scores.privacy (the v1 top-level field) and then to
+        // scores.anonymity if both are missing.
+        var pr = report.privacy_report || {};
+        var scores = report.scores || {};
+        var score = (typeof pr.overall === 'number') ? pr.overall
+                  : (typeof scores.privacy === 'number') ? scores.privacy
+                  : (typeof scores.anonymity === 'number') ? scores.anonymity
+                  : null;
+        var grade = pr.grade || (score != null ? letterGradeFromScore(score) : '');
+        var mainTone = score == null ? 'neutral' : severityFromScore(score);
 
         var hero = el('div', { class: 'pcv2__score-hero' });
 
@@ -591,10 +707,81 @@
         return hero;
     }
 
+    /**
+     * Render a category key as a user-facing label. The naive
+     * `.replace('_',' ').replace(...)` approach shipped "Ip", "Dns",
+     * "Webrtc" — embarrassing for technical labels. The dictionary below
+     * is the single source of truth; any key not listed still gets a
+     * humanised fallback.
+     */
+    var CATEGORY_LABELS = {
+        ip:                 'IP',
+        reputation:         'Reputation',
+        dns:                'DNS',
+        webrtc:             'WebRTC',
+        fingerprint:        'Fingerprint',
+        user_agent:         'User Agent',
+        ipv6:               'IPv6',
+        consistency:        'Consistency',
+        security_posture:   'Security',
+        proxy:              'Proxy / VPN / Tor',
+        connection_quality: 'Connection Quality',
+        local_network:      'Local Network',
+        ip_exposure:        'IP Exposure',
+        dns_leak:           'DNS Leak',
+        connection:         'Connection',
+        anonymity:          'Anonymity',
+        browser:            'Browser'
+    };
     function prettySubLabel(k) {
+        if (CATEGORY_LABELS[k]) return CATEGORY_LABELS[k];
         return String(k)
             .replace(/_/g, ' ')
             .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    /**
+     * Render the user_agent payload as a display string. The REST payload
+     * shape is {raw, browser, version, os, device, engine, is_bot}.
+     * Showing the parsed fields (when present) is more meaningful than
+     * the raw UA string, which has historically produced "[object Object]"
+     * because the whole object was assigned to a text node.
+     */
+    function uaDisplayValue(ua) {
+        if (!ua) return navigator.userAgent || null;
+        if (typeof ua === 'string') return ua;
+        var parts = [];
+        if (ua.browser && (ua.browser.name || ua.browser)) {
+            var bn = typeof ua.browser === 'string' ? ua.browser : (ua.browser.name || '');
+            var bv = typeof ua.browser === 'object' ? (ua.browser.version || '') : '';
+            var composed = (bn + (bv ? ' ' + bv : '')).trim();
+            if (composed) parts.push(composed);
+        }
+        if (ua.os && (ua.os.name || typeof ua.os === 'string')) {
+            var osn = typeof ua.os === 'string' ? ua.os : (ua.os.name || '');
+            var osv = typeof ua.os === 'object' ? (ua.os.version || '') : '';
+            var osComposed = (osn + (osv ? ' ' + osv : '')).trim();
+            if (osComposed) parts.push(osComposed);
+        }
+        if (ua.device && parts.indexOf(ua.device) === -1) parts.push(ua.device);
+        if (parts.length > 0) return parts.join(' · ');
+        // No parsed fields — fall back to the raw UA. As a last resort use
+        // the live browser's UA so the row is never empty.
+        return ua.raw || navigator.userAgent || null;
+    }
+
+    /**
+     * Just the browser family + version (used as a separate row), or null
+     * if the payload didn't parse a browser.
+     */
+    function uaBrowserName(ua) {
+        if (!ua || typeof ua === 'string') return null;
+        var bn = ua.browser && (typeof ua.browser === 'string' ? ua.browser : ua.browser.name);
+        var bv = ua.browser && typeof ua.browser === 'object' ? ua.browser.version : '';
+        var composed = (bn || '') + (bv ? ' ' + bv : '');
+        composed = composed.trim();
+        if (composed) return composed;
+        return navigator.userAgent || null;
     }
 
     /**
@@ -634,6 +821,61 @@
         var body = card.querySelector('[data-pcv2-region="card-body"]');
         clear(body);
         if (content) body.appendChild(content);
+    }
+
+    /**
+     * Render the DNS Resolver card. Accepts either the original
+     * dns_test placeholder ({configured:true, note:...}) or a fully
+     * populated probe result {status, token, hostname, resolvers[]}.
+     * In the placeholder case we render a clear "Run DNS test" prompt
+     * with a button — the probe has been kicked off in parallel by
+     * runScan() and will re-render this card once it lands.
+     */
+    function renderDnsCard(card, dns) {
+        var title = PCV2.i18n.dnsTitle || 'DNS Resolver';
+        var body = el('div', { class: 'pcv2__dns-card' });
+
+        // Probe result path.
+        if (dns && dns.status === 'ok' && Array.isArray(dns.resolvers)) {
+            var ok = dns.resolvers.filter(function (r) { return r.status === 'ok'; }).length;
+            var total = dns.resolvers.length;
+            var consistent = !!dns.consistent;
+            var tone = consistent ? 'safe' : (ok > 0 ? 'warning' : 'danger');
+            var label = consistent ? 'Consistent' : (ok > 0 ? 'Inconsistent' : 'Failed');
+            var pill = el('div', { class: 'pcv2__dns-provider-pill' }, [
+                el('span', { class: 'pcv2__dns-provider-pill-label', text: 'Resolvers' }),
+                el('span', { text: ok + ' / ' + total + ' responding' })
+            ]);
+            body.appendChild(pill);
+            body.appendChild(el('div', { class: 'pcv2__dns-verdict' }, [
+                renderStatusChip(tone, label),
+                el('span', { class: 'pcv2__dns-verdict-host', text: dns.hostname || 'cloudflare.com', mono: true })
+            ]));
+            var rows = dns.resolvers.map(function (r) {
+                var rTone = r.status === 'ok' ? 'safe' : (r.status === 'error' ? 'danger' : 'warning');
+                var latency = r.latency_ms != null ? r.latency_ms + ' ms' : null;
+                var ans = r.status === 'ok' ? (r.answer_ip || null) : (r.error || null);
+                return el('li', { class: 'pcv2__dns-resolver-row', 'data-pcv2-tone': rTone }, [
+                    el('span', { class: 'pcv2__dns-resolver-name', text: r.name || '—' }),
+                    el('span', { class: 'pcv2__dns-resolver-answer', text: ans || '—', mono: true }),
+                    el('span', { class: 'pcv2__dns-resolver-latency', text: latency || '—' })
+                ]);
+            });
+            var list = el('ul', { class: 'pcv2__dns-resolvers', role: 'list' }, rows);
+            body.appendChild(list);
+            renderCard(card, title, body);
+            return;
+        }
+
+        // Not configured / still loading path.
+        var notRunLabel = (dns && dns.note) ? dns.note
+                       : (PCV2.i18n.dnsNotRun || 'DNS test not yet run.');
+        body.appendChild(el('div', { class: 'pcv2__dns-provider-pill' }, [
+            el('span', { class: 'pcv2__dns-provider-pill-label', text: 'Provider' }),
+            el('span', { text: 'Pending probe…' })
+        ]));
+        body.appendChild(el('p', { class: 'pcv2__dns-note', text: notRunLabel }));
+        renderCard(card, title, body);
     }
 
     function rebuildReportSkeleton(dashboard) {
@@ -707,10 +949,12 @@
                         el('span', { class: 'pcv2__overview-summary-cell-value', text: (report.privacy_report && report.privacy_report.confidence) || '—' })
                     ])
                 ]);
-                // Subscores list (always present).
-                var subList = el('dl', { class: 'pcv2__rows' });
+                // Subscores bar chart (always present) — a real chart,
+                // not a flat key-value list, so the user can see at a
+                // glance which dimensions are pulling the score down.
                 var subs = (report.privacy_report && report.privacy_report.subscores) || {};
                 var cats = (report.privacy_report && report.privacy_report.categories) || {};
+                var barItems = [];
                 var subKeys = Object.keys(subs).slice(0, 6);
                 if (subKeys.length === 0) {
                     // Fall back to the top 6 categories.
@@ -722,13 +966,10 @@
                 subKeys.forEach(function (k) {
                     var v = subs[k] || {};
                     var pct = typeof v === 'object' ? (v.score || v.percent) : v;
-                    var sev = severityFromScore(pct);
-                    subList.appendChild(el('dt', { text: prettySubLabel(k) }));
-                    subList.appendChild(el('dd', null,
-                        renderStatusChip(sev, (pct != null ? Math.round(pct) : '—') + '%')
-                    ));
+                    barItems.push({ label: prettySubLabel(k), value: pct });
                 });
-                renderCard(card, PCV2.i18n.overviewTitle || 'Overview', el('div', null, [ovSummary, subList]));
+                var barChart = renderBarChart(barItems);
+                renderCard(card, PCV2.i18n.overviewTitle || 'Overview', el('div', null, [ovSummary, barChart]));
             } else if (key === 'connection') {
                 // Connection: hero strip with IP + country + ASN + ISP,
                 // then detail rows below.
@@ -790,26 +1031,25 @@
                     ])
                 ]));
             } else if (key === 'dns') {
-                // DNS: provider pill at top, then status + latency.
-                var dns = (rep.dns) || {};
-                var providerPill = el('div', { class: 'pcv2__dns-provider-pill' }, [
-                    el('span', { class: 'pcv2__dns-provider-pill-label', text: 'Provider' }),
-                    el('span', { text: dns.provider || 'Not configured' })
-                ]);
-                renderCard(card, PCV2.i18n.dnsTitle || 'DNS Resolver', el('div', null, [
-                    providerPill,
-                    renderKV([
-                        { label: 'Status',   value: dns.status || null },
-                        { label: 'Latency',  value: dns.latency_ms ? dns.latency_ms + ' ms' : null }
-                    ])
-                ]));
+                // DNS: render the resolver detail from the parallel probe
+                // result, or show a "pending" placeholder if the probe
+                // hasn't landed yet.
+                var dns = report.dns_test || rep.dns || {};
+                renderDnsCard(card, dns);
             } else if (key === 'browser') {
                 // Browser: always-on rows from navigator/screen — never
                 // "Not available" for UA, screen, languages, timezone.
                 var fp = report.fingerprint || {};
                 var browserKV = el('dl', { class: 'pcv2__rows' });
                 var browserRows = [
-                    { label: 'User Agent', value: report.user_agent || navigator.userAgent, mono: true, always: true },
+                    // user_agent in the REST payload is an object
+                    // {raw, browser, version, os, device, engine, is_bot}.
+                    // Rendering the whole object as text yielded the literal
+                    // "[object Object]". Prefer the parsed fields when they
+                    // are present, fall back to the raw UA string, and
+                    // finally to navigator.userAgent for the live browser.
+                    { label: 'User Agent', value: uaDisplayValue(report.user_agent), mono: true, always: true },
+                    { label: 'Browser',    value: uaBrowserName(report.user_agent), always: true },
                     { label: 'Languages',  value: (navigator.languages || []).join(', ') || null, always: true },
                     { label: 'Timezone',   value: (Intl.DateTimeFormat().resolvedOptions().timeZone) || null, always: true },
                     { label: 'Screen',     value: screen.width + ' × ' + screen.height, always: true },
@@ -830,7 +1070,15 @@
                 var sp = report.security_posture || {};
                 var tlsVer = sp.tls && sp.tls.version;
                 var tlsStatus = sp.tls && sp.tls.status;
-                var browserVer = sp.browser && (sp.browser.name + ' ' + (sp.browser.version || '')).trim();
+                // The REST payload's security_posture.browser uses the key
+                // `browser` for the browser family name (e.g. "Chrome") and
+                // `version` for the version string — NOT `name`. Reading
+                // `sp.browser.name` produced the literal "undefined" we
+                // shipped in earlier screenshots.
+                var browserVer = sp.browser && (
+                    (sp.browser.browser || '') +
+                    (sp.browser.version ? ' ' + sp.browser.version : '')
+                ).trim();
                 var outdated = sp.browser && sp.browser.outdated;
                 var verdictTone = (tlsStatus === 'good' && !outdated) ? 'safe'
                                 : (tlsStatus === 'bad' || outdated) ? 'danger'

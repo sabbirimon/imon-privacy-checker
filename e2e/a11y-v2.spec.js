@@ -88,7 +88,7 @@ test.describe('v2 keyboard / focus / semantics', () => {
 
     test('Privacy Findings rows are expandable with scoring rubric + evidence', async ({ page }) => {
         await gotoV2(page);
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         await page.waitForTimeout(500);
 
@@ -136,7 +136,7 @@ test.describe('v2 keyboard / focus / semantics', () => {
 
     test('Findings rows expand and collapse on click', async ({ page }) => {
         await gotoV2(page);
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         await page.waitForTimeout(500);
 
@@ -169,7 +169,7 @@ test.describe('v2 keyboard / focus / semantics', () => {
 
     test('Status badges carry text labels (never color alone)', async ({ page }) => {
         await gotoV2(page);
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         await page.waitForTimeout(500);
         const badges = await page.evaluate(() => {
@@ -193,7 +193,7 @@ test.describe('v2 keyboard / focus / semantics', () => {
         // foreground is var(--pcv2-neutral-fg); the badge must still
         // produce a non-empty text label, never just an icon.
         await gotoV2(page);
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         const badges = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('.pcv2__status')).map(b => ({
@@ -221,7 +221,7 @@ test.describe('v2 keyboard / focus / semantics', () => {
 
     test('Score hero shows main ring + 4 mini KPI rings', async ({ page }) => {
         await gotoV2(page);
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         await page.waitForTimeout(300);
         const counts = await page.evaluate(() => ({
@@ -368,7 +368,7 @@ for (const v of VIEWPORTS) {
         await page.context().clearCookies();
         await page.goto('/?v=2');
         await page.waitForSelector('[data-pcv2-component="dashboard"]');
-        await page.click('[data-pcv2-action="start-scan"]');
+        // Autostart fires the scan; wait for it to finish.
         await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
         const overflow = await page.evaluate(() => {
             const docW = document.documentElement.clientWidth;

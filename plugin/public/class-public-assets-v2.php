@@ -171,6 +171,8 @@ final class PublicAssetsV2 {
                 'sourceUnknown'    => __( 'This category was scored from limited data — the underlying provider did not respond.', 'privacy-checker' ),
                 'sourceEstimated'  => __( 'This category was estimated; no direct measurement was available.', 'privacy-checker' ),
                 'recTitle'         => __( 'What you can do', 'privacy-checker' ),
+                'scorePending'     => __( 'Score pending', 'privacy-checker' ),
+                'dnsNotRun'        => __( 'DNS test not yet run — the probe runs automatically with each scan.', 'privacy-checker' ),
             ),
         ) );
     }
@@ -185,7 +187,7 @@ final class PublicAssetsV2 {
 
         ob_start();
         ?>
-        <section class="pcv2" data-pcv2-component="dashboard" data-pcv2-theme="system">
+        <section class="pcv2" data-pcv2-component="dashboard" data-pcv2-theme="system" data-pcv2-autostart="1">
             <span class="pcv2__orb pcv2__orb--bottom" aria-hidden="true"></span>
             <a class="pcv2__skip-link" href="#pcv2-main"><?php esc_html_e( 'Skip to main content', 'privacy-checker' ); ?></a>
 
