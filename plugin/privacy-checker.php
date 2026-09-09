@@ -27,7 +27,16 @@ if ( ! defined( 'PRIVACY_CHECKER_DIR' ) ) {
     define( 'PRIVACY_CHECKER_DIR', plugin_dir_path( __FILE__ ) );
 }
 if ( ! defined( 'PRIVACY_CHECKER_URL' ) ) {
-    define( 'PRIVACY_CHECKER_URL', plugin_dir_url( __FILE__ ) );
+    // The local dev WP install symlinks wp-content/plugins/privacy-checker
+    // -> ../../../plugin. PHP's __FILE__ resolves through the symlink to
+    // the real filesystem path, so `plugin_dir_url(__FILE__)` bakes the
+    // absolute filesystem path into every asset URL the plugin emits —
+    // which 404s the JS/CSS in the browser and silently breaks the
+    // dashboard. Anchor the URL to the known plugin slug via
+    // `content_url()` (symlink-safe; computed from WP_CONTENT_URL /
+    // siteurl()), so it resolves to /wp-content/plugins/privacy-checker/
+    // whether the plugin is a real dir or a symlink.
+    define( 'PRIVACY_CHECKER_URL', content_url( 'plugins/privacy-checker/' ) );
 }
 if ( ! defined( 'PRIVACY_CHECKER_REST_NS' ) ) {
     define( 'PRIVACY_CHECKER_REST_NS', 'privacy-checker/v1' );
