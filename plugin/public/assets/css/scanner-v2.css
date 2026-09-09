@@ -1282,6 +1282,15 @@
 }
 
 .pcv2__geo-hops { display: grid; gap: 0.5rem; margin-top: 1rem; }
+.pcv2__geo-hops-empty {
+  padding: 0.75rem 1rem;
+  color: var(--pcv2-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  border: 1px dashed var(--pcv2-border-soft);
+  border-radius: 10px;
+  background: var(--pcv2-surface-sunken);
+}
 .pcv2__geo-hop {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

@@ -198,4 +198,27 @@ test.describe('GeoTrace v2 pipeline', () => {
         });
         expect(meta.length).toBeGreaterThanOrEqual(3);
     });
+
+    test('only one .pcv2__geo-disclaimer element exists in empty state', async ({ page }) => {
+        // Regression: the JS used to inject a second .pcv2__geo-disclaimer
+        // into the hops container when there were no hops, which made the
+        // "Traceroute is not available..." text appear twice. The static
+        // skeleton still has exactly one; the empty-state fallback inside
+        // [data-pcv2-region="geo-hops"] must use a different class.
+        await page.context().clearCookies();
+        await page.goto('/?v=2');
+        const hasGeoWidget = await page.locator('[data-pcv2-component="geotrace"]').count();
+        test.skip(hasGeoWidget === 0, 'No GeoTrace v2 widget on home page in this test setup');
+        await page.waitForSelector('[data-pcv2-component="geotrace"]');
+
+        const counts = await page.evaluate(() => ({
+            disclaimers: document.querySelectorAll('.pcv2__geo-disclaimer').length,
+            emptyHops:   document.querySelectorAll('[data-pcv2-region="geo-hops"] .pcv2__geo-hops-empty').length,
+            // No disclaimer-like <p> should live inside the hops container.
+            paragraphsInsideHops: document.querySelectorAll('[data-pcv2-region="geo-hops"] p.pcv2__geo-disclaimer').length
+        }));
+        expect(counts.disclaimers).toBe(1);
+        expect(counts.emptyHops).toBe(1);
+        expect(counts.paragraphsInsideHops).toBe(0);
+    });
 });

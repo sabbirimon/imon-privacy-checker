@@ -1136,7 +1136,7 @@
             if (h.rtt_ms != null) prevRtt = h.rtt_ms;
         });
         if (hops.length === 0) {
-            container.appendChild(el('p', { class: 'pcv2__geo-disclaimer', text: PCV2.i18n.geoUnavailable || 'Traceroute unavailable' }));
+            container.appendChild(el('div', { class: 'pcv2__geo-hops-empty', text: PCV2.i18n.geoUnavailable || 'Traceroute unavailable' }));
         }
     }
 
@@ -1220,7 +1220,7 @@
                 .then(function (route) { renderRoute(route, host); })
                 .catch(function (err) {
                     host.querySelector('[data-pcv2-region="geo-hops"]').innerHTML =
-                        '<p class="pcv2__geo-disclaimer">' + escape(err && err.message) + '</p>';
+                        '<div class="pcv2__geo-hops-empty">' + escape(err && err.message) + '</div>';
                 });
             });
         }
