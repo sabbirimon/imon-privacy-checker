@@ -163,6 +163,14 @@ final class PublicAssetsV2 {
                 'geoUnavailable'   => __( 'Traceroute is not available on this server. Paste your own traceroute below to visualise it.', 'privacy-checker' ),
                 'geoConfidence'    => __( 'Confidence', 'privacy-checker' ),
                 'latencyJump'      => __( 'Latency jump', 'privacy-checker' ),
+                'findingsHint'     => __( 'Click any row for scoring details and evidence.', 'privacy-checker' ),
+                'rubricTitle'      => __( 'How this score was calculated', 'privacy-checker' ),
+                'noRubric'         => __( 'No scoring rubric available for this category.', 'privacy-checker' ),
+                'evidenceTitle'    => __( 'Evidence', 'privacy-checker' ),
+                'sourceTitle'      => __( 'Data source', 'privacy-checker' ),
+                'sourceUnknown'    => __( 'This category was scored from limited data — the underlying provider did not respond.', 'privacy-checker' ),
+                'sourceEstimated'  => __( 'This category was estimated; no direct measurement was available.', 'privacy-checker' ),
+                'recTitle'         => __( 'What you can do', 'privacy-checker' ),
             ),
         ) );
     }
@@ -247,7 +255,10 @@ final class PublicAssetsV2 {
                         <article class="pcv2__card" data-pcv2-card="security">    <header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
                     </div>
                     <div class="pcv2__findings" data-pcv2-region="findings"></div>
+                    <div class="pcv2__actions-host"></div>
                 </section>
+
+                <?php $this->render_inline_geotrace(); ?>
             </main>
 
             <footer class="pcv2__footer">
@@ -261,6 +272,63 @@ final class PublicAssetsV2 {
         </section>
         <?php
         return (string) ob_get_clean();
+    }
+
+    /**
+     * Inline GeoTrace section rendered at the bottom of the v2
+     * dashboard (Phase 19 — moved from a separate shortcode so the
+     * home page has the full privacy toolkit without dropping in
+     * extra shortcodes). Reads from the same `/scan/geo/lookup` +
+     * `/scan/geo/paste` endpoints the v1 page uses.
+     */
+    public function render_inline_geotrace(): void {
+        ?>
+        <section class="pcv2__geotrace" data-pcv2-component="geotrace" aria-labelledby="pcv2-geotrace-title">
+            <header class="pcv2__geo-header">
+                <div class="pcv2__geo-header-text">
+                    <h2 id="pcv2-geotrace-title"><?php esc_html_e( 'Geo Traceroute', 'privacy-checker' ); ?></h2>
+                    <p class="pcv2__geo-tagline"><?php esc_html_e( 'Trace the path your packets take — visualized on a 2D map.', 'privacy-checker' ); ?></p>
+                </div>
+                <form class="pcv2__geo-input" data-pcv2-action="geo-target">
+                    <label class="pcv2__sr-only" for="pcv2-geo-target"><?php esc_html_e( 'Target host', 'privacy-checker' ); ?></label>
+                    <input
+                        id="pcv2-geo-target"
+                        type="text"
+                        data-pcv2-region="geo-target"
+                        placeholder="<?php esc_attr_e( 'example.com', 'privacy-checker' ); ?>"
+                        value="<?php echo esc_attr( home_url() ); ?>"
+                    />
+                    <button type="button" class="pcv2__btn pcv2__btn--primary" data-pcv2-action="geo-run">
+                        <?php esc_html_e( 'Trace route', 'privacy-checker' ); ?>
+                    </button>
+                </form>
+            </header>
+
+            <p class="pcv2__geo-disclaimer" data-pcv2-region="geo-disclaimer">
+                <?php esc_html_e(
+                    'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS — coordinates show each hop IP\'s registered location, not its physical router.',
+                    'privacy-checker'
+                ); ?>
+            </p>
+
+            <dl class="pcv2__geo-meta" data-pcv2-region="geo-meta"></dl>
+
+            <div class="pcv2__geo-map" data-pcv2-region="geo-map">
+                <div class="pcv2__geo-map-msg"><?php esc_html_e( 'Enter a target host and click Trace route, or paste traceroute output below.', 'privacy-checker' ); ?></div>
+            </div>
+
+            <div class="pcv2__geo-hops" data-pcv2-region="geo-hops"></div>
+
+            <details class="pcv2__geo-paste">
+                <summary><?php esc_html_e( 'Paste traceroute', 'privacy-checker' ); ?></summary>
+                <form data-pcv2-action="geo-paste">
+                    <label class="pcv2__sr-only" for="pcv2-geo-paste"><?php esc_html_e( 'Traceroute text', 'privacy-checker' ); ?></label>
+                    <textarea id="pcv2-geo-paste" data-pcv2-region="geo-paste" placeholder="1  192.0.2.1 (192.0.2.1)  1.123 ms  1.245 ms  1.301 ms"></textarea>
+                    <button type="submit" class="pcv2__btn pcv2__btn--primary"><?php esc_html_e( 'Visualize', 'privacy-checker' ); ?></button>
+                </form>
+            </details>
+        </section>
+        <?php
     }
 
     /**

@@ -802,7 +802,111 @@ final class PrivacyReport {
             'message'       => $message,
             'details'       => $details,
             'status_source' => $source,
+            // Scoring rubric shown in the expandable "Show details"
+            // panel. Each entry is a (signal, score, condition) triple
+            // the user can read to understand why this category got
+            // the score it did. The first matching band is the one
+            // that produced the score.
+            'criteria'      => self::criteria_for( $key ),
         );
+    }
+
+    /**
+     * Build a human-readable scoring rubric for a category.
+     *
+     * Each entry is a (label, range, condition) triple. The UI shows
+     * the band that was hit at the top, and the full rubric below so
+     * users can verify the score wasn't arbitrary. Conditions are
+     * short English so they don't have to be translated.
+     *
+     * @return array<int,array{score:int, label:string, condition:string}>
+     */
+    private static function criteria_for( string $key ): array {
+        switch ( $key ) {
+            case 'ip':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Mock / dev mode — real IP intel is not gathered.' ),
+                    array( 'score' =>  80, 'label' => 'Warning', 'condition' => 'IP intel partially resolved (geo or ASN missing).' ),
+                    array( 'score' =>  75, 'label' => 'Warning', 'condition' => 'IP geolocation and ASN both visible to the public.' ),
+                    array( 'score' =>  50, 'label' => 'Warning', 'condition' => 'IP intelligence provider did not respond.' ),
+                );
+            case 'reputation':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'IP is clean across reputation lists.' ),
+                    array( 'score' =>  55, 'label' => 'Warning', 'condition' => 'IP flagged as suspicious on at least one list.' ),
+                    array( 'score' =>  50, 'label' => 'Warning', 'condition' => 'Reputation provider returned no verdict.' ),
+                    array( 'score' =>  15, 'label' => 'Bad',     'condition' => 'IP appears on reputation lists.' ),
+                );
+            case 'dns':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Resolvers agree — no DNS leak detected.' ),
+                    array( 'score' =>  70, 'label' => 'Warning', 'condition' => 'Some resolver disagreement observed (leak_score < 0.5).' ),
+                    array( 'score' =>  60, 'label' => 'Warning', 'condition' => 'DNS leak test not configured.' ),
+                    array( 'score' =>  40, 'label' => 'Bad',     'condition' => 'DNS probe failed (provider unreachable or error).' ),
+                    array( 'score' =>  30, 'label' => 'Bad',     'condition' => 'Resolvers disagree significantly — possible DNS leak.' ),
+                );
+            case 'webrtc':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'WebRTC does not expose public IPs.' ),
+                    array( 'score' =>  95, 'label' => 'Good',    'condition' => 'WebRTC is not supported in this browser.' ),
+                    array( 'score' =>  60, 'label' => 'Warning', 'condition' => 'WebRTC status unknown — no client signal was provided.' ),
+                    array( 'score' =>  20, 'label' => 'Bad',     'condition' => 'WebRTC exposes public IP(s).' ),
+                );
+            case 'fingerprint':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Browser fingerprint is low-entropy and hard to distinguish.' ),
+                    array( 'score' =>  65, 'label' => 'Warning', 'condition' => 'Browser fingerprint has moderate entropy.' ),
+                    array( 'score' =>  60, 'label' => 'Warning', 'condition' => 'Browser fingerprint signal unavailable.' ),
+                    array( 'score' =>  20, 'label' => 'Bad',     'condition' => 'Browser fingerprint is highly unique — easily trackable.' ),
+                );
+            case 'user_agent':
+                return array(
+                    array( 'score' =>  90, 'label' => 'Good',    'condition' => 'User-Agent is minimal.' ),
+                    array( 'score' =>  70, 'label' => 'Warning', 'condition' => 'No User-Agent string was sent.' ),
+                    array( 'score' =>  70, 'label' => 'Warning', 'condition' => 'User-Agent leaks one version detail.' ),
+                    array( 'score' =>  40, 'label' => 'Warning', 'condition' => 'User-Agent exposes detailed browser, OS, and device versions.' ),
+                    array( 'score' =>  30, 'label' => 'Bad',     'condition' => 'User-Agent matches a known bot/crawler pattern.' ),
+                );
+            case 'ipv6':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'No IPv6 address present.' ),
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'IPv6 present but matches IPv4 country (consistent).' ),
+                    array( 'score' =>  40, 'label' => 'Warning', 'condition' => 'IPv6 present and leaks a different country than IPv4.' ),
+                );
+            case 'consistency':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Browser timezone, language, and geo signals all match.' ),
+                    array( 'score' =>  60, 'label' => 'Warning', 'condition' => 'One of timezone / language / geo disagrees.' ),
+                    array( 'score' =>  30, 'label' => 'Bad',     'condition' => 'Multiple signals disagree — likely masking.' ),
+                );
+            case 'security_posture':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'TLS 1.3+ and current browser version.' ),
+                    array( 'score' =>  85, 'label' => 'Warning', 'condition' => 'One or both security-posture signals are below current.' ),
+                    array( 'score' =>  40, 'label' => 'Bad',     'condition' => 'TLS 1.0/1.1 or very outdated browser detected.' ),
+                );
+            case 'proxy':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'No proxy / VPN / Tor signal detected.' ),
+                    array( 'score' =>  80, 'label' => 'Warning', 'condition' => 'Connection is from a residential ISP (could be clean or masked).' ),
+                    array( 'score' =>  70, 'label' => 'Warning', 'condition' => 'Hosting provider — typical for VPNs and proxies.' ),
+                    array( 'score' =>  30, 'label' => 'Bad',     'condition' => 'Tor exit node detected.' ),
+                );
+            case 'connection_quality':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Connection quality probe succeeded with healthy latency.' ),
+                    array( 'score' =>  70, 'label' => 'Warning', 'condition' => 'Connection quality probe did not produce a reading.' ),
+                    array( 'score' =>  40, 'label' => 'Bad',     'condition' => 'High latency or packet loss detected.' ),
+                );
+            case 'local_network':
+                return array(
+                    array( 'score' => 100, 'label' => 'Good',    'condition' => 'Local network probe succeeded.' ),
+                    array( 'score' =>  80, 'label' => 'Warning', 'condition' => 'Local network probe did not run (browser blocked it).' ),
+                    array( 'score' =>  40, 'label' => 'Bad',     'condition' => 'Multiple LAN endpoints visible to the browser.' ),
+                );
+            default:
+                return array();
+        }
     }
 
     /**

@@ -86,6 +86,87 @@ test.describe('v2 keyboard / focus / semantics', () => {
         expect(tags).toContain('BUTTON');
     });
 
+    test('Privacy Findings rows are expandable with scoring rubric + evidence', async ({ page }) => {
+        await gotoV2(page);
+        await page.click('[data-pcv2-action="start-scan"]');
+        await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
+        await page.waitForTimeout(500);
+
+        const findings = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('.pcv2__finding')).map(f => {
+                const dt = f.querySelector('.pcv2__finding-title');
+                const sev = f.getAttribute('data-pcv2-severity');
+                const summary = f.querySelector('.pcv2__finding-summary');
+                const details = f.querySelector('.pcv2__finding-details');
+                const bands = f.querySelectorAll('.pcv2__finding-band');
+                const hitBands = f.querySelectorAll('.pcv2__finding-band--hit');
+                const verdict = f.querySelector('.pcv2__finding-verdict-text');
+                const rec = f.querySelector('.pcv2__finding-rec');
+                const evidence = f.querySelector('.pcv2__finding-evidence dd');
+                return {
+                    title: dt ? dt.textContent.trim() : '',
+                    severity: sev,
+                    isDetails: f.tagName === 'DETAILS',
+                    hasSummary: !!summary,
+                    hasDetails: !!details,
+                    bandCount: bands.length,
+                    hitBandCount: hitBands.length,
+                    hasVerdict: !!verdict,
+                    hasRec: !!rec,
+                    hasEvidence: !!evidence
+                };
+            });
+        });
+
+        // We expect at least 3 findings (the scan returns a few even on dev).
+        expect(findings.length).toBeGreaterThanOrEqual(3);
+
+        for (const f of findings) {
+            expect(f.isDetails, f.title + ' must use <details>').toBe(true);
+            expect(f.hasSummary, f.title + ' must have a summary').toBe(true);
+            // At least one finding should have bands (most do).
+            // We don't require it for every row because some categories
+            // may not have a rubric in this build.
+            if (f.bandCount > 0) {
+                expect(f.hitBandCount, f.title + ' must mark exactly one band as the hit').toBe(1);
+                expect(f.hasVerdict, f.title + ' must show the verdict text').toBe(true);
+            }
+        }
+    });
+
+    test('Findings rows expand and collapse on click', async ({ page }) => {
+        await gotoV2(page);
+        await page.click('[data-pcv2-action="start-scan"]');
+        await page.waitForSelector('[data-pcv2-region="report"]:not([hidden])', { timeout: 15_000 });
+        await page.waitForTimeout(500);
+
+        // Find the first finding row and click its summary to open it.
+        const firstSummary = page.locator('.pcv2__finding summary').first();
+        await firstSummary.click();
+        // The <details> element should now be open.
+        const isOpen = await page.evaluate(() => {
+            const d = document.querySelector('.pcv2__finding');
+            return d && d.open === true;
+        });
+        expect(isOpen).toBe(true);
+        // The details panel should be visible (display !== 'none').
+        const detailsVisible = await page.evaluate(() => {
+            const d = document.querySelector('.pcv2__finding .pcv2__finding-details');
+            if (!d) return false;
+            const cs = getComputedStyle(d);
+            return cs.display !== 'none' && cs.visibility !== 'hidden';
+        });
+        expect(detailsVisible).toBe(true);
+
+        // Click again to close.
+        await firstSummary.click();
+        const isOpenAfter = await page.evaluate(() => {
+            const d = document.querySelector('.pcv2__finding');
+            return d && d.open === true;
+        });
+        expect(isOpenAfter).toBe(false);
+    });
+
     test('Status badges carry text labels (never color alone)', async ({ page }) => {
         await gotoV2(page);
         await page.click('[data-pcv2-action="start-scan"]');

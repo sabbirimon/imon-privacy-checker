@@ -170,6 +170,13 @@ test.describe('GeoTrace v2 pipeline', () => {
         test.skip(hasGeoWidget === 0, 'No GeoTrace v2 widget on home page in this test setup');
 
         // Paste a traceroute into the paste textarea and submit.
+        // The textarea lives inside <details> — open the panel first so
+        // the textarea is visible (Phase 19: paste form is collapsed by
+        // default to keep the inline widget compact).
+        await page.evaluate(() => {
+            const d = document.querySelector('.pcv2__geo-paste');
+            if (d) d.open = true;
+        });
         await page.fill('[data-pcv2-region="geo-paste"]', MULTI_HOP_FIXTURE);
         await page.click('.pcv2__geo-paste button[type="submit"]');
 

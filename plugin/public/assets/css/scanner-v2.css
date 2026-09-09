@@ -858,35 +858,43 @@
 }
 
 /* ============================================================== */
-/* Findings list                                                  */
+/* Findings list (expandable rows with scoring rubric + evidence) */
 /* ============================================================== */
 
 .pcv2__findings {
-  margin-top: 0.5rem;
+  margin-top: 1.5rem;
   display: grid;
   gap: 0.85rem;
 }
+.pcv2__findings-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
 .pcv2__findings h3 {
   font-size: 0.78rem;
-  margin: 0 0 0.25rem;
+  margin: 0;
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--pcv2-text-faint);
 }
+.pcv2__findings-hint {
+  font-size: 0.78rem;
+  color: var(--pcv2-text-faint);
+}
 
+/* Native <details> wrapper — gives keyboard + a11y for free. */
 .pcv2__finding {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.65rem 1rem;
-  padding: 1rem 1.15rem;
   background: var(--pcv2-surface);
   border: 1px solid var(--pcv2-border);
   border-radius: 14px;
-  align-items: center;
   backdrop-filter: blur(12px);
   position: relative;
   overflow: hidden;
+  transition: background-color 160ms ease, border-color 160ms ease;
 }
 .pcv2__finding::before {
   content: "";
@@ -901,6 +909,30 @@
 .pcv2__finding[data-pcv2-severity="danger"]  { --pcv2-finding-tone: var(--pcv2-danger-fg); }
 .pcv2__finding[data-pcv2-severity="info"]    { --pcv2-finding-tone: var(--pcv2-info-fg); }
 .pcv2__finding[data-pcv2-severity="neutral"] { --pcv2-finding-tone: var(--pcv2-neutral-fg); }
+.pcv2__finding[open] {
+  background: var(--pcv2-surface-strong);
+  border-color: var(--pcv2-border-strong);
+}
+
+/* Summary row — visible always, clickable. */
+.pcv2__finding > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem 1rem;
+  padding: 1rem 1.15rem;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+}
+.pcv2__finding > summary::-webkit-details-marker { display: none; }
+.pcv2__finding > summary::marker { display: none; content: ''; }
+.pcv2__finding > summary:hover { background: var(--pcv2-surface-sunken); }
+.pcv2__finding > summary:focus-visible {
+  outline: 3px solid var(--pcv2-focus-ring);
+  outline-offset: -3px;
+  border-radius: 14px;
+}
 
 .pcv2__finding-icon {
   width: 38px; height: 38px;
@@ -910,15 +942,179 @@
   color: var(--pcv2-finding-tone, var(--pcv2-text-muted));
   border: 1px solid var(--pcv2-neutral-border);
   flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 800;
 }
+.pcv2__finding-head { min-width: 0; }
 .pcv2__finding-title { font-weight: 600; margin: 0 0 0.2rem; font-size: 0.95rem; }
 .pcv2__finding-body { color: var(--pcv2-text-muted); font-size: 0.85rem; margin: 0; line-height: 1.4; }
+
+.pcv2__finding-score-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
 .pcv2__finding-score {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: var(--pcv2-finding-tone, var(--pcv2-text));
   white-space: nowrap;
+}
+.pcv2__finding-chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 24px; height: 24px;
+  border-radius: 999px;
+  background: var(--pcv2-neutral-bg);
+  border: 1px solid var(--pcv2-neutral-border);
+  color: var(--pcv2-text-muted);
+  font-size: 0.8rem;
+  transition: transform 200ms ease, background-color 160ms ease;
+}
+.pcv2__finding[open] > summary .pcv2__finding-chevron {
+  transform: rotate(180deg);
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  border-color: transparent;
+}
+
+/* Expandable body — sub-blocks (rubric / evidence / source / rec). */
+.pcv2__finding-details {
+  padding: 0 1.15rem 1.15rem 1.15rem;
+  display: grid;
+  gap: 1.25rem;
+  border-top: 1px solid var(--pcv2-border);
+  margin-top: -1px;
+  padding-top: 1.15rem;
+}
+.pcv2__finding-block {
+  display: grid;
+  gap: 0.55rem;
+}
+.pcv2__finding-block-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+}
+
+/* Rubric — the verdict chip + the full band list. */
+.pcv2__finding-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.pcv2__finding-verdict-text {
+  font-size: 0.92rem;
+  color: var(--pcv2-text);
+  line-height: 1.45;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pcv2__finding-rubric {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.pcv2__finding-band {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 0.85rem;
+  align-items: baseline;
+  padding: 0.5rem 0.75rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__finding-band::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--pcv2-band-tone, var(--pcv2-text-faint));
+  opacity: 0.7;
+}
+.pcv2__finding-band[data-pcv2-tone="safe"]    { --pcv2-band-tone: var(--pcv2-safe-fg); }
+.pcv2__finding-band[data-pcv2-tone="warning"] { --pcv2-band-tone: var(--pcv2-warning-fg); }
+.pcv2__finding-band[data-pcv2-tone="danger"]  { --pcv2-band-tone: var(--pcv2-danger-fg); }
+.pcv2__finding-band-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-band-tone, var(--pcv2-text));
+  text-align: right;
+}
+.pcv2__finding-band-condition { color: var(--pcv2-text-muted); line-height: 1.4; }
+.pcv2__finding-band--hit {
+  background: var(--pcv2-neutral-bg);
+  border-color: var(--pcv2-finding-tone, var(--pcv2-info-fg));
+  box-shadow: 0 0 0 1px var(--pcv2-finding-tone, var(--pcv2-info-fg)),
+              0 0 16px color-mix(in srgb, var(--pcv2-finding-tone, var(--pcv2-info-fg)) 30%, transparent);
+}
+.pcv2__finding-band--hit .pcv2__finding-band-condition {
+  color: var(--pcv2-text);
+  font-weight: 500;
+}
+
+/* Evidence block. */
+.pcv2__finding-evidence {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 1fr;
+  gap: 0.4rem 1rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.pcv2__finding-evidence dt { color: var(--pcv2-text-muted); margin: 0; }
+.pcv2__finding-evidence dd {
+  margin: 0;
+  color: var(--pcv2-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+/* Source / data-quality block. */
+.pcv2__finding-source-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  line-height: 1.45;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--pcv2-info-fg);
+  background: var(--pcv2-info-bg);
+  border-radius: 0 8px 8px 0;
+}
+
+/* Recommendation block — gradient-tinted, the "what to do" payoff. */
+.pcv2__finding-block--rec {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  box-shadow: var(--pcv2-shadow-glow-purple);
+}
+.pcv2__finding-block--rec .pcv2__finding-block-title {
+  color: rgba(255, 255, 255, 0.78);
+}
+.pcv2__finding-block--rec .pcv2__finding-rec {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--pcv2-action-fg);
+  font-weight: 500;
 }
 
 /* ============================================================== */
@@ -1119,6 +1315,226 @@
 .pcv2__leaflet-pin--origin { background: var(--pcv2-text); }
 .pcv2__leaflet-pin--dest { background: var(--pcv2-safe-fg); }
 .pcv2__leaflet-pin--private { background: var(--pcv2-text-faint); }
+
+/* ============================================================== */
+/* Inline GeoTrace section on the home page (Phase 19)            */
+/* ============================================================== */
+
+.pcv2__geotrace {
+  margin-top: 2.5rem;
+  padding: 1.5rem 1.5rem 1.75rem;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 20px;
+  box-shadow: var(--pcv2-shadow-2);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__geotrace::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(circle, var(--pcv2-orb-2) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0.4;
+}
+.pcv2__geotrace > * { position: relative; z-index: 1; }
+
+.pcv2__geotrace .pcv2__geo-header { align-items: center; }
+.pcv2__geo-header-text { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-width: 0; }
+.pcv2__geo-header h2 {
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pcv2-text);
+  font-weight: 700;
+}
+.pcv2__geo-tagline {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__geo-input input {
+  min-width: 200px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================== */
+/* Richer card design (Phase 19) — card icons + always-on content */
+/* ============================================================== */
+
+.pcv2__card-header { position: relative; }
+.pcv2__card[data-pcv2-card] .pcv2__card-header::after {
+  content: "";
+  position: absolute;
+  right: 0; top: 0.15rem;
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: var(--pcv2-action-grad);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  opacity: 0.85;
+}
+.pcv2__card[data-pcv2-card="overview"]     .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-overview);     mask-image: var(--pcv2-icon-overview); }
+.pcv2__card[data-pcv2-card="connection"]   .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-connection);   mask-image: var(--pcv2-icon-connection); }
+.pcv2__card[data-pcv2-card="anonymity"]    .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-anonymity);    mask-image: var(--pcv2-icon-anonymity); }
+.pcv2__card[data-pcv2-card="dns"]          .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-dns);          mask-image: var(--pcv2-icon-dns); }
+.pcv2__card[data-pcv2-card="browser"]      .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-browser);      mask-image: var(--pcv2-icon-browser); }
+.pcv2__card[data-pcv2-card="security"]     .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-security);     mask-image: var(--pcv2-icon-security); }
+
+:root, [data-pcv2-theme="light"] {
+  /* Mask images for card icons — embedded SVGs sized 18×18, recolored
+     via background. Using the gradient as the background so each card
+     header gets the same purple→pink treatment as the buttons. */
+  --pcv2-icon-overview:   url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M3 12l9-9 9 9-2 2-7-7-7 7z'/><path fill='black' d='M5 12v8a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-8l-7-7z'/></svg>");
+  --pcv2-icon-connection: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='9' fill='none' stroke='black' stroke-width='2'/><path fill='none' stroke='black' stroke-width='2' d='M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18'/></svg>");
+  --pcv2-icon-anonymity:  url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z'/></svg>");
+  --pcv2-icon-dns:        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='3' fill='black'/><circle cx='4' cy='6' r='2' fill='black'/><circle cx='4' cy='18' r='2' fill='black'/><circle cx='20' cy='6' r='2' fill='black'/><circle cx='20' cy='18' r='2' fill='black'/><path fill='none' stroke='black' stroke-width='1.5' d='M6 7l4 4M18 7l-4 4M6 17l4-4M18 17l-4-4'/></svg>");
+  --pcv2-icon-browser:    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='4' width='18' height='16' rx='2' fill='none' stroke='black' stroke-width='2'/><circle cx='12' cy='12' r='3' fill='black'/><path fill='black' d='M3 8h18'/></svg>");
+  --pcv2-icon-security:   url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z'/><path fill='white' d='M10 12l-2 2 4 4 6-6-2-2-4 4z'/></svg>");
+}
+
+/* Browser card gets "always available" content from the client itself,
+   so it never shows "Not available" for UA / screen / timezone. The JS
+   already pulls from navigator.userAgent, screen.width, etc. — these
+   rules just style that block of "always-on" rows. */
+.pcv2__card[data-pcv2-card="browser"] .pcv2__row--always-on dd {
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+/* Anonymity card gets a "detection pill" — a single tone-coded chip
+   that summarizes the verdict so the card always has a clear status
+   even when the underlying signal is "No signal". */
+.pcv2__detection-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 10px;
+  margin-bottom: 0.25rem;
+}
+.pcv2__detection-pill-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+
+/* Security card gets a verdict strip across the top — green/amber/red
+   depending on TLS + outdated-broswer combined rule. */
+.pcv2__security-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 10px;
+  margin-bottom: 0.25rem;
+  font-size: 0.92rem;
+}
+.pcv2__security-verdict-label { font-weight: 600; }
+
+/* DNS card gets a one-line provider pill. */
+.pcv2__dns-provider-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.pcv2__dns-provider-pill-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+
+/* Connection card gets a hero strip with country + ASN at the top,
+   even when the rest of the detail fields are empty. */
+.pcv2__connection-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+  padding: 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  margin-bottom: 0.25rem;
+}
+.pcv2__connection-hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+.pcv2__connection-hero-row dt {
+  flex: 0 0 auto;
+  color: var(--pcv2-text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pcv2__connection-hero-row dd {
+  margin: 0;
+  color: var(--pcv2-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Overview card gets a "score summary" with grade + confidence inline. */
+.pcv2__overview-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  margin-bottom: 0.25rem;
+  text-align: center;
+}
+.pcv2__overview-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem 0.5rem;
+}
+.pcv2__overview-summary-cell-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__overview-summary-cell-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--pcv2-text);
+}
+.pcv2__overview-summary-cell-value--grade { font-size: 1.4rem; }
 
 /* ============================================================== */
 /* Reduced motion                                                 */

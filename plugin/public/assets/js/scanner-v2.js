@@ -597,6 +597,37 @@
             .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
+    /**
+     * Pick a category-specific recommendation. Falls back to the row
+     * message if no rule matches. Kept as JS-side copy because the
+     * backend already returns recommendations for the top-level
+     * Privacy Report — these are the inline per-finding tips.
+     */
+    function pickRecommendation(row, key) {
+        var recs = {
+            ip: 'Use a VPN to hide your IP and ASN from every site you visit. For maximum privacy, choose a provider that accepts anonymous payment.',
+            reputation: 'A clean IP is rare on residential ISPs. If your IP is flagged, contact your ISP for a fresh address or use a reputable VPN exit node.',
+            dns: 'Use a DNS resolver that supports encrypted transport (DNS-over-HTTPS or DNS-over-TLS) and routes all queries through your VPN tunnel.',
+            webrtc: 'Disable WebRTC in your browser (Firefox: about:config → media.peerconnection.enabled). The WebRTC test exposes your real public IP even when using a VPN.',
+            fingerprint: 'Use Firefox with resistFingerprinting, or Tor Browser. Resist installing browser extensions; each one makes your fingerprint more unique.',
+            user_agent: 'A privacy-focused browser sends a generic User-Agent by default. Avoid Chromium-based browsers for high-privacy sessions — they leak version detail.',
+            ipv6: 'If your VPN only tunnels IPv4, disable IPv6 at the OS level to prevent IPv6 leaks. Many VPNs support IPv6 natively now — check your provider.',
+            consistency: 'A mismatch between your browser timezone, language, and geo is a strong tracking signal. Set all three to the same region as your VPN exit.',
+            security_posture: 'Keep your browser updated. Sites behind TLS 1.0/1.1 should be avoided — modern browsers refuse them by default.',
+            proxy: 'A clean residential IP is expected for a normal user. If you see "Hosting" or "Tor", the site may treat you differently (CAPTCHAs, blocks).',
+            connection_quality: 'Connection quality is informational only — it does not affect privacy. High latency may be a VPN or distant exit.',
+            local_network: 'LAN exposure is informational only. It indicates whether the browser can reach local network endpoints (mDNS, WebRTC STUN).'
+        };
+        if (recs[key]) return recs[key];
+        if (row && row.status === 'bad') {
+            return 'This category scored below 30%. See the criteria above for the specific signal that triggered the score.';
+        }
+        if (row && row.status === 'warning') {
+            return 'This category is in a warning band. Review the criteria above for the signal that lowered the score.';
+        }
+        return null;
+    }
+
     function renderCard(card, title, content) {
         var header = card.querySelector('[data-pcv2-region="card-title"]');
         if (header) header.textContent = title;
@@ -661,109 +692,326 @@
         cards.forEach(function (card) {
             var key = card.getAttribute('data-pcv2-card');
             if (key === 'overview') {
-                renderCard(card, PCV2.i18n.overviewTitle || 'Overview',
-                    renderKV([
-                        { label: PCV2.i18n.scoreLabel || 'Privacy Score', value: score == null ? null : score + ' / 100' },
-                        { label: PCV2.i18n.gradeLabel || 'Grade', value: grade || null },
-                        { label: PCV2.i18n.confidenceLabel || 'Confidence', value: (report.privacy_report && report.privacy_report.confidence) || null }
+                // Overview: score + grade + confidence at-a-glance.
+                var ovSummary = el('div', { class: 'pcv2__overview-summary' }, [
+                    el('div', { class: 'pcv2__overview-summary-cell' }, [
+                        el('span', { class: 'pcv2__overview-summary-cell-label', text: PCV2.i18n.scoreLabel || 'Privacy Score' }),
+                        el('span', { class: 'pcv2__overview-summary-cell-value', text: score == null ? '—' : score + ' / 100' })
+                    ]),
+                    el('div', { class: 'pcv2__overview-summary-cell' }, [
+                        el('span', { class: 'pcv2__overview-summary-cell-label', text: PCV2.i18n.gradeLabel || 'Grade' }),
+                        el('span', { class: 'pcv2__overview-summary-cell-value pcv2__overview-summary-cell-value--grade', text: grade || '—' })
+                    ]),
+                    el('div', { class: 'pcv2__overview-summary-cell' }, [
+                        el('span', { class: 'pcv2__overview-summary-cell-label', text: PCV2.i18n.confidenceLabel || 'Confidence' }),
+                        el('span', { class: 'pcv2__overview-summary-cell-value', text: (report.privacy_report && report.privacy_report.confidence) || '—' })
                     ])
-                );
+                ]);
+                // Subscores list (always present).
+                var subList = el('dl', { class: 'pcv2__rows' });
+                var subs = (report.privacy_report && report.privacy_report.subscores) || {};
+                var cats = (report.privacy_report && report.privacy_report.categories) || {};
+                var subKeys = Object.keys(subs).slice(0, 6);
+                if (subKeys.length === 0) {
+                    // Fall back to the top 6 categories.
+                    Object.keys(cats).slice(0, 6).forEach(function (k) {
+                        subs[k] = { score: cats[k].percent || cats[k].score };
+                        subKeys.push(k);
+                    });
+                }
+                subKeys.forEach(function (k) {
+                    var v = subs[k] || {};
+                    var pct = typeof v === 'object' ? (v.score || v.percent) : v;
+                    var sev = severityFromScore(pct);
+                    subList.appendChild(el('dt', { text: prettySubLabel(k) }));
+                    subList.appendChild(el('dd', null,
+                        renderStatusChip(sev, (pct != null ? Math.round(pct) : '—') + '%')
+                    ));
+                });
+                renderCard(card, PCV2.i18n.overviewTitle || 'Overview', el('div', null, [ovSummary, subList]));
             } else if (key === 'connection') {
-                var ip = (report.request_ip && (report.request_ip.ipv4 || report.request_ip.ipv6)) || intel.ip;
-                renderCard(card, PCV2.i18n.connectionTitle || 'Connection',
+                // Connection: hero strip with IP + country + ASN + ISP,
+                // then detail rows below.
+                var ipv4 = report.request_ip && report.request_ip.ipv4;
+                var ipv6 = report.request_ip && report.request_ip.ipv6;
+                var country = intel.country_name || intel.country;
+                var asn = intel.asn;
+                var isp = intel.isp;
+                var heroRows = [];
+                if (ipv4 || ipv6) {
+                    heroRows.push(['IP', (ipv4 || ipv6) + (ipv6 ? '  /  ' + ipv6 : '')]);
+                }
+                if (country || asn) {
+                    heroRows.push(['Location', [intel.city, intel.region, country].filter(Boolean).join(', ') || '—']);
+                }
+                if (isp)  heroRows.push(['ISP', isp]);
+                if (asn)  heroRows.push(['ASN', asn]);
+                var connectionHero = el('div', { class: 'pcv2__connection-hero' });
+                if (heroRows.length === 0) {
+                    connectionHero.appendChild(el('p', {
+                        class: 'pcv2__row-missing',
+                        text: 'Run the scan to see your connection details.'
+                    }));
+                } else {
+                    heroRows.forEach(function (r) {
+                        var row = el('dl', { class: 'pcv2__connection-hero-row' });
+                        row.appendChild(el('dt', { text: r[0] }));
+                        row.appendChild(el('dd', { text: r[1] }));
+                        connectionHero.appendChild(row);
+                    });
+                }
+                renderCard(card, PCV2.i18n.connectionTitle || 'Connection', el('div', null, [
+                    connectionHero,
                     renderKV([
-                        { label: 'IPv4', value: report.request_ip && report.request_ip.ipv4, mono: true },
-                        { label: 'IPv6', value: report.request_ip && report.request_ip.ipv6, mono: true },
-                        { label: 'Country', value: intel.country_name || intel.country },
+                        { label: 'IPv4', value: ipv4, mono: true },
+                        { label: 'IPv6', value: ipv6, mono: true },
                         { label: 'Region',  value: intel.region },
                         { label: 'City',    value: intel.city },
-                        { label: 'ISP',     value: intel.isp },
-                        { label: 'ASN',     value: intel.asn, mono: true },
                         { label: 'Timezone',value: intel.timezone }
                     ])
-                );
+                ]));
             } else if (key === 'anonymity') {
+                // Anonymity: detection pill at top (always visible),
+                // then type + confidence below.
                 var proxyTone = proxy.label === 'No signal' ? 'safe'
                               : proxy.label && /tor/i.test(proxy.label) ? 'danger'
                               : proxy.label && /proxy/i.test(proxy.label) ? 'warning'
                               : proxy.label && /vpn/i.test(proxy.label) ? 'warning'
                               : 'neutral';
-                var chipHost = el('div', { class: 'pcv2__row' }, [
-                    el('dt', { text: 'Detection' }),
-                    el('dd', null, renderStatusChip(proxyTone, proxy.label || (PCV2.i18n.noConfidence || 'Unknown')))
+                var detectionPill = el('div', { class: 'pcv2__detection-pill' }, [
+                    el('span', { class: 'pcv2__detection-pill-label', text: 'Detection' }),
+                    renderStatusChip(proxyTone, proxy.label || (PCV2.i18n.noConfidence || 'Unknown'))
                 ]);
-                renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity',
-                    el('div', null, [
-                        chipHost,
-                        renderKV([
-                            { label: 'Type', value: proxy.type || null },
-                            { label: 'Confidence', value: proxy.confidence || null }
-                        ])
-                    ])
-                );
-            } else if (key === 'dns') {
-                var dns = (rep.dns) || {};
-                renderCard(card, PCV2.i18n.dnsTitle || 'DNS Resolver',
+                renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity', el('div', null, [
+                    detectionPill,
                     renderKV([
-                        { label: 'Provider', value: dns.provider || null },
+                        { label: 'Type', value: proxy.type || null },
+                        { label: 'Confidence', value: proxy.confidence || null }
+                    ])
+                ]));
+            } else if (key === 'dns') {
+                // DNS: provider pill at top, then status + latency.
+                var dns = (rep.dns) || {};
+                var providerPill = el('div', { class: 'pcv2__dns-provider-pill' }, [
+                    el('span', { class: 'pcv2__dns-provider-pill-label', text: 'Provider' }),
+                    el('span', { text: dns.provider || 'Not configured' })
+                ]);
+                renderCard(card, PCV2.i18n.dnsTitle || 'DNS Resolver', el('div', null, [
+                    providerPill,
+                    renderKV([
                         { label: 'Status',   value: dns.status || null },
                         { label: 'Latency',  value: dns.latency_ms ? dns.latency_ms + ' ms' : null }
                     ])
-                );
+                ]));
             } else if (key === 'browser') {
+                // Browser: always-on rows from navigator/screen — never
+                // "Not available" for UA, screen, languages, timezone.
                 var fp = report.fingerprint || {};
-                renderCard(card, PCV2.i18n.browserTitle || 'Browser Privacy',
-                    renderKV([
-                        { label: 'User Agent', value: report.user_agent || navigator.userAgent, mono: true },
-                        { label: 'Languages',  value: (navigator.languages || []).join(', ') },
-                        { label: 'Timezone',   value: Intl.DateTimeFormat().resolvedOptions().timeZone },
-                        { label: 'Screen',     value: screen.width + ' × ' + screen.height },
-                        { label: 'Entropy',    value: fp.entropy_bits ? fp.entropy_bits + ' bits' : null }
-                    ])
-                );
+                var browserKV = el('dl', { class: 'pcv2__rows' });
+                var browserRows = [
+                    { label: 'User Agent', value: report.user_agent || navigator.userAgent, mono: true, always: true },
+                    { label: 'Languages',  value: (navigator.languages || []).join(', ') || null, always: true },
+                    { label: 'Timezone',   value: (Intl.DateTimeFormat().resolvedOptions().timeZone) || null, always: true },
+                    { label: 'Screen',     value: screen.width + ' × ' + screen.height, always: true },
+                    { label: 'Entropy',    value: fp.entropy_bits ? fp.entropy_bits + ' bits' : null }
+                ];
+                browserRows.forEach(function (it) {
+                    var dt = el('dt', { text: it.label });
+                    var dd = el('dd', {
+                        class: (it.mono ? 'mono ' : '') + (it.always ? 'pcv2__row--always-on' : '')
+                    });
+                    dd.appendChild(pcv2DisplayValue(it.value));
+                    browserKV.appendChild(dt);
+                    browserKV.appendChild(dd);
+                });
+                renderCard(card, PCV2.i18n.browserTitle || 'Browser Privacy', browserKV);
             } else if (key === 'security') {
+                // Security: verdict strip at top (always visible).
                 var sp = report.security_posture || {};
-                renderCard(card, PCV2.i18n.securityTitle || 'Security Findings',
+                var tlsVer = sp.tls && sp.tls.version;
+                var tlsStatus = sp.tls && sp.tls.status;
+                var browserVer = sp.browser && (sp.browser.name + ' ' + (sp.browser.version || '')).trim();
+                var outdated = sp.browser && sp.browser.outdated;
+                var verdictTone = (tlsStatus === 'good' && !outdated) ? 'safe'
+                                : (tlsStatus === 'bad' || outdated) ? 'danger'
+                                : 'warning';
+                var verdictLabel = (tlsStatus === 'good' && !outdated) ? 'Strong'
+                                 : (tlsStatus === 'bad' || outdated) ? 'At Risk'
+                                 : 'Adequate';
+                var verdictStrip = el('div', { class: 'pcv2__security-verdict' }, [
+                    renderStatusChip(verdictTone, verdictLabel),
+                    el('span', { class: 'pcv2__security-verdict-label', text:
+                        outdated ? 'One or both security-posture signals are below current.'
+                                : (tlsStatus === 'bad' ? 'TLS protocol is below current.'
+                                : 'Both TLS and browser version are current.')
+                    })
+                ]);
+                renderCard(card, PCV2.i18n.securityTitle || 'Security Findings', el('div', null, [
+                    verdictStrip,
                     renderKV([
-                        { label: 'TLS',         value: sp.tls && sp.tls.version, mono: true },
-                        { label: 'TLS Status',  value: sp.tls && sp.tls.status },
-                        { label: 'Browser',     value: sp.browser && sp.browser.name + ' ' + (sp.browser && sp.browser.version) },
-                        { label: 'Outdated',    value: sp.browser && sp.browser.outdated ? 'Yes' : 'No' }
+                        { label: 'TLS',         value: tlsVer, mono: true },
+                        { label: 'TLS Status',  value: tlsStatus },
+                        { label: 'Browser',     value: browserVer || null },
+                        { label: 'Outdated',    value: outdated ? 'Yes' : 'No' }
                     ])
-                );
+                ]));
             }
         });
 
-        // Findings list.
+        // Findings list (expandable rows with scoring rubric + evidence).
         var findings = dashboard.querySelector('[data-pcv2-region="findings"]');
         clear(findings);
         var cats = (report.privacy_report && report.privacy_report.categories) || {};
         var list = el('div', { class: 'pcv2__findings' });
-        list.appendChild(el('h3', { text: PCV2.i18n.findingsTitle || 'Privacy Findings' }));
+        var findingsHeader = el('div', { class: 'pcv2__findings-header' }, [
+            el('h3', { text: PCV2.i18n.findingsTitle || 'Privacy Findings' }),
+            el('span', { class: 'pcv2__findings-hint', text: PCV2.i18n.findingsHint || 'Click any row for scoring details and evidence.' })
+        ]);
+        list.appendChild(findingsHeader);
         var findingIcons = { safe: '✓', warning: '!', danger: '✕', info: 'ⓘ', neutral: '·' };
+
         Object.keys(cats).forEach(function (k) {
             var c = cats[k];
             if (!c) return;
-            var sev = severityFromScore(c.score || c.percent);
-            var card = el('div', { class: 'pcv2__finding', 'data-pcv2-severity': sev });
-            var icon = el('div', { class: 'pcv2__finding-icon', text: findingIcons[sev] || '·' });
-            card.appendChild(icon);
-            var body = el('div', null, [
-                el('p', { class: 'pcv2__finding-title', text: prettySubLabel(k) + ' — ' + Math.round(c.score || c.percent) + ' / 100' }),
-                el('p', { class: 'pcv2__finding-body',  text: c.message || (PCV2.i18n.noDetails || 'No additional details available.') })
-            ]);
-            card.appendChild(body);
-            card.appendChild(el('span', {
-                class: 'pcv2__finding-score',
-                text: Math.round(c.score || c.percent) + '%'
+            var scoreVal = Math.round(c.score || c.percent || 0);
+            var sev = severityFromScore(scoreVal);
+
+            // Native <details> wrapper for a11y + keyboard support out of the box.
+            var details = el('details', { class: 'pcv2__finding', 'data-pcv2-severity': sev });
+
+            // Summary row (always visible, clickable).
+            var summary = el('summary', { class: 'pcv2__finding-summary' });
+            summary.appendChild(el('div', {
+                class: 'pcv2__finding-icon',
+                'aria-hidden': 'true',
+                text: findingIcons[sev] || '·'
             }));
-            list.appendChild(card);
+            summary.appendChild(el('div', { class: 'pcv2__finding-head' }, [
+                el('p', { class: 'pcv2__finding-title', text: prettySubLabel(k) + ' — ' + scoreVal + ' / 100' }),
+                el('p', { class: 'pcv2__finding-body',  text: c.message || (PCV2.i18n.noDetails || 'No additional details available.') })
+            ]));
+            summary.appendChild(el('div', { class: 'pcv2__finding-score-wrap' }, [
+                el('span', { class: 'pcv2__finding-score', text: scoreVal + '%' }),
+                el('span', { class: 'pcv2__finding-chevron', 'aria-hidden': 'true', text: '▾' })
+            ]));
+            details.appendChild(summary);
+
+            // Expandable body: scoring rubric + evidence + recommendation.
+            var body = el('div', { class: 'pcv2__finding-details' });
+
+            // 1. Scoring rubric — which band was hit, plus all bands for context.
+            var rubricBlock = el('div', { class: 'pcv2__finding-block' });
+            rubricBlock.appendChild(el('h4', {
+                class: 'pcv2__finding-block-title',
+                text: PCV2.i18n.rubricTitle || 'How this score was calculated'
+            }));
+            var criteria = Array.isArray(c.criteria) ? c.criteria : [];
+            var hit = criteria.find(function (b) { return b.score === scoreVal; });
+            if (hit) {
+                var verdict = el('div', { class: 'pcv2__finding-verdict' }, [
+                    el('span', {
+                        class: 'pcv2__status',
+                        'data-pcv2-status': sev === 'safe' ? 'safe' : sev === 'danger' ? 'danger' : 'warning'
+                    }, hit.label),
+                    el('span', { class: 'pcv2__finding-verdict-text', text: hit.condition })
+                ]);
+                rubricBlock.appendChild(verdict);
+            } else {
+                rubricBlock.appendChild(el('p', {
+                    class: 'pcv2__finding-verdict-text',
+                    text: PCV2.i18n.noRubric || 'No scoring rubric available for this category.'
+                }));
+            }
+            if (criteria.length > 0) {
+                var rubric = el('ul', { class: 'pcv2__finding-rubric' });
+                criteria.forEach(function (band) {
+                    var li = el('li', {
+                        class: 'pcv2__finding-band' + (band === hit ? ' pcv2__finding-band--hit' : ''),
+                        'data-pcv2-tone': band.label.toLowerCase() === 'good' ? 'safe'
+                                        : band.label.toLowerCase() === 'bad' ? 'danger'
+                                        : 'warning'
+                    });
+                    li.appendChild(el('span', { class: 'pcv2__finding-band-score', text: band.score }));
+                    li.appendChild(el('span', { class: 'pcv2__finding-band-condition', text: band.condition }));
+                    rubric.appendChild(li);
+                });
+                rubricBlock.appendChild(rubric);
+            }
+            body.appendChild(rubricBlock);
+
+            // 2. Evidence — the raw signal values that contributed to the score.
+            var details_ = c.details && typeof c.details === 'object' ? c.details : {};
+            var detailKeys = Object.keys(details_);
+            if (detailKeys.length > 0) {
+                var evBlock = el('div', { class: 'pcv2__finding-block' });
+                evBlock.appendChild(el('h4', {
+                    class: 'pcv2__finding-block-title',
+                    text: PCV2.i18n.evidenceTitle || 'Evidence'
+                }));
+                var dl = el('dl', { class: 'pcv2__finding-evidence' });
+                detailKeys.forEach(function (dk) {
+                    var raw = details_[dk];
+                    var display = raw;
+                    if (raw && typeof raw === 'object') {
+                        display = JSON.stringify(raw);
+                    } else if (raw === '' || raw == null) {
+                        return; // skip empty
+                    }
+                    dl.appendChild(el('dt', { text: prettySubLabel(dk) }));
+                    dl.appendChild(el('dd', {
+                        class: 'mono',
+                        text: String(display)
+                    }));
+                });
+                if (dl.children.length > 0) {
+                    evBlock.appendChild(dl);
+                    body.appendChild(evBlock);
+                }
+            }
+
+            // 3. Status source — was the score measured or estimated?
+            if (c.status_source && c.status_source !== 'measured') {
+                var srcBlock = el('div', { class: 'pcv2__finding-block' }, [
+                    el('h4', {
+                        class: 'pcv2__finding-block-title',
+                        text: PCV2.i18n.sourceTitle || 'Data source'
+                    }),
+                    el('p', {
+                        class: 'pcv2__finding-source-note',
+                        text: c.status_source === 'unknown'
+                            ? (PCV2.i18n.sourceUnknown || 'This category was scored from limited data — the underlying provider did not respond.')
+                            : (PCV2.i18n.sourceEstimated || 'This category was estimated; no direct measurement was available.')
+                    })
+                ]);
+                body.appendChild(srcBlock);
+            }
+
+            // 4. Recommendation — what to do about this finding.
+            var rec = pickRecommendation(c, k);
+            if (rec) {
+                var recBlock = el('div', { class: 'pcv2__finding-block pcv2__finding-block--rec' }, [
+                    el('h4', {
+                        class: 'pcv2__finding-block-title',
+                        text: PCV2.i18n.recTitle || 'What you can do'
+                    }),
+                    el('p', { class: 'pcv2__finding-rec', text: rec })
+                ]);
+                body.appendChild(recBlock);
+            }
+
+            details.appendChild(body);
+            list.appendChild(details);
         });
         findings.appendChild(list);
 
-        // Post-scan share/export bar.
-        var actionsHost = el('div', { class: 'pcv2__actions-host' });
-        findings.parentNode.insertBefore(actionsHost, findings.nextSibling);
+        // Post-scan share/export bar — reuse the static host if the
+        // server-rendered skeleton has one (Phase 19 inline layout),
+        // otherwise create one next to the findings region.
+        var actionsHost = findings.parentNode.querySelector(':scope > .pcv2__actions-host');
+        if (!actionsHost) {
+            actionsHost = el('div', { class: 'pcv2__actions-host' });
+            findings.parentNode.insertBefore(actionsHost, findings.nextSibling);
+        }
         renderPostScanActions(report, actionsHost);
     }
 
