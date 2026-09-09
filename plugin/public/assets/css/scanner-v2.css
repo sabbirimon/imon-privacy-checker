@@ -546,6 +546,34 @@
   box-shadow: var(--pcv2-shadow-2);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
+  /* Subtle animated gradient backdrop so the card feels alive. The
+     orb layer sits behind everything else; it slowly drifts via a
+     long, low-amplitude keyframe that respects prefers-reduced-motion
+     (the keyframe is suppressed at the bottom of this file). */
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__score-hero::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.14), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(56, 189, 248, 0.12), transparent 50%);
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(20px);
+  animation: pcv2-hero-drift 24s ease-in-out infinite alternate;
+}
+.pcv2__score-hero > * { position: relative; z-index: 1; }
+@keyframes pcv2-hero-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, -1.5%, 0) scale(1.04); }
+  100% { transform: translate3d(-1%, 1.5%, 0) scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-hero::before { animation: none; }
 }
 @media (min-width: 900px) {
   .pcv2__score-hero {
@@ -695,6 +723,102 @@
   border-radius: 999px;
   background: var(--pcv2-ring-fill, var(--pcv2-info));
   box-shadow: 0 0 8px var(--pcv2-ring-fill, var(--pcv2-info));
+}
+
+/* ============================================================== */
+/* Score hero — radial sub-score chart                             */
+/* ============================================================== */
+
+.pcv2__score-hero-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+}
+
+.pcv2__radial-chart {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  display: block;
+}
+.pcv2__radial-chart-bg { opacity: 0.7; }
+.pcv2__radial-wedge {
+  transition: stroke-width 200ms ease, filter 200ms ease, opacity 200ms ease;
+  cursor: pointer;
+  filter: drop-shadow(0 0 0 transparent);
+}
+.pcv2__radial-wedge:hover,
+.pcv2__radial-wedge:focus-visible {
+  stroke-width: 14;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+.pcv2__radial-wedge:focus { outline: none; }
+
+.pcv2__radial-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  fill: var(--pcv2-text-muted);
+  pointer-events: none;
+}
+
+.pcv2__score-hero-empty {
+  color: var(--pcv2-text-faint);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pcv2__radial-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  width: 100%;
+  max-width: 100%;
+}
+@media (min-width: 480px) {
+  .pcv2__radial-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.pcv2__radial-legend-row {
+  display: flex; align-items: center; gap: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--pcv2-text-muted);
+  line-height: 1.2;
+}
+.pcv2__radial-legend-swatch {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+}
+.pcv2__radial-legend-row[data-pcv2-tone="safe"]    .pcv2__radial-legend-swatch { background: var(--pcv2-safe-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="warning"] .pcv2__radial-legend-swatch { background: var(--pcv2-warning-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="danger"]  .pcv2__radial-legend-swatch { background: var(--pcv2-danger-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="info"]    .pcv2__radial-legend-swatch { background: var(--pcv2-info-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="neutral"] .pcv2__radial-legend-swatch { background: var(--pcv2-text-faint); }
+
+.pcv2__radial-legend-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcv2__radial-legend-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--pcv2-text);
+}
+
+/* Hover a wedge — highlight matching legend row + dim the others. */
+.pcv2__radial-chart:hover .pcv2__radial-wedge { opacity: 0.45; }
+.pcv2__radial-chart:hover .pcv2__radial-wedge:hover,
+.pcv2__radial-chart:hover .pcv2__radial-wedge:focus-visible { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__radial-wedge { transition: none; }
 }
 
 /* ============================================================== */

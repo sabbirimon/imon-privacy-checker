@@ -655,8 +655,235 @@
     }
 
     /**
-     * Render the new score hero: large main ring + 4 mini sub-scores.
-     * Replaces the old `renderScoreGauge`.
+     * Build the sub-score polar / radial chart that replaces the old
+     * flat 4-mini-card row. Each sub-score is one wedge:
+     *
+     *   - position around the circle: index * (2π / N)
+     *   - wedge radius: scaled from 0 → outerRadius by score (0..100)
+     *   - wedge color: severityFromScoreTone (safe/info/warning/danger)
+     *   - wedge length (arc): 2π / N minus a small gap so adjacent
+     *     wedges read as separate bars
+     *
+     * Hover/focus highlights the wedge and shows the score + label in
+     * the central readout. The main privacy score is overlaid on top
+     * of the radial chart so the user gets a single glanceable hero.
+     *
+     * The chart is fully SVG (no canvas) so it inherits the theme
+     * tokens and stays accessible.
+     */
+    function renderRadialSubscoreChart(items) {
+        var n = items.length;
+        if (n === 0) return null;
+
+        var size    = 260;                  // outer SVG box (px)
+        var cx      = size / 2;
+        var cy      = size / 2;
+        var rOuter  = size / 2 - 6;         // max wedge radius
+        var rInner  = 78;                   // hollow centre (room for grade/score)
+        var gapDeg  = 6;                    // degrees between wedges
+        var arcEach = (360 / n) - gapDeg;
+        var TWO_PI  = Math.PI * 2;
+
+        // Severity → fill token. Keep in lockstep with CSS so the
+        // animation tweens between the same tones the legend uses.
+        var tokens = {
+            safe:    'var(--pcv2-safe-fg)',
+            warning: 'var(--pcv2-warning-fg)',
+            danger:  'var(--pcv2-danger-fg)',
+            info:    'var(--pcv2-info-fg)',
+            neutral: 'var(--pcv2-text-faint)'
+        };
+
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+        svg.setAttribute('class', 'pcv2__radial-chart');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', PCV2.i18n.radialAriaLabel || 'Sub-score breakdown chart');
+        svg.setAttribute('focusable', 'false');
+
+        // Background ring — the dark "track" behind every wedge so
+        // missing / zero scores still show as empty slots.
+        var bg = document.createElementNS(ns, 'circle');
+        bg.setAttribute('cx', cx);
+        bg.setAttribute('cy', cy);
+        bg.setAttribute('r', (rOuter + rInner) / 2);
+        bg.setAttribute('fill', 'none');
+        bg.setAttribute('stroke', 'var(--pcv2-surface-sunken)');
+        bg.setAttribute('stroke-width', String(rOuter - rInner));
+        bg.setAttribute('class', 'pcv2__radial-chart-bg');
+        svg.appendChild(bg);
+
+        // Center disc — provides a hollow so wedges look like arcs,
+        // not full pie slices. Also visually anchors the main score
+        // overlay.
+        var centerDisc = document.createElementNS(ns, 'circle');
+        centerDisc.setAttribute('cx', cx);
+        centerDisc.setAttribute('cy', cy);
+        centerDisc.setAttribute('r', rInner - 4);
+        centerDisc.setAttribute('fill', 'var(--pcv2-surface-strong)');
+        centerDisc.setAttribute('class', 'pcv2__radial-chart-center');
+        svg.appendChild(centerDisc);
+
+        // Build wedges. We use stroke-dasharray on a circle rather
+        // than building <path> arcs — much simpler geometry and the
+        // CSS transition for the dashoffset gives us the entrance
+        // animation for free.
+        items.forEach(function (it, idx) {
+            var pct = pctOrNull(it.value);
+            var sev = severityFromScore(pct);
+            var fill = tokens[sev] || tokens.neutral;
+            var startDeg = (360 / n) * idx + gapDeg / 2;
+            var ringR   = (rOuter + rInner) / 2;
+            var strokeW = rOuter - rInner - 4; // small inner gap
+
+            var wedge = document.createElementNS(ns, 'circle');
+            wedge.setAttribute('cx', cx);
+            wedge.setAttribute('cy', cy);
+            wedge.setAttribute('r', ringR);
+            wedge.setAttribute('fill', 'none');
+            wedge.setAttribute('stroke', fill);
+            wedge.setAttribute('stroke-width', String(strokeW));
+            wedge.setAttribute('stroke-linecap', 'butt');
+            // Total circumference at this radius (dasharray + dashoffset
+            // trick lets us "draw" only the arc portion).
+            var C = TWO_PI * ringR;
+            var arcLen = (arcEach / 360) * C;
+            var gapLen = C - arcLen;
+            wedge.setAttribute('stroke-dasharray', arcLen + ' ' + gapLen);
+            // Rotate so the wedge sits at its position around the circle.
+            wedge.setAttribute('transform', 'rotate(' + startDeg + ' ' + cx + ' ' + cy + ')');
+            // Initial dashoffset = arcLen (line fully hidden); CSS
+            // animates it to 0 over the entrance duration.
+            wedge.setAttribute('stroke-dashoffset', String(arcLen));
+            wedge.setAttribute('data-pcv2-target-offset', '0');
+            wedge.setAttribute('data-pcv2-initial-offset', String(arcLen));
+            // Severity data for the readout / a11y.
+            wedge.setAttribute('data-pcv2-key', it.key || '');
+            wedge.setAttribute('data-pcv2-label', it.label || '');
+            wedge.setAttribute('data-pcv2-score', pct != null ? String(Math.round(pct)) : '');
+            wedge.setAttribute('data-pcv2-tone', sev);
+            wedge.setAttribute('class', 'pcv2__radial-wedge');
+            // Accessible description.
+            var titleEl = document.createElementNS(ns, 'title');
+            titleEl.textContent = (it.label || it.key) +
+                (pct != null ? ': ' + Math.round(pct) + ' of 100' : ': not available');
+            wedge.appendChild(titleEl);
+            svg.appendChild(wedge);
+
+            // Outer label (category name around the perimeter).
+            var midDeg = startDeg + arcEach / 2;
+            var rad = (midDeg - 90) * Math.PI / 180; // -90 to start at top
+            var lx = cx + (rOuter + 6) * Math.cos(rad);
+            var ly = cy + (rOuter + 6) * Math.sin(rad);
+            var label = document.createElementNS(ns, 'text');
+            label.setAttribute('x', String(lx));
+            label.setAttribute('y', String(ly));
+            label.setAttribute('text-anchor', lx < cx - 4 ? 'end' : (lx > cx + 4 ? 'start' : 'middle'));
+            label.setAttribute('dominant-baseline', 'central');
+            label.setAttribute('class', 'pcv2__radial-label');
+            label.textContent = it.label || '';
+            svg.appendChild(label);
+        });
+
+        return svg;
+    }
+
+    /**
+     * Animate the radial wedges from "fully hidden" to their target
+     * arc length using a single rAF loop. We don't depend on
+     * getComputedStyle — each wedge already knows its target dashoffset
+     * (0) and initial dashoffset (arcLen). The animation runs in two
+     * phases:
+     *
+     *   1. 0..800ms — wedges fade in + draw in, staggered by 60ms each.
+     *   2. 800..1200ms — wedges settle into final position.
+     *
+     * Respects prefers-reduced-motion: skips the rAF loop entirely
+     * and sets dashoffset = 0 directly.
+     */
+    function animateRadialChart(svg) {
+        if (!svg) return;
+        var reduce = window.matchMedia &&
+                     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var wedges = Array.prototype.slice.call(svg.querySelectorAll('.pcv2__radial-wedge'));
+        if (reduce) {
+            wedges.forEach(function (w) {
+                w.setAttribute('stroke-dashoffset', w.getAttribute('data-pcv2-target-offset') || '0');
+                w.style.opacity = '1';
+            });
+            return;
+        }
+        var start = null;
+        var stagger = 60; // ms between wedges
+        var dur = 900;
+        function step(ts) {
+            if (start === null) start = ts;
+            var elapsed = ts - start;
+            var any = false;
+            wedges.forEach(function (w, i) {
+                var delay = i * stagger;
+                var local = Math.max(0, Math.min(1, (elapsed - delay) / dur));
+                if (local <= 0) {
+                    w.setAttribute('stroke-dashoffset', w.getAttribute('data-pcv2-initial-offset') || '0');
+                    w.style.opacity = '0';
+                    any = true;
+                } else if (local >= 1) {
+                    w.setAttribute('stroke-dashoffset', w.getAttribute('data-pcv2-target-offset') || '0');
+                    w.style.opacity = '1';
+                } else {
+                    var init = parseFloat(w.getAttribute('data-pcv2-initial-offset')) || 0;
+                    var target = parseFloat(w.getAttribute('data-pcv2-target-offset')) || 0;
+                    var eased = 1 - Math.pow(1 - local, 3); // easeOutCubic
+                    var offset = init + (target - init) * eased;
+                    w.setAttribute('stroke-dashoffset', String(offset));
+                    w.style.opacity = String(local);
+                    any = true;
+                }
+            });
+            if (any) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    /**
+     * Count-up animation for the main privacy score number. Updates
+     * the textContent of the supplied element from 0 → target over
+     * ~900ms using easeOutCubic. Skips animation entirely under
+     * prefers-reduced-motion or when target is non-numeric.
+     */
+    function animateScoreCountUp(node, target, duration) {
+        if (!node) return;
+        var reduce = window.matchMedia &&
+                     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (typeof target !== 'number' || reduce) {
+            if (typeof target === 'number') {
+                var suffix = node.querySelector('.pcv2__score-ring-value-suffix');
+                node.textContent = String(Math.round(target));
+                if (suffix) node.appendChild(suffix);
+            }
+            return;
+        }
+        var dur = duration || 900;
+        var start = null;
+        function step(ts) {
+            if (start === null) start = ts;
+            var local = Math.min(1, (ts - start) / dur);
+            var eased = 1 - Math.pow(1 - local, 3);
+            var v = Math.round(target * eased);
+            // Preserve the suffix span if it exists.
+            var suffix = node.querySelector('.pcv2__score-ring-value-suffix');
+            node.textContent = String(v);
+            if (suffix) node.appendChild(suffix);
+            if (local < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    /**
+     * Render the new score hero: large main ring + radial sub-score
+     * chart. Replaces the old `renderScoreGauge` and the 4-mini-card
+     * grid that used to live here.
      */
     function renderScoreHero(report) {
         // The REST payload puts the aggregate score under
@@ -674,51 +901,100 @@
         var grade = pr.grade || (score != null ? letterGradeFromScore(score) : '');
         var mainTone = score == null ? 'neutral' : severityFromScore(score);
 
-        var hero = el('div', { class: 'pcv2__score-hero' });
+        var hero = el('div', { class: 'pcv2__score-hero', 'data-pcv2-anim-stage': 'score-hero' });
 
-        // Main ring (left side on wide layouts).
+        // ---- LEFT: main ring + grade ---------------------------------
         var main = el('div', { class: 'pcv2__score-hero-main' });
-        main.appendChild(renderRingGauge({
+        var mainRing = renderRingGauge({
             size: 'lg',
             value: score,
             label: PCV2.i18n.scoreLabel || 'Privacy Score',
             tone: mainTone
-        }));
+        });
+        main.appendChild(mainRing);
+        // Cache the .pcv2__score-ring-value node so we can count it up.
+        var valueNode = mainRing.querySelector('.pcv2__score-ring-value');
+        if (valueNode) {
+            hero._valueNode = valueNode;
+            hero._valueTarget = score;
+        }
         if (grade) {
             main.appendChild(el('div', { class: 'pcv2__score-grade', text: grade }));
         }
         hero.appendChild(main);
 
-        // Sub-scores grid (right side).
-        var grid = el('div', { class: 'pcv2__score-hero-grid' });
+        // ---- RIGHT: radial sub-score chart ---------------------------
         var subs = (report.privacy_report && report.privacy_report.subscores) || {};
-        // Prefer well-known labels; fall back to first four keys.
         var preferredOrder = ['ip_exposure', 'fingerprint', 'connection', 'dns_leak', 'anonymity', 'webrtc'];
         var keys = preferredOrder.filter(function (k) { return subs[k] != null; });
         Object.keys(subs).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
-        keys.slice(0, 4).forEach(function (k) {
+        var chartItems = [];
+        keys.slice(0, 6).forEach(function (k) {
             var v = subs[k];
             var pct = (v && typeof v === 'object') ? (v.score || v.percent) : v;
-            grid.appendChild(renderMiniScoreCard({
-                value: pct,
-                label: prettySubLabel(k),
-                key: k
-            }));
+            chartItems.push({ key: k, label: prettySubLabel(k), value: pct });
         });
-        if (keys.length === 0) {
-            // No sub-scores — fall back to the categorical chips from the
-            // privacy_report, treating each category as a mini card.
+        if (chartItems.length === 0) {
+            // Fall back to categories (older payload shape).
             var cats = (report.privacy_report && report.privacy_report.categories) || {};
-            Object.keys(cats).slice(0, 4).forEach(function (k) {
+            Object.keys(cats).slice(0, 6).forEach(function (k) {
                 var c = cats[k];
-                grid.appendChild(renderMiniScoreCard({
-                    value: c && (c.score || c.percent),
-                    label: prettySubLabel(k),
-                    key: k
-                }));
+                chartItems.push({ key: k, label: prettySubLabel(k), value: c && (c.score || c.percent) });
             });
         }
-        hero.appendChild(grid);
+
+        var chartWrap = el('div', { class: 'pcv2__score-hero-chart' });
+        var legend = el('ul', { class: 'pcv2__radial-legend', role: 'list' });
+        if (chartItems.length === 0) {
+            // Truly nothing to chart — render the gradient hero alone.
+            chartWrap.appendChild(el('p', {
+                class: 'pcv2__score-hero-empty',
+                text: PCV2.i18n.scorePending || 'Score pending'
+            }));
+        } else {
+            var svg = renderRadialSubscoreChart(chartItems);
+            chartWrap.appendChild(svg);
+            // Legend below the chart so the colour → category mapping
+            // is explicit (also serves as the readout for hover/keyboard).
+            chartItems.forEach(function (it) {
+                var pct = pctOrNull(it.value);
+                var sev = severityFromScore(pct);
+                var li = el('li', { class: 'pcv2__radial-legend-row', 'data-pcv2-tone': sev, 'data-pcv2-key': it.key });
+                var sw = el('span', { class: 'pcv2__radial-legend-swatch', 'aria-hidden': 'true' });
+                var label = el('span', { class: 'pcv2__radial-legend-label', text: it.label || '' });
+                var value = el('span', {
+                    class: 'pcv2__radial-legend-value',
+                    text: pct != null ? Math.round(pct) + '%' : '—'
+                });
+                li.appendChild(sw);
+                li.appendChild(label);
+                li.appendChild(value);
+                legend.appendChild(li);
+            });
+            chartWrap.appendChild(legend);
+
+            // Hand the SVG off to the animator after the next paint so
+            // the browser commits the initial dashoffset before we start
+            // animating from it.
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(function () { animateRadialChart(svg); });
+            } else {
+                animateRadialChart(svg);
+            }
+        }
+        hero.appendChild(chartWrap);
+
+        // Kick off the main-ring count-up after a tick so the DOM is
+        // committed first.
+        if (hero._valueNode && typeof hero._valueTarget === 'number') {
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(function () {
+                    animateScoreCountUp(hero._valueNode, hero._valueTarget, 1000);
+                });
+            } else {
+                animateScoreCountUp(hero._valueNode, hero._valueTarget, 1000);
+            }
+        }
         return hero;
     }
 
@@ -1615,6 +1891,26 @@
             var key = c.getAttribute('data-pcv2-key');
             var lbl = c.querySelector('.pcv2__mini-card-label');
             if (key && lbl) lbl.textContent = prettySubLabel(key);
+        });
+
+        // Radial-chart legend rows on the new score hero.
+        var legendRows = dashboard.querySelectorAll('.pcv2__radial-legend-row[data-pcv2-key]');
+        legendRows.forEach(function (row) {
+            var key = row.getAttribute('data-pcv2-key');
+            var lbl = row.querySelector('.pcv2__radial-legend-label');
+            if (key && lbl) lbl.textContent = prettySubLabel(key);
+        });
+
+        // Radial chart SVG <text> labels around the perimeter — they
+        // only hold the visible text node, so rewrite in place.
+        var svgLabels = dashboard.querySelectorAll('.pcv2__radial-label');
+        // Match by index against legend rows since we don't put a key
+        // on the SVG <text> (too easy for screen readers to confuse).
+        svgLabels.forEach(function (labelEl, idx) {
+            var row = legendRows[idx];
+            if (!row) return;
+            var key = row.getAttribute('data-pcv2-key');
+            if (key) labelEl.textContent = prettySubLabel(key);
         });
     }
 
