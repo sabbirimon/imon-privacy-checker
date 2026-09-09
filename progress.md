@@ -1,7 +1,7 @@
 # Progress — Privacy Checker
 
-> Last updated: 2026-09-06. Track what's done, what's in flight, and what's
-> blocked.
+> Last updated: 2026-09-06 (Phase 9 backlog cleanup shipped). Track
+> what's done, what's in flight, and what's blocked.
 
 ## Roadmap reference
 
@@ -312,6 +312,70 @@ every modified file. `node --check scanner.js` N/A (no JS changes
 in this phase). No new composer / npm dependencies. No new REST
 routes. No new settings keys. No new secrets, no PII handling, no
 write paths.
+
+## Phase 9 (backlog cleanup) — Three deferred Phase 7 items
+
+Lands the three items still tracked in the "Phase 7 — QA backlog"
+section below. All three are plumbing / asset hygiene; none change
+runtime behavior or scoring.
+
+- [x] **9.A — Self-host Leaflet (BSD-2-Clause).** Vendor
+      `leaflet@1.9.4` under `plugin/public/assets/{css,js}/leaflet.{css,js}`
+      via curl from `unpkg.com`, attribution + license text in
+      `plugin/public/assets/LEAFLET-LICENSE.md` (BSD-2-Clause,
+      Copyright (c) 2010-2023 Vladimir Agafonkin / 2010-2011 CloudMade).
+      `class-public-assets.php` enqueues rewritten to local URLs —
+      drops the `is_readable` ternary (Leaflet has no fallback, we
+      hard-require the local files). Three.js fallback paths remain
+      defensive safety nets as shipped today.
+      `grep -R "unpkg.com/leaflet" plugin/` returns nothing.
+      (`ffc6b7b`)
+- [x] **9.B — Self-host network-path icons as clean-room SVGs.**
+      Upstream `tmusabaika/minimalistic-networking-icons` ships with
+      **no LICENSE file** (vendoring the PNGs would have been a
+      license violation), so this replaces the 5 PNG icons with
+      hand-drawn clean-room SVG originals under
+      `plugin/public/assets/img/net-icons/`: `iServer.svg`,
+      `iRouter.svg`, `iSwitch.svg`, `iWorkstation.svg`, `iHub.svg` —
+      each a single `<svg>` 24×24 viewBox monochrome stroke, MIT-
+      licensed to match the plugin. Provenance table + role-mapping
+      + MIT text in `plugin/public/assets/img/net-icons/README.md`.
+      `scanner.js` `PC_ICON_MAP` extension swapped from `.png` to
+      `.svg` (keys unchanged); `PC_NET_PNG_CDN` swapped from
+      `raw.githubusercontent.com/tmusabaika/...` to
+      `window.PC_SCAN.assetUrl + 'img/net-icons/'`; the data-URI
+      pipeline (`fetchIconMarkup` → `FileReader.readAsDataURL` →
+      SVG `<image href>`) is unchanged. The icon-to-role mapping
+      table in the new README documents the visual semantic for
+      every consumer key (device / mobile / tablet / pc /
+      home-router / router / server / switch / firewall / vpn /
+      tor / destination / hub / cell-tower / satellite).
+      `grep -R "raw.githubusercontent.com/tmusabaika" plugin/`
+      returns nothing. (`55403b3`)
+- [x] **9.C — Cache-backed population-stats seam.**
+      `Fingerprint::population_histogram(string $signal): array`
+      returns `Cache::remember('pc_fp_hist_' . $signal, …,
+      DAY_IN_SECONDS)` — empty collector closure returns `[]` until
+      a real one ships. `entropy_estimate()` now consults
+      histograms via a private `histogram_weighted_bits()` helper
+      using `-log2(max(p, epsilon))` per signal with a 20-bit
+      per-signal cap, and blends 50/50 with the existing constant-
+      based estimate when **any** histogram is non-empty. When all
+      histograms are empty (current state) the seam is a no-op:
+      the canonical Phase 3 fixture (canvas + audio + webgl +
+      timezone + language + languages) still scores exactly 46
+      bits. Three new tests + one set_up() to clear the `pc_fp_hist_*`
+      cache keys so tests don't pollute each other.
+      **+4 tests / +11 assertions, 201 tests / 819 assertions.**
+      (`e089e8f`)
+
+**Verification**: `vendor/bin/phpunit` → **201 tests / 819 assertions,
+all green** (up from 197/808 at end of Phase 8). `node --check
+scanner.js` clean. `php -l` clean on every modified file.
+`grep -R "unpkg.com/leaflet" plugin/` → empty.
+`grep -R "raw.githubusercontent.com/tmusabaika" plugin/` → empty.
+No new composer / npm dependencies. No new REST routes. No new
+settings keys. No new secrets, no PII handling, no write paths.
 
 ## Phase 10 — UX polish: IMON rebrand, scan progress, styled tool results
 
@@ -759,29 +823,21 @@ Surfaced by the Phase 7 read-only audit. All items are explicit
 non-goals for the IMON-BUILD-GUIDE.md track — they're listed here so
 the next contributor has a starting point. None are bugs.
 
+**All three backlog items shipped in Phase 9 (see above).**
+
 - **`plugin/includes/class-fingerprint.php:211`** — entropy
-  population-stats seam. `Fingerprint::entropy_estimate()` uses
-  cardinality-assumption bit weights (canvas +15, audio +15, webgl +6,
-  fontList +1 each beyond baseline of 8, masked-by-browser -5 reward,
-  etc.). Wire `Cache::remember()`-backed rolling histograms once real
-  per-signal population stats exist. Phase 3 guide explicitly defers
-  this.
+  population-stats seam. ✅ **Shipped 9.C** — `Fingerprint::
+  population_histogram()` seam wired with `Cache::remember()`,
+  blend-with-constant fallback, three regression tests.
 - **`plugin/public/assets/js/scanner.js:3522`** — `PC_NET_PNG_CDN`
   resolves to `https://raw.githubusercontent.com/tmusabaika/
-  minimalistic-networking-icons/...`. Pre-existing (Phase 13 era,
-  not from Phases 1-6). Vendor locally under
-  `plugin/public/assets/img/net-icons/` and update the constant. Same
-  family of "self-host external assets" cleanup that already shipped
-  for three.js, three-globe, and the globe textures. Tracked but not
-  scheduled.
-- **`plugin/public/class-public-assets.php:163,170,185,186`** — four
-  Leaflet / three.js fallback URLs on `unpkg.com`. Each has a
-  locally-bundled fallback already (`is_readable( $local_three )` /
-  `is_readable( $local_globe )`); self-host Leaflet under
-  `plugin/public/assets/` to remove the last unpkg dependency on the
-  visitor's browser. Tracked in Phase 13 checklist #4 below. Not
-  blocking the Phase 1-7 track because the in-page `<noscript>`
-  fallback shape is documented and tested.
+  minimalistic-networking-icons/...`. ✅ **Shipped 9.B** —
+  replaced with 5 clean-room SVG originals under
+  `plugin/public/assets/img/net-icons/` (MIT, this plugin).
+- **`plugin/public/class-public-assets.php:163,170,185,186`** —
+  Leaflet / three.js fallback URLs on `unpkg.com`. ✅ **Shipped
+  9.A** for Leaflet. Three.js fallbacks remain in place as
+  defensive safety nets — vendor paths unchanged.
 
 ## Related
 
