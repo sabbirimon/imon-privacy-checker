@@ -256,6 +256,22 @@ final class RestApi {
             ),
         ) );
 
+        // Paste-traceroute fallback for the geotraceroute page. Same
+        // canonical route shape as /scan/geo/lookup, built from a pasted
+        // traceroute / tracert / MTR blob rather than a server-side run.
+        register_rest_route( $ns, '/scan/geo/paste', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => array( $this, 'scan_geo_paste' ),
+            'permission_callback' => '__return_true',
+            'args'                => array(
+                'paste' => array(
+                    'required'          => true,
+                    'type'              => 'string',
+                    'sanitize_callback' => array( $this, 'sanitize_traceroute_text' ),
+                ),
+            ),
+        ) );
+
         // Enterprise API token management. Admin only — the tokens themselves
         // are what external bots/agents use to authenticate.
         register_rest_route( $ns, '/admin/api-tokens', array(
@@ -463,6 +479,22 @@ final class RestApi {
             $raw = wp_generate_password( 12, false );
         }
         return rtrim( strtr( base64_encode( $raw ), '+/', '-_' ), '=' );
+    }
+
+    /**
+     * Sanitize a pasted traceroute blob. Keep every printable character
+     * except `<` so users can paste rich tracert output verbatim, and
+     * line-clip at a generous length so an attacker can't make us store
+     * 1 MB of pasted text per request.
+     */
+    public function sanitize_traceroute_text( string $raw ): string {
+        $clean = preg_replace( '/[<>]/', '', $raw );
+        // 16 KB ceiling per paste — enough for ~300 hops of typical
+        // traceroute output, well below any payload size we'd ever need.
+        if ( strlen( $clean ) > 16384 ) {
+            $clean = substr( $clean, 0, 16384 );
+        }
+        return $clean;
     }
 
     /** Expose REST namespace name for share URL building. */
@@ -972,19 +1004,46 @@ final class RestApi {
     /**
      * GET /scan/geo/lookup?target=facebook.com
      *
-     * Resolves the typed target hostname to IP + lat/lng and runs a small
-     * number of TCP-connect probes to derive hop latencies. The result feeds
-     * the geotraceroute page so the user-typed target actually drives the
-     * visualisation rather than getting ignored.
+     * Honest traceroute → ordered hops → per-hop geolocation pipeline.
+     *
+     * Returns a canonical `route` object the frontend can render directly
+     * in 2D (Leaflet) and 3D (three.js) from the same coordinate array.
+     *
+     * Architecture:
+     *
+     *   1. Resolve target hostname → public IP.
+     *   2. Identify the probe (the WP server's own public IP + geo) — not
+     *      the visitor's. Server-side traceroute measures the server's
+     *      outbound path, NOT the visitor's physical network route.
+     *   3. Run /usr/sbin/traceroute. Try ICMP first, fall back to TCP/443,
+     *      fall back to "unavailable". We never fabricate hops.
+     *   4. Parse the output into ordered hops with the IP the router
+     *      actually presented.
+     *   5. Geolocate each public hop IP via IpFallback. Skip private /
+     *      reserved / unanswered hops — keep them in order but mark them
+     *      with no coordinates.
+     *   6. Return one canonical `route` object the 2D and 3D renderers
+     *      consume from the same array.
      *
      * Returns:
      *   {
-     *     target: {hostname, ip, lat, lng, country, city, isp, asn, org},
-     *     hops:   [{label, sub, ip, asn, ms, km, type, color, ...}],
-     *     origin: {lat, lng, ip, hostname},
-     *     destination: {lat, lng, ip, hostname},
-     *     synthesised: false,
-     *     message: '...'
+     *     probe:    {ip, hostname, lat, lng, city, country, country_code, asn, isp, confidence},
+     *     target:   {hostname, ip, lat, lng, city, country, country_code, asn, isp, confidence},
+     *     hops: [
+     *       {
+     *         index: 1,
+     *         ip: '203.0.113.7',   // null for unanswered hops
+     *         hostname: '...',     // null for hops without rDNS
+     *         rtt_ms: 4.2,         // null for unanswered
+     *         status: 'public' | 'private' | 'unanswered',
+     *         city, country, country_code, lat, lon, asn, isp,
+     *         confidence: 'high' | 'medium' | 'low' | 'unknown',
+     *       },
+     *       ...
+     *     ],
+     *     source_kind: 'real-traceroute' | 'unavailable',
+     *     message: '...',
+     *     disclaimer: 'Approximate geographic visualization of traceroute hops.',
      *   }
      */
     public function scan_geo_lookup( WP_REST_Request $request ) {
@@ -1017,193 +1076,535 @@ final class RestApi {
             return new WP_Error( 'pc_private_target', __( 'Target resolves to a non-public IP.', 'privacy-checker' ), array( 'status' => 400 ) );
         }
 
-        // Resolve target IP → geo via the configured provider.
-        $target_intel = IpFallback::lookup( $ip );
-        $t_lat = isset( $target_intel['latitude'] ) ? (float) $target_intel['latitude'] : null;
-        $t_lng = isset( $target_intel['longitude'] ) ? (float) $target_intel['longitude'] : null;
+        // Target geo.
+        $target_intel  = IpFallback::lookup( $ip );
+        $target_record = self::geo_record_from_intel( $ip, $host, $target_intel );
 
-        // Visitor IP / origin.
-        $visitor_det = IpDetector::detect();
-        $visitor_ip  = (string) ( $visitor_det['ipv4'] ?? $visitor_det['ipv6'] ?? '' );
-        $origin_intel = $visitor_ip ? IpFallback::lookup( $visitor_ip ) : array();
-        $o_lat = isset( $origin_intel['latitude'] ) ? (float) $origin_intel['latitude'] : null;
-        $o_lng = isset( $origin_intel['longitude'] ) ? (float) $origin_intel['longitude'] : null;
-        $o_ip  = $visitor_ip ?: '';
-
-        // When the visitor is on loopback / private IP (typical local-dev case),
-        // fall back to the WP server's own public IP + geo as the origin so the
-        // page still shows a real point on the map rather than (0,0).
-        if ( ( null === $o_lat || null === $o_lng ) || ! Security::is_public_ip_literal( $o_ip ) ) {
-            $server_ip = IpFallback::server_self_ip();
-            if ( $server_ip && Security::is_public_ip_literal( $server_ip ) ) {
-                $origin_intel = IpFallback::lookup( $server_ip );
-                $o_lat = isset( $origin_intel['latitude'] ) ? (float) $origin_intel['latitude'] : null;
-                $o_lng = isset( $origin_intel['longitude'] ) ? (float) $origin_intel['longitude'] : null;
-                $o_ip  = $server_ip;
-            }
+        // Probe = the WP server's own public IP + geo. NOT the visitor's
+        // IP. A server-side traceroute measures the server's outbound
+        // route, not the visitor's physical network path. We label the
+        // route origin as "Probe" so the UI does not mislead the user.
+        $probe_ip       = IpFallback::server_self_ip();
+        $probe_record   = null;
+        if ( $probe_ip && Security::is_public_ip_literal( $probe_ip ) ) {
+            $probe_intel = IpFallback::lookup( $probe_ip );
+            $probe_record = self::geo_record_from_intel( $probe_ip, '', $probe_intel );
         }
-
-        // If we don't have coordinates for the target, still return what we
-        // have so the UI can degrade gracefully.
-        $dest_ip    = $ip;
-        $dest_label = (string) ( $target_intel['city'] ?? $target_intel['org'] ?? $host );
-        $dest_country = (string) ( $target_intel['country'] ?? $target_intel['country_code'] ?? '' );
-        $dest_flag   = self::country_flag( $dest_country );
-
-        // Build a hop chain. Without raw ICMP we approximate by sampling
-        // TCP-connect latency to the target across 3-5 evenly distributed
-        // points along the great-circle arc. Each hop's IP / ASN / city /
-        // country-flag are interpolated from origin → destination metadata
-        // so the row looks honest even if it's an estimate.
-        $hop_count = 5;
-        $hops = array();
-        $samples_ms = array();
-        $real_probe_ok = ( null !== $o_lat && null !== $t_lat ) && Security::is_public_ip_literal( $ip ) && Security::is_public_ip_literal( $o_ip );
-        if ( $real_probe_ok ) {
-            // Real probe: TCP-connect to target:443 (or the port the user
-            // typed if they gave one). We only need one sample to drive the
-            // page; the rest are interpolated.
-            $probe_port = null !== $port ? (int) $port : 443;
-            $t0 = microtime( true );
-            $probe = NetworkProbe::tcp_probe_port( $ip, $probe_port, 2.0 );
-            $target_ms = isset( $probe['latency_ms'] ) ? (float) $probe['latency_ms'] : null;
-            if ( null === $target_ms ) {
-                // Fall back to a baseline latency proportional to distance.
-                $km = self::haversine_km( $o_lat, $o_lng, $t_lat, $t_lng );
-                $target_ms = max( 8.0, $km / 200.0 ); // ~200 km/ms = speed of light / 1.5 fiber factor.
-            }
-            // Distribute cumulative latency across the hops with jitter.
-            for ( $i = 1; $i <= $hop_count; $i++ ) {
-                $frac = $i / $hop_count;
-                $samples_ms[] = round( $target_ms * $frac + ( mt_rand( -200, 200 ) / 100.0 ), 1 );
-            }
-        } else {
-            // No real coordinates available (both origin and target resolved
-            // to private IPs / no geo). Produce a flat synthesised baseline
-            // so the UI still renders something instead of staying empty.
-            $target_ms = 60.0;
-            for ( $i = 1; $i <= $hop_count; $i++ ) {
-                $samples_ms[] = round( 12.0 * $i + mt_rand( -50, 50 ) / 10.0, 1 );
-            }
-        }
-
-        // Always render an origin hop so the map shows a real starting point.
-        $origin_label = 'YOUR DEVICE';
-        $origin_sub   = '';
-        if ( ! empty( $origin_intel['city'] ) ) {
-            $origin_sub = $origin_intel['city'];
-            if ( ! empty( $origin_intel['country'] ) ) {
-                $origin_sub .= ', ' . $origin_intel['country'];
-            }
-        } elseif ( ! empty( $o_ip ) ) {
-            $origin_sub = $o_ip;
-        }
-
-        // Local-dev fallback: when origin still has no resolvable lat/lng
-        // (e.g. WP server is on loopback / no public IP), use the target's
-        // coordinates as the origin so the map still renders something
-        // meaningful. The honest-state UX flags this as same-host.
-        if ( ( null === $o_lat || null === $o_lng ) && null !== $t_lat && null !== $t_lng ) {
-            $o_lat = $t_lat;
-            $o_lng = $t_lng;
-            $origin_label = 'SAME HOST';
-            $origin_sub   = 'Local server (' . ( $o_ip ?: $ip ) . ')';
-        }
-
-        $origin_hop = array(
-            'label'    => $origin_label,
-            'sub'      => $origin_sub,
-            'ip'       => $o_ip,
-            'asn'      => (string) ( $origin_intel['asn'] ?? '' ),
-            'country'  => (string) ( $origin_intel['country'] ?? '' ),
-            'flag'     => self::country_flag( (string) ( $origin_intel['country'] ?? '' ) ),
-            'ms'       => null,
-            'km'       => 0,
-            'type'     => 'device',
-            'color'    => '#143b52',
-            'legColor' => '#17a2b8',
-            'lat'      => $o_lat,
-            'lng'      => $o_lng,
-        );
-
-        $intermediate_cities = array( 'Frankfurt', 'Amsterdam', 'London', 'Paris', 'New York', 'Ashburn', 'Tokyo' );
-        $last_idx = 0;
-        // If origin and target are at the same coordinate (same-host dev case),
-        // add a deterministic small arc so the hops render visibly instead of
-        // collapsing onto one map pin.
-        $same_host = ( null !== $o_lat && null !== $t_lat && abs( $o_lat - $t_lat ) < 0.01 && abs( $o_lng - $t_lng ) < 0.01 );
-        for ( $i = 1; $i <= $hop_count; $i++ ) {
-            $frac  = $i / $hop_count;
-            $is_dest = ( $i === $hop_count );
-            $lat = $lng = null;
-            if ( $is_dest && null !== $t_lat && null !== $t_lng ) {
-                $lat = $t_lat;
-                $lng = $t_lng;
-            } elseif ( ! $is_dest && null !== $o_lat && null !== $t_lat ) {
-                $lat = $o_lat + ( $t_lat - $o_lat ) * $frac;
-                $lng = $o_lng + ( $t_lng - $o_lng ) * $frac;
-                if ( $same_host ) {
-                    // Local-dev arc: tiny perpendicular wobble so the
-                    // polyline is visible. ~0.05° ≈ 5 km, purely cosmetic.
-                    $angle = ( $i / $hop_count ) * M_PI;
-                    $lat += 0.05 * sin( $angle );
-                    $lng += 0.05 * cos( $angle );
-                }
-            }
-            $hop_label = $is_dest ? strtoupper( $dest_label ) : ( 'HOP ' . $i . ' · ' . $intermediate_cities[ ( $i - 1 ) % count( $intermediate_cities ) ] );
-            $hop_type  = $is_dest ? 'destination' : 'router';
-            $hop_color = $is_dest ? '#28a745' : '#17a2b8';
-            $hops[] = array(
-                'label'    => $hop_label,
-                'sub'      => $is_dest ? $dest_ip : '',
-                'ip'       => $is_dest ? $dest_ip : '',
-                'asn'      => $is_dest ? (string) ( $target_intel['asn'] ?? '' ) : '',
-                'country'  => $is_dest ? $dest_country : '',
-                'flag'     => $is_dest ? $dest_flag : '',
-                'ms'       => isset( $samples_ms[ $i - 1 ] ) ? (float) $samples_ms[ $i - 1 ] : null,
-                'km'       => 0,
-                'type'     => $hop_type,
-                'color'    => $hop_color,
-                'legColor' => '#17a2b8',
-                'lat'      => $lat,
-                'lng'      => $lng,
+        // Local-dev fallback: if we couldn't determine the server's own
+        // public IP, mark the probe as unknown so the UI shows an honest
+        // "probe location unknown" instead of pretending it's somewhere.
+        if ( null === $probe_record ) {
+            $probe_record = array(
+                'ip'           => '',
+                'hostname'     => '',
+                'lat'          => null,
+                'lon'          => null,
+                'city'         => '',
+                'country'      => '',
+                'country_code' => '',
+                'asn'          => '',
+                'isp'          => '',
+                'confidence'   => 'unknown',
+                'flag'         => '',
             );
-            $last_idx = count( $hops ) - 1;
         }
 
-        // Origin first, then intermediates, then destination.
-        $hops = array_merge( array( $origin_hop ), $hops );
+        // Run the real traceroute. May yield zero hops if the binary is
+        // missing, shell_exec is disabled, the network blocks probes, or
+        // every hop is unanswered. We never fabricate hops in any case.
+        $trace = self::run_real_traceroute( $ip, $port );
+
+        $source_kind = empty( $trace['hops'] ) ? 'unavailable' : 'real-traceroute';
+        $message     = empty( $trace['hops'] )
+            ? $trace['message']
+            : sprintf(
+                /* translators: %d = number of hops, %s = target hostname */
+                __( 'Resolved %1$s and discovered %2$d hops.', 'privacy-checker' ),
+                $host,
+                count( $trace['hops'] )
+            );
 
         return rest_ensure_response( array(
-            'target'      => array(
-                'hostname' => $host,
-                'port'     => $port,
-                'ip'       => $dest_ip,
-                'lat'      => $t_lat,
-                'lng'      => $t_lng,
-                'country'  => $dest_country,
-                'flag'     => $dest_flag,
-                'city'     => (string) ( $target_intel['city'] ?? '' ),
-                'isp'      => (string) ( $target_intel['isp'] ?? '' ),
-                'org'      => (string) ( $target_intel['org'] ?? '' ),
-                'asn'      => (string) ( $target_intel['asn'] ?? '' ),
-            ),
-            'origin'      => array(
-                'lat'      => $o_lat,
-                'lng'      => $o_lng,
-                'ip'       => $o_ip,
-                'hostname' => (string) ( $origin_intel['reverse'] ?? '' ),
-                'country'  => (string) ( $origin_intel['country'] ?? '' ),
-                'flag'     => self::country_flag( (string) ( $origin_intel['country'] ?? '' ) ),
-            ),
-            'hops'        => $hops,
-            'synthesised' => false,
-            'message'     => sprintf(
-                /* translators: %s = target hostname */
-                __( 'Resolved %s and traced path.', 'privacy-checker' ),
-                $host
-            ),
+            'probe'      => $probe_record,
+            'target'     => $target_record,
+            'hops'       => $trace['hops'],
+            'method'     => $trace['method'],
+            'source_kind'=> $source_kind,
+            'message'    => $message,
+            'disclaimer' => __( 'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS — coordinates indicate the registered location of each hop IP, not its physical router.', 'privacy-checker' ),
         ) );
+    }
+
+    /**
+     * POST /scan/geo/paste
+     *
+     * Parses a pasted traceroute output (Linux traceroute, Windows tracert,
+     * or MTR) into the same canonical `route` shape returned by
+     * /scan/geo/lookup. Used as the fallback when the server cannot
+     * execute traceroute itself (sandboxed hosting, firewall, etc.).
+     */
+    public function scan_geo_paste( WP_REST_Request $request ) {
+        $limit = $this->enforce_rate_limit( $request, 'geo_paste', 30 );
+        if ( is_wp_error( $limit ) ) {
+            return $limit;
+        }
+
+        $body = (string) $request->get_param( 'paste' );
+        if ( '' === trim( $body ) ) {
+            return new WP_Error( 'pc_empty_paste', __( 'Paste traceroute output first.', 'privacy-checker' ), array( 'status' => 400 ) );
+        }
+
+        $parsed = self::parse_traceroute_text( $body );
+        if ( empty( $parsed['hops'] ) ) {
+            return new WP_Error( 'pc_parse_failed', __( 'Could not parse that traceroute. Linux / Windows / MTR formats only.', 'privacy-checker' ), array( 'status' => 400 ) );
+        }
+
+        // Geolocate each hop IP. Private / reserved / null IPs are kept in
+        // order but flagged with no coordinates.
+        $hops = self::geolocate_hop_list( $parsed['hops'] );
+
+        $probe_record = array(
+            'ip'           => '',
+            'hostname'     => '',
+            'lat'          => null,
+            'lon'          => null,
+            'city'         => '',
+            'country'      => '',
+            'country_code' => '',
+            'asn'          => '',
+            'isp'          => '',
+            'confidence'   => 'unknown',
+            'flag'         => '',
+        );
+        $target_record = array(
+            'ip'           => $parsed['target_ip'] ?? '',
+            'hostname'     => $parsed['target_host'] ?? '',
+            'lat'          => null,
+            'lon'          => null,
+            'city'         => '',
+            'country'      => '',
+            'country_code' => '',
+            'asn'          => '',
+            'isp'          => '',
+            'confidence'   => 'unknown',
+            'flag'         => '',
+        );
+
+        return rest_ensure_response( array(
+            'probe'       => $probe_record,
+            'target'      => $target_record,
+            'hops'        => $hops,
+            'method'      => 'pasted',
+            'source_kind' => 'pasted-traceroute',
+            'message'     => sprintf(
+                /* translators: %d = number of hops */
+                __( 'Parsed pasted traceroute — %d hops.', 'privacy-checker' ),
+                count( $hops )
+            ),
+            'disclaimer'  => __( 'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS.', 'privacy-checker' ),
+        ) );
+    }
+
+    /**
+     * Run /usr/sbin/traceroute against the target IP, parse the output into
+     * ordered hops, and return them WITHOUT coordinates. Geolocation is a
+     * separate step (geolocate_hop_list).
+     *
+     * Tries ICMP first (-I), then TCP/443 (-T -p 443). On failure, returns
+     * an empty hop list with a clear reason in `message`.
+     *
+     * @return array{hops: array<int,array{index:int,ip:?string,hostname:?string,rtt_ms:?float,status:string}>, method:string, message:string}
+     */
+    private static function run_real_traceroute( string $target_ip, ?int $target_port ): array {
+        // Capability checks — never fall back to fabrication.
+        $traceroute_bin = trim( (string) shell_exec( 'command -v traceroute 2>/dev/null' ) );
+        if ( '' === $traceroute_bin ) {
+            return array(
+                'hops'    => array(),
+                'method'  => 'none',
+                'message' => __( 'Traceroute binary not available on this server. Paste your own traceroute output below to visualise it.', 'privacy-checker' ),
+            );
+        }
+        if ( self::shell_exec_disabled() ) {
+            return array(
+                'hops'    => array(),
+                'method'  => 'none',
+                'message' => __( 'Shell execution is disabled on this server, so we cannot run traceroute. Paste your own traceroute output below to visualise it.', 'privacy-checker' ),
+            );
+        }
+        if ( ! self::is_safe_target_for_traceroute( $target_ip ) ) {
+            return array(
+                'hops'    => array(),
+                'method'  => 'none',
+                'message' => __( 'Target is not safe to traceroute (private or reserved range).', 'privacy-checker' ),
+            );
+        }
+
+        $port = $target_port ?: 443;
+
+        // Try ICMP first (works on most networks), then TCP.
+        $attempts = array(
+            array( '-I', '-n', '-w', '2', '-q', '1', '-m', '20' ),
+            array( '-T', '-p', (string) $port, '-n', '-w', '2', '-q', '1', '-m', '20' ),
+        );
+
+        foreach ( $attempts as $flags ) {
+            $cmd = self::build_traceroute_command( $traceroute_bin, $flags, $target_ip );
+            $output = self::safe_shell_exec( $cmd );
+            if ( '' === $output ) {
+                continue;
+            }
+            $hops = self::parse_traceroute_text( $output );
+            // Keep the attempt if it produced ANY hop with an IP. Some
+            // networks block ICMP for intermediate hops but still reply to
+            // the destination — we want to show what we actually got.
+            $has_public = false;
+            foreach ( $hops['hops'] as $h ) {
+                if ( ! empty( $h['ip'] ) && self::is_public_ip_simple( $h['ip'] ) ) {
+                    $has_public = true;
+                    break;
+                }
+            }
+            if ( $has_public ) {
+                return array(
+                    'hops'    => $hops['hops'],
+                    'method'  => ( in_array( '-I', $flags, true ) ? 'icmp' : 'tcp' ),
+                    'message' => sprintf(
+                        /* translators: %d = hop count */
+                        __( 'Discovered %d hops.', 'privacy-checker' ),
+                        count( $hops['hops'] )
+                    ),
+                );
+            }
+        }
+
+        return array(
+            'hops'    => array(),
+            'method'  => 'none',
+            'message' => __( 'Traceroute ran but no public hops were answered. The network is likely blocking outbound traceroute probes. Paste your own traceroute output below.', 'privacy-checker' ),
+        );
+    }
+
+    /**
+     * Build a traceroute shell command. The target IP is already validated
+     * as public, so command injection via the IP is not possible (we pass
+     * it via an arg vector through escapeshellarg). The flags list is a
+     * fixed internal constant, never user input.
+     */
+    private static function build_traceroute_command( string $bin, array $flags, string $ip ): string {
+        return escapeshellcmd( $bin )
+            . ' ' . implode( ' ', array_map( 'escapeshellarg', $flags ) )
+            . ' ' . escapeshellarg( $ip )
+            . ' 2>&1';
+    }
+
+    /**
+     * shell_exec with a hard timeout and disabled-functions check.
+     * The plugin's shared-host reality means shell_exec may be disabled
+     * — when it is, we fail open with an empty string and the caller
+     * surfaces a "traceroute unavailable" message to the UI.
+     */
+    private static function safe_shell_exec( string $cmd ): string {
+        if ( self::shell_exec_disabled() ) {
+            return '';
+        }
+        // 20s ceiling — traceroute with -m 20 + -w 2 can take up to ~40s
+        // in the worst case; we cap at 20 so the HTTP request stays
+        // responsive on the GeoTrace page.
+        $cmd = 'timeout 20 ' . $cmd;
+        $out = shell_exec( $cmd );
+        return is_string( $out ) ? $out : '';
+    }
+
+    private static function shell_exec_disabled(): bool {
+        $disabled = (string) ini_get( 'disable_functions' );
+        foreach ( preg_split( '/\s*,\s*/', $disabled ) as $fn ) {
+            if ( 'shell_exec' === $fn || 'exec' === $fn ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Independent of Security::is_public_ip_literal — we want a fast,
+     * dependency-free check that doesn't require the Security class
+     * instance and works inside static helpers.
+     *
+     * PHP's FILTER_FLAG_NO_RES_RANGE misses several ranges we care about
+     * (notably 169.254.0.0/16 link-local, 192.0.2.0/24 + 198.51.100.0/24 +
+     * 203.0.113.0/24 TEST-NET documentation ranges, and the various
+     * 6to4 / 100.64.0.0/10 CGNAT carve-outs depending on PHP version), so
+     * we layer a manual byte-level check on top of the filter flag.
+     */
+    private static function is_public_ip_simple( string $ip ): bool {
+        if ( ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+            return false;
+        }
+        // Link-local 169.254.0.0/16 — not in PHP's NO_RES_RANGE consistently.
+        if ( false !== strpos( $ip, ':' ) ) {
+            // IPv6 — trust the filter for now; the relevant IPv6 ranges
+            // (fc00::/7 unique-local, fe80::/10 link-local, ::1/128
+            // loopback, ::/128 unspecified) are all covered by NO_PRIV_RANGE
+            // + NO_RES_RANGE in supported PHP versions.
+            return true;
+        }
+        // IPv4 manual carve-outs.
+        $parts = explode( '.', $ip );
+        if ( count( $parts ) < 4 ) {
+            return false;
+        }
+        list( $a, $b, $c ) = array( (int) $parts[0], (int) $parts[1], (int) $parts[2] );
+        if ( 169 === $a && 254 === $b ) {
+            return false; // link-local 169.254.0.0/16
+        }
+        if ( 192 === $a &&   0 === $b && 2   === $c ) { return false; } // TEST-NET-1  192.0.2.0/24
+        if ( 198 === $a &&  51 === $b && 100 === $c ) { return false; } // TEST-NET-2  198.51.100.0/24
+        if ( 203 === $a &&   0 === $b && 113 === $c ) { return false; } // TEST-NET-3  203.0.113.0/24
+        return true;
+    }
+
+    private static function is_safe_target_for_traceroute( string $ip ): bool {
+        return self::is_public_ip_simple( $ip );
+    }
+
+    /**
+     * Parse traceroute-style text (Linux traceroute, Windows tracert, MTR)
+     * into an ordered hop list. Recognised formats:
+     *
+     *   Linux:  " 3  10.0.0.1 (10.0.0.1)  1.234 ms  1.456 ms  1.789 ms"
+     *   Windows:"  3     1 ms     1 ms     1 ms  10.0.0.1"
+     *   MTR:    "HOST: Loss%  Snt  Last  Avg  Best  Wrst  StDev\n  1. ...\n  2. ..."
+     *
+     * Returns:
+     *   {
+     *     hops: [{index, ip|null, hostname|null, rtt_ms|null, status}],
+     *     target_ip?: string,
+     *     target_host?: string,
+     *   }
+     *
+     * @return array{hops: array<int,array{index:int,ip:?string,hostname:?string,rtt_ms:?float,status:string}>, target_ip?:string, target_host?:string}
+     */
+    private static function parse_traceroute_text( string $text ): array {
+        $hops = array();
+        $target_ip   = null;
+        $target_host = null;
+
+        // Capture target from the header line if present.
+        if ( preg_match( '/^traceroute to ([^\s(]+)\s*(?:\(([^)]+)\))?/m', $text, $m ) ) {
+            $target_host = $m[1];
+            if ( ! empty( $m[2] ) ) {
+                $target_ip = $m[2];
+            }
+        }
+
+        foreach ( preg_split( '/\r?\n/', $text ) as $line ) {
+            $line = trim( $line );
+            if ( '' === $line ) {
+                continue;
+            }
+            // Skip headers / blanks.
+            if ( preg_match( '/^(traceroute|tracert|HOST:)/i', $line ) ) {
+                continue;
+            }
+            // Match either "<index> ..." (Linux/Windows) OR MTR's
+            // "<index>. hostname (ip) loss% snt last avg best wrst stdev".
+            // MTR uses a trailing dot instead of a space after the index.
+            if ( ! preg_match( '/^\s*(\d{1,3})[\s.]+(.+)$/', $line, $m ) ) {
+                continue;
+            }
+            $index = (int) $m[1];
+            $rest  = $m[2];
+
+            $hop = array(
+                'index'    => $index,
+                'ip'       => null,
+                'hostname' => null,
+                'rtt_ms'   => null,
+                'status'   => 'unanswered',
+            );
+
+            // Unanswered hop (Linux / MTR): "* * *".
+            if ( preg_match( '/^[\s*]*\*[\s*]*\*?[\s*]*\*?\s*$/', $rest ) ) {
+                $hops[ $index ] = $hop;
+                continue;
+            }
+            // Linux: "<ip> (<ip>)  ms  ms  ms".
+            if ( preg_match( '/([0-9a-fA-F:.]+)\s+\(([^)]+)\)(?:\s+([\d.]+)\s*ms)?/i', $rest, $ipm ) ) {
+                $candidate = $ipm[2];
+                if ( self::is_valid_ip_text( $candidate ) ) {
+                    $hop['ip']       = $candidate;
+                    $hop['hostname'] = $ipm[1] !== $candidate ? $ipm[1] : null;
+                    if ( ! empty( $ipm[3] ) ) {
+                        $hop['rtt_ms'] = (float) $ipm[3];
+                    }
+                    $hop['status'] = self::classify_ip_status( $candidate );
+                    if ( null === $target_ip && self::is_public_ip_simple( $candidate ) ) {
+                        $target_ip = $candidate;
+                    }
+                    $hops[ $index ] = $hop;
+                    continue;
+                }
+            }
+            // Windows tracert: "1 ms 1 ms 1 ms <ip>" — the IP is the last token.
+            if ( preg_match( '/(\d+(?:\.\d+)?)\s*ms.*?(\d+(?:\.\d+)?)\s*ms.*?(\d+(?:\.\d+)?)\s*ms\s+([0-9a-fA-F:.]+)\s*$/i', $rest, $wm ) ) {
+                $candidate = $wm[4];
+                $hop['ip']     = $candidate;
+                $hop['rtt_ms'] = (float) $wm[1];
+                $hop['status'] = self::classify_ip_status( $candidate );
+                $hops[ $index ] = $hop;
+                continue;
+            }
+            // MTR summary: "ip 0.0% 10 1.2 1.3 1.1 1.5 0.1" — IP first, then
+            // loss%, then 6 numeric columns (snt, last, avg, best, wrst,
+            // stdev). Pick the "last" RTT (3rd numeric column).
+            if ( preg_match( '/^\s*([0-9a-fA-F:.]+)\s+\d+(?:\.\d+)?%\s+\d+\s+(\d+(?:\.\d+)?)\s+/i', $rest, $mm ) ) {
+                $candidate = $mm[1];
+                $hop['ip']     = $candidate;
+                $hop['rtt_ms'] = (float) $mm[2];
+                $hop['status'] = self::classify_ip_status( $candidate );
+                $hops[ $index ] = $hop;
+                continue;
+            }
+            // Bare IP with optional rDNS: "router.isp.net (1.2.3.4) 4.2 ms"
+            if ( preg_match( '/([\w.\-]+)\s+\(([0-9a-fA-F:.]+)\)(?:\s+([\d.]+)\s*ms)?/i', $rest, $bm ) ) {
+                $candidate = $bm[2];
+                if ( self::is_valid_ip_text( $candidate ) ) {
+                    $hop['ip']       = $candidate;
+                    $hop['hostname'] = $bm[1];
+                    if ( ! empty( $bm[3] ) ) {
+                        $hop['rtt_ms'] = (float) $bm[3];
+                    }
+                    $hop['status'] = self::classify_ip_status( $candidate );
+                    $hops[ $index ] = $hop;
+                    continue;
+                }
+            }
+            // If we get here, the line had an index but no IP we could
+            // parse — leave the hop as unanswered.
+            $hops[ $index ] = $hop;
+        }
+
+        ksort( $hops );
+        $hops = array_values( $hops );
+
+        $out = array( 'hops' => $hops );
+        if ( null !== $target_ip ) {
+            $out['target_ip'] = $target_ip;
+        }
+        if ( null !== $target_host ) {
+            $out['target_host'] = $target_host;
+        }
+        return $out;
+    }
+
+    private static function is_valid_ip_text( string $candidate ): bool {
+        return (bool) filter_var( $candidate, FILTER_VALIDATE_IP );
+    }
+
+    /**
+     * Map a parsed hop's IP to its visibility status:
+     *   - 'public'     — globally routable
+     *   - 'private'    — RFC1918 / loopback / link-local / reserved
+     *   - 'unanswered' — IP is null
+     */
+    private static function classify_ip_status( ?string $ip ): string {
+        if ( null === $ip || '' === $ip ) {
+            return 'unanswered';
+        }
+        return self::is_public_ip_simple( $ip ) ? 'public' : 'private';
+    }
+
+    /**
+     * Geolocate a list of parsed hops. Public hops are looked up via
+     * IpFallback; private / unanswered hops keep their order but get
+     * null coordinates. The order is preserved.
+     *
+     * @param array<int,array{index:int,ip:?string,hostname:?string,rtt_ms:?float,status:string}> $hops
+     * @return array<int,array<string,mixed>>
+     */
+    private static function geolocate_hop_list( array $hops ): array {
+        $out = array();
+        foreach ( $hops as $h ) {
+            $ip     = $h['ip'] ?? null;
+            $status = $h['status'] ?? 'unanswered';
+            if ( 'public' === $status && null !== $ip ) {
+                $intel     = IpFallback::lookup( $ip );
+                $record    = self::geo_record_from_intel( $ip, (string) ( $h['hostname'] ?? '' ), $intel );
+                $record['index']    = (int) $h['index'];
+                $record['rtt_ms']   = isset( $h['rtt_ms'] ) ? (float) $h['rtt_ms'] : null;
+                $record['status']   = 'public';
+                $record['hostname'] = $h['hostname'] ?? $record['hostname'];
+                $out[] = $record;
+            } else {
+                // Keep the row but with no coordinates and the right label.
+                $out[] = array(
+                    'index'        => (int) $h['index'],
+                    'ip'           => $ip,
+                    'hostname'     => $h['hostname'] ?? null,
+                    'rtt_ms'       => isset( $h['rtt_ms'] ) ? (float) $h['rtt_ms'] : null,
+                    'status'       => $status,
+                    'lat'          => null,
+                    'lon'          => null,
+                    'city'         => '',
+                    'country'      => '',
+                    'country_code' => '',
+                    'asn'          => '',
+                    'isp'          => '',
+                    'confidence'   => 'unknown',
+                    'flag'         => '',
+                );
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Convert an IpFallback intel dict into a normalised geo record the
+     * frontend can consume. Handles the case where latitude / longitude /
+     * city / country are missing (returns nulls / empty strings, never
+     * guesses).
+     *
+     * @return array<string,mixed>
+     */
+    private static function geo_record_from_intel( string $ip, string $fallback_hostname, array $intel ): array {
+        $lat          = isset( $intel['latitude'] ) && is_numeric( $intel['latitude'] ) ? (float) $intel['latitude'] : null;
+        $lon          = isset( $intel['longitude'] ) && is_numeric( $intel['longitude'] ) ? (float) $intel['longitude'] : null;
+        $country      = (string) ( $intel['country'] ?? $intel['country_code'] ?? '' );
+        $country_code = (string) ( $intel['country_code'] ?? '' );
+        // Some providers return a long country name in `country`. Try to
+        // derive a 2-letter ISO code when only the name is present.
+        if ( '' === $country_code && '' !== $country ) {
+            $country_code = strtoupper( substr( $country, 0, 2 ) );
+        }
+        $city         = (string) ( $intel['city'] ?? '' );
+        $asn          = (string) ( $intel['asn'] ?? '' );
+        $isp          = (string) ( $intel['isp'] ?? $intel['org'] ?? '' );
+        $hostname     = (string) ( $intel['reverse'] ?? $intel['hostname'] ?? $fallback_hostname );
+
+        // Confidence heuristic: country + city + ASN → medium; country
+        // only → low; nothing → unknown. We never claim "high" because IP
+        // geolocation is inherently approximate.
+        $confidence = 'unknown';
+        if ( '' !== $country && '' !== $city && '' !== $asn ) {
+            $confidence = 'medium';
+        } elseif ( '' !== $country ) {
+            $confidence = 'low';
+        }
+
+        return array(
+            'ip'           => $ip,
+            'hostname'     => $hostname,
+            'lat'          => $lat,
+            'lon'          => $lon,
+            'city'         => $city,
+            'country'      => $country,
+            'country_code' => $country_code,
+            'asn'          => $asn,
+            'isp'          => $isp,
+            'confidence'   => $confidence,
+            'flag'         => self::country_flag( $country_code ?: $country ),
+        );
     }
 
     /**

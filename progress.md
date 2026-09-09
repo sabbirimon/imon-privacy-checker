@@ -1,6 +1,6 @@
 # Progress — Privacy Checker
 
-> Last updated: 2026-09-09 (Phase 14 — live-site bug fixes + bin/deploy.sh shipped).
+> Last updated: 2026-09-09 (Phase 16 — experimental v2 UI + honest GeoTrace pipeline).
 > Track what's done, what's in flight, and what's blocked.
 
 ## Roadmap reference
@@ -1021,6 +1021,65 @@ the next contributor has a starting point. None are bugs.
   Leaflet / three.js fallback URLs on `unpkg.com`. ✅ **Shipped
   9.A** for Leaflet. Three.js fallbacks remain in place as
   defensive safety nets — vendor paths unchanged.
+
+## Phase 16 — Experimental v2 UI + honest GeoTrace pipeline
+
+Shipped in this session:
+
+- **`design-system/privacy-checker/MASTER.md`** + **`pages/home.md`**
+  + **`pages/geotrace.md`** — design-system source of truth per the
+  ui-ux-pro-max-skill pattern (primitive → semantic → component
+  tokens, severity colours + labels + icons, three-layer motion,
+  a11y, anti-patterns, light/dark/system palette).
+- **GeoTrace rewrite** (`plugin/includes/class-rest-api.php`):
+  `scan_geo_lookup` now runs `/usr/sbin/traceroute -I` (with TCP/443
+  fallback), parses Linux/Windows/MTR output into an ordered hop list,
+  geolocates every public hop via `IpFallback`, and **never fabricates
+  hops**. Unanswered (`*`) hops keep their position with `lat=null`;
+  private / loopback / link-local / TEST-NET IPs are flagged
+  `status="private"` with no coordinates. Probe location is the WP
+  server's own public IP (not the visitor's), labelled `Probe`.
+  New `/scan/geo/paste` endpoint runs the same parser on user-pasted
+  Linux traceroute / Windows tracert / MTR output. Confidence is
+  High/Medium/Low/Unknown — never `high`. New canonical `route` object
+  is consumed identically by the 2D map and the hop timeline (single
+  source of truth).
+- **`plugin/public/class-public-assets-v2.php`** — new file.
+  Registers `[privacy_checker_v2]`, `[privacy_checker_v2_toggle]`,
+  `[privacy_checker_v2_theme]`, `[privacy_checker_v2_geotrace]`.
+  Opt-in via `?v=2` (sets 30-day `pc_ui_v2` cookie). v1 is untouched;
+  deleting the v2 files removes v2 entirely.
+- **`plugin/public/assets/js/scanner-v2.js`** + **`scanner-v2.css`** —
+  new v2 dashboard. Hero, scan progress (6 steps, no fake steps —
+  browser-only steps labelled), 6 cards (Overview / Connection /
+  Anonymity / DNS / Browser / Security), Privacy Findings list,
+  Post-Scan action bar (Copy JSON / Copy summary / Download JSON /
+  Copy share link). Theme toggle cycles Light → Dark → System,
+  persists via `localStorage.pcv2_theme`, honours
+  `prefers-color-scheme`. Lazy-loads Leaflet for the v2 GeoTrace
+  widget only when needed. The `[PC-DBG-*]` debug markers from the
+  earlier investigation are gone; v2 is clean.
+- **`plugin/tests/class-geotrace-pipeline-test.php`** — 11 new tests
+  locking in the honesty contract: parser handles Linux / Windows /
+  MTR formats; private / loopback / link-local / TEST-NET IPs are
+  classified correctly; geo records never claim `confidence="high"`;
+  canonical route object preserves hop order.
+- **`e2e/scanner-v2.spec.js`** (6 tests) — toggle pill → v2 dashboard
+  renders 6 cards after scan, post-scan action bar exposes 4 buttons,
+  theme toggle cycles and persists across reload, `prefers-reduced-motion`
+  honoured, mobile 375×812 has no horizontal overflow.
+- **`e2e/geotrace-v2.spec.js`** (5 tests) — paste endpoint returns
+  canonical route in trace order with correct status classification,
+  live endpoint returns the canonical shape, bad input returns 400,
+  v2 widget renders after paste.
+
+Test totals: **215 PHPUnit tests / 900 assertions / 11 Playwright
+tests** — all green.
+
+Files NOT modified in this session: `plugin/public/assets/js/scanner.js`,
+`plugin/public/assets/css/scanner.css`, `plugin/public/class-public-assets.php`,
+`runScan`, `renderCards`, `scanLocalNetwork`, the card CSS, the report
+markup. v1 stays exactly as shipped in Phase 14.
 
 ## Related
 

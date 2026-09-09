@@ -274,6 +274,11 @@ final class Plugin {
         // Public-facing assets and shortcodes.
         ( new PublicAssets() )->register();
 
+        // v2 experimental UI — opt-in via ?v=2 query string or the
+        // `pc_ui_v2` cookie. v1 is unaffected; deleting the v2 files
+        // removes v2 entirely.
+        ( new PublicAssetsV2() )->register();
+
         // REST API.
         ( new RestApi( $this ) )->register();
 

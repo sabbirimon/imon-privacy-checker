@@ -33,6 +33,15 @@ get_header();
             </a>
         </div>
     </div>
+
+    <?php
+    // Floating v2 toggle pill. Self-hides when already in v2 mode.
+    // Lives in the theme so it works regardless of which shortcode is
+    // active on the page.
+    if ( shortcode_exists( 'privacy_checker_v2_toggle' ) ) {
+        echo do_shortcode( '[privacy_checker_v2_toggle]' );
+    }
+    ?>
 </section>
 
 <section class="pc-scanner-section" id="pc-scanner" aria-labelledby="pc-scanner-title">
