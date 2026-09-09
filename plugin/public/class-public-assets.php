@@ -158,16 +158,21 @@ final class PublicAssets {
 
         // Leaflet (free OpenStreetMap tiles) for the location map.
         // Loaded only with the scanner to avoid extra requests on plain pages.
+        //
+        // Vendored under plugin/public/assets/{css,js}/ — see
+        // plugin/public/assets/LEAFLET-LICENSE.md for license + attribution.
+        // BSD-2-Clause (Copyright (c) 2010-2023 Vladimir Agafonkin /
+        // Copyright (c) 2010-2011 CloudMade). Upstream: unpkg.com/leaflet@1.9.4.
         wp_enqueue_style(
             'pc-leaflet',
-            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+            PRIVACY_CHECKER_URL . 'public/assets/css/leaflet.css',
             array( 'pc-scanner' ),
             '1.9.4'
         );
 
         wp_enqueue_script(
             'pc-leaflet',
-            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+            PRIVACY_CHECKER_URL . 'public/assets/js/leaflet.js',
             array(),
             '1.9.4',
             true
