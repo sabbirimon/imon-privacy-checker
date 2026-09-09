@@ -1,0 +1,27 @@
+{
+  "name": "browser-checker",
+  "version": "1.0.0",
+  "description": "Production-ready WordPress privacy/anonymity diagnostic platform, branded as **IMON — I AM ON**. Originally authored scaffold inspired by Whoer.net — but every byte of code, design, and branding is original. Inspects the visitor's IP, geolocation, ISP, ASN, browser fingerprint surface, WebRTC leaks, and IP reputation, then renders an honest visibility score plus per-card \"what we saw\" + \"what we couldn't tell\" rows.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sabbirimon/imon-privacy-checker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sabbirimon/imon-privacy-checker/issues"
+  },
+  "homepage": "https://github.com/sabbirimon/imon-privacy-checker#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
