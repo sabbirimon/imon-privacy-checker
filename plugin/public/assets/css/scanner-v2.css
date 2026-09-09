@@ -589,19 +589,85 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 1rem;
+  gap: 1.25rem;
+  padding: 1.25rem 1rem;
   border-radius: 16px;
   background: var(--pcv2-surface);
   border: 1px solid var(--pcv2-border);
+  position: relative;
+  overflow: hidden;
 }
+.pcv2__score-hero-main::before {
+  /* Inner ambient backdrop so the central card breathes on its own. */
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--pcv2-ring-glow, var(--pcv2-info)) 22%, transparent), transparent 55%),
+    radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--pcv2-info-fg) 16%, transparent), transparent 60%);
+  filter: blur(18px);
+  z-index: 0;
+  pointer-events: none;
+  animation: pcv2-main-card-pulse 6s ease-in-out infinite alternate;
+}
+.pcv2__score-hero-main > * { position: relative; z-index: 1; }
+@keyframes pcv2-main-card-pulse {
+  0%   { transform: scale(1)    rotate(0deg);   opacity: 0.85; }
+  100% { transform: scale(1.08) rotate(2deg);   opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-hero-main::before { animation: none; }
+}
+
 .pcv2__score-ring {
-  width: 200px;
-  height: 200px;
+  width: var(--pcv2-ring-size, 220px);
+  height: var(--pcv2-ring-size, 220px);
   position: relative;
   display: grid;
   place-items: center;
 }
+.pcv2__score-ring--animated { /* SVG-mode ring — track div is unused */ }
+
+/* SVG ring layers. The fill arc is the actual score percentage;
+   the halo is a thicker blurred stroke that pulses to give the
+   "dynamic color" feel. */
+.pcv2__score-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pcv2__score-ring-bg {
+  opacity: 0.65;
+}
+.pcv2__score-ring-halo {
+  filter: blur(8px);
+  opacity: 0.55;
+  animation: pcv2-ring-halo-pulse 2.4s ease-in-out infinite alternate;
+}
+@keyframes pcv2-ring-halo-pulse {
+  0%   { opacity: 0.30; }
+  100% { opacity: 0.85; }
+}
+.pcv2__score-ring-fill {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pcv2-ring-tone-color, var(--pcv2-info-fg)) 60%, transparent));
+  transition: filter 200ms ease;
+}
+.pcv2__score-ring-sparkle {
+  opacity: 0;
+  animation: pcv2-ring-sparkle 1.8s ease-out infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+@keyframes pcv2-ring-sparkle {
+  0%   { opacity: 0;    transform: scale(0.4); }
+  35%  { opacity: 0.95; transform: scale(1.2); }
+  70%  { opacity: 0.40; transform: scale(0.9); }
+  100% { opacity: 0;    transform: scale(0.4); }
+}
+
+/* Fallback for browsers / contexts that still get the conic-gradient
+   track (e.g. when JS fails — the static HTML template uses it). */
 .pcv2__score-ring-track {
   position: absolute; inset: 0;
   border-radius: 50%;
@@ -609,29 +675,48 @@
   -webkit-mask: radial-gradient(circle, transparent 60%, black 60.5%, black 100%);
   mask: radial-gradient(circle, transparent 60%, black 60.5%, black 100%);
 }
+
 .pcv2__score-ring-inner {
   position: relative;
-  width: 76%;
-  height: 76%;
+  width: 78%;
+  height: 78%;
   border-radius: 50%;
   background: var(--pcv2-surface-strong);
   display: grid;
   place-items: center;
   text-align: center;
-  box-shadow: inset 0 0 0 1px var(--pcv2-border);
+  box-shadow:
+    inset 0 0 0 1px var(--pcv2-border),
+    0 0 0 4px color-mix(in srgb, var(--pcv2-ring-tone-color, var(--pcv2-info-fg)) 8%, transparent);
 }
+
 .pcv2__score-ring-value {
-  font-size: 2.8rem;
+  font-size: 3.1rem;
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+  color: var(--pcv2-text);
+  /* Subtle hue tint via the halo colour — keep the gradient valid
+     even when --pcv2-ring-tone-color is a CSS keyword like "warning"
+     (used as a stroke value). The fallback is the safe-fg so the
+     gradient always resolves. */
+  background-image: linear-gradient(180deg,
+    var(--pcv2-text) 0%,
+    var(--pcv2-ring-glow, var(--pcv2-info-fg)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.05);
 }
 .pcv2__score-ring-value-suffix {
-  font-size: 1.1rem;
+  display: block;
+  font-size: 0.85rem;
   font-weight: 600;
+  letter-spacing: 0.12em;
   color: var(--pcv2-text-faint);
-  margin-left: 0.15rem;
+  margin-top: 0.15rem;
+  -webkit-text-fill-color: var(--pcv2-text-faint);
 }
 .pcv2__score-ring-value-pending {
   display: block;
@@ -641,20 +726,91 @@
   text-transform: uppercase;
   color: var(--pcv2-text-faint);
   margin-top: 0.35rem;
+  -webkit-text-fill-color: var(--pcv2-text-faint);
 }
 .pcv2__score-ring-label {
-  font-size: 0.75rem;
-  letter-spacing: 0.10em;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--pcv2-text-faint);
-  margin-top: 0.2rem;
+  margin-top: 0.35rem;
 }
+
+/* Holographic grade badge — large letter + small descriptor.
+   The background is an animated rotating gradient; the border is
+   severity-mapped. */
 .pcv2__score-grade {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--pcv2-text);
-  margin-top: 0.5rem;
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border);
+  position: relative;
+  overflow: hidden;
 }
+.pcv2__score-grade--animated::before {
+  /* Rotating conic-gradient sheen */
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(from 0deg,
+    color-mix(in srgb, var(--pcv2-safe-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-info-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-warning-fg) 40%, transparent),
+    color-mix(in srgb, var(--pcv2-danger-fg)  35%, transparent),
+    color-mix(in srgb, var(--pcv2-info-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-safe-fg)   40%, transparent));
+  animation: pcv2-grade-spin 8s linear infinite;
+  opacity: 0.55;
+  z-index: 0;
+  pointer-events: none;
+}
+.pcv2__score-grade--animated::after {
+  /* Inner cutout so the sheen only shows on the border edge */
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 999px;
+  background: var(--pcv2-surface-strong);
+  z-index: 0;
+}
+.pcv2__score-grade--animated > * { position: relative; z-index: 1; }
+.pcv2__score-grade--animated {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pcv2-ring-glow, var(--pcv2-info-fg)) 45%, transparent);
+}
+@keyframes pcv2-grade-spin {
+  0%   { transform: rotate(0deg);   }
+  100% { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-grade--animated::before { animation: none; }
+}
+.pcv2__score-grade-letter {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-text);
+  background-image: linear-gradient(135deg, var(--pcv2-text) 0%, var(--pcv2-ring-glow, var(--pcv2-info-fg)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.pcv2__score-grade-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  font-weight: 600;
+}
+.pcv2__score-grade[data-pcv2-tone="safe"]    .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-safe-fg) 0%, var(--pcv2-info-fg) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.pcv2__score-grade[data-pcv2-tone="warning"] .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-warning-fg) 0%, #fb923c 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.pcv2__score-grade[data-pcv2-tone="danger"]  .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-danger-fg) 0%, #fb7185 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
 
 /* Sub-scores row (4 mini rings) */
 .pcv2__score-hero-grid {

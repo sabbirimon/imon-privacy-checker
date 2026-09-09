@@ -136,4 +136,90 @@ test.describe('score hero — radial sub-score chart', () => {
         });
         expect(hasOrb).toBe(true);
     });
+
+    test('main ring is rendered as SVG with halo + fill + sparkle layers', async ({ page }) => {
+        await gotoV2(page);
+        const ring = await page.evaluate(() => {
+            const wrap = document.querySelector('.pcv2__score-ring');
+            if (!wrap) return null;
+            const svg = wrap.querySelector('.pcv2__score-ring-svg');
+            const halo = wrap.querySelector('.pcv2__score-ring-halo');
+            const fill = wrap.querySelector('.pcv2__score-ring-fill');
+            const sparkles = wrap.querySelectorAll('.pcv2__score-ring-sparkle');
+            const bg = wrap.querySelector('.pcv2__score-ring-bg');
+            return {
+                animated: wrap.classList.contains('pcv2__score-ring--animated'),
+                hasSvg: !!svg,
+                hasHalo: !!halo,
+                hasFill: !!fill,
+                hasBg: !!bg,
+                sparkleCount: sparkles.length,
+                // Fill arc must have a non-zero dasharray length.
+                dashArray: fill ? fill.getAttribute('stroke-dasharray') : null,
+                // Initial dashoffset should be the full arc length
+                // (animation will animate it to 0).
+                initialOffset: fill ? fill.getAttribute('data-pcv2-ring-init') : null
+            };
+        });
+        expect(ring).not.toBeNull();
+        expect(ring.animated).toBe(true);
+        expect(ring.hasSvg).toBe(true);
+        expect(ring.hasHalo).toBe(true);
+        expect(ring.hasFill).toBe(true);
+        expect(ring.hasBg).toBe(true);
+        expect(ring.sparkleCount).toBeGreaterThanOrEqual(4);
+        // The fill arc length should be a positive number.
+        const dashParts = (ring.dashArray || '').split(' ');
+        const arcLen = parseFloat(dashParts[0]);
+        expect(arcLen).toBeGreaterThan(0);
+        expect(ring.initialOffset).toBeTruthy();
+    });
+
+    test('grade badge is present with holographic animated styling', async ({ page }) => {
+        await gotoV2(page);
+        const grade = await page.evaluate(() => {
+            const g = document.querySelector('.pcv2__score-grade');
+            if (!g) return null;
+            const letter = g.querySelector('.pcv2__score-grade-letter');
+            const label  = g.querySelector('.pcv2__score-grade-label');
+            return {
+                animated: g.classList.contains('pcv2__score-grade--animated'),
+                tone: g.getAttribute('data-pcv2-tone'),
+                letter: letter ? letter.textContent.trim() : '',
+                label:  label  ? label.textContent.trim()  : '',
+                // The rotating sheen ::before pseudo must have an
+                // animation name set in computed style.
+                pseudoAnim: (function () {
+                    const cs = window.getComputedStyle(g, '::before');
+                    return cs.animationName || '';
+                })()
+            };
+        });
+        expect(grade).not.toBeNull();
+        expect(grade.animated).toBe(true);
+        expect(grade.letter.length).toBeGreaterThan(0);
+        expect(['safe', 'warning', 'danger', 'info', 'neutral']).toContain(grade.tone);
+        expect(grade.pseudoAnim).toMatch(/pcv2-grade-spin/);
+    });
+
+    test('main ring value text has visible color (gradient resolves)', async ({ page }) => {
+        await gotoV2(page);
+        const info = await page.evaluate(() => {
+            const v = document.querySelector('.pcv2__score-ring-value');
+            if (!v) return null;
+            const cs = window.getComputedStyle(v);
+            return {
+                text: v.textContent,
+                bgImage: cs.backgroundImage,
+                fillColor: cs.webkitTextFillColor || cs.color,
+                bgClip: cs.backgroundClip || cs.webkitBackgroundClip
+            };
+        });
+        expect(info).not.toBeNull();
+        expect(info.text).toMatch(/^\d+\/100$/);
+        // The gradient must actually be applied — backgroundImage
+        // must be a linear-gradient(...), NOT 'none'.
+        expect(info.bgImage).toMatch(/linear-gradient/);
+        expect(info.bgClip).toBe('text');
+    });
 });

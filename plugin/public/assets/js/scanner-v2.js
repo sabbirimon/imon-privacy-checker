@@ -588,8 +588,16 @@
         var showValue = value != null;
         var pct = showValue ? value : 0;
 
+        // For the lg size, build the new SVG ring with animated draw-in
+        // + rotating conic-gradient overlay + sparkle dots. The mini
+        // size keeps the old conic-gradient render (it's used as a
+        // sub-score chip and doesn't need the same flourish).
+        if (size === 'lg') {
+            return renderLgRing({ value: value, tone: tone, label: label, showValue: showValue });
+        }
+
         var wrap = el('div', {
-            class: size === 'mini' ? 'pcv2__mini-ring' : 'pcv2__score-ring',
+            class: 'pcv2__mini-ring',
             role: 'progressbar',
             'aria-valuemin': '0',
             'aria-valuemax': '100',
@@ -598,40 +606,228 @@
                 ? label + (showValue ? ': ' + Math.round(value) + ' of 100' : ': not available')
                 : (showValue ? Math.round(value) + ' of 100' : 'not available')
         });
-        var track = el('div', { class: size === 'mini' ? 'pcv2__mini-ring-track' : 'pcv2__score-ring-track' });
+        var track = el('div', { class: 'pcv2__mini-ring-track' });
         track.style.setProperty('--pcv2-ring-fill', tone);
         track.style.setProperty('--pcv2-ring-pct', pct + '%');
         wrap.appendChild(track);
 
-        var inner = el('div', { class: size === 'mini' ? 'pcv2__mini-ring-inner' : 'pcv2__score-ring-inner' });
-        if (size === 'lg') {
-            var valueWrap = el('div', { class: 'pcv2__score-ring-value-wrap' });
-            var valueText = el('div', { class: 'pcv2__score-ring-value' });
-            if (showValue) {
-                valueText.textContent = String(Math.round(value));
-                valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-suffix', text: '/100' }));
-            } else {
-                // Label the empty state explicitly so it doesn't read as
-                // a broken gauge.
-                valueText.textContent = '—';
-                valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-pending', text: PCV2.i18n.scorePending || 'Score pending' }));
-            }
-            valueWrap.appendChild(valueText);
-            valueWrap.appendChild(el('div', {
-                class: 'pcv2__score-ring-label',
-                text: label || (PCV2.i18n.scoreLabel || 'Privacy Score')
-            }));
-            inner.appendChild(valueWrap);
-        } else {
-            inner.textContent = showValue ? (Math.round(value) + '%') : '—';
-        }
+        var inner = el('div', { class: 'pcv2__mini-ring-inner' });
+        inner.textContent = showValue ? (Math.round(value) + '%') : '—';
         wrap.appendChild(inner);
         return wrap;
     }
 
     /**
-     * Build a sub-score "mini card" with its own little ring + label.
+     * Build the large privacy score ring:
+     *
+     *   - outer SVG circle with stroke-dasharray for animated draw-in
+     *   - behind it, a rotating conic-gradient ring for the dynamic
+     *     color sweep (uses the severity tone as the dominant hue)
+     *   - a pulsing glow synced to the severity tone
+     *   - sparkle dots that orbit the ring briefly on mount
+     *   - central readout: large number + "/100" suffix + small label
+     *
+     * The animation is purely visual — the underlying semantic state
+     * (role=progressbar, aria-valuenow, aria-label) is set on the
+     * outer wrapper so screen readers still see the score.
+     *
+     * The ring stores its animation handles on the element so the
+     * caller (renderScoreHero) can kick off the count-up animation
+     * after the first paint.
      */
+    function renderLgRing(opts) {
+        var value = opts.value;
+        var tone  = opts.tone || 'var(--pcv2-info-fg)';
+        var label = opts.label || (PCV2.i18n.scoreLabel || 'Privacy Score');
+        var showValue = opts.showValue;
+        var pct = showValue ? value : 0;
+
+        // Severity → glow colour. We pick the closest token to whatever
+        // `tone` the caller passed so the glow always matches the ring.
+        var sev = (typeof value === 'number') ? severityFromScore(value) : 'neutral';
+        var glowTokens = {
+            safe:    'var(--pcv2-safe-fg)',
+            warning: 'var(--pcv2-warning-fg)',
+            danger:  'var(--pcv2-danger-fg)',
+            info:    'var(--pcv2-info-fg)',
+            neutral: 'var(--pcv2-info-fg)'
+        };
+        var glowColor = glowTokens[sev] || tone;
+
+        var size = 220; // px — slightly smaller than the old CSS 200
+        var cx = size / 2;
+        var cy = size / 2;
+        var radius = (size / 2) - 14; // leaves room for stroke + glow
+        var stroke = 14;
+        var C = 2 * Math.PI * radius;
+
+        var wrap = el('div', {
+            class: 'pcv2__score-ring pcv2__score-ring--animated',
+            role: 'progressbar',
+            'aria-valuemin': '0',
+            'aria-valuemax': '100',
+            'aria-valuenow': showValue ? String(Math.round(value)) : '0',
+            'aria-label': label
+                ? label + (showValue ? ': ' + Math.round(value) + ' of 100' : ': not available')
+                : (showValue ? Math.round(value) + ' of 100' : 'not available')
+        });
+        wrap.style.setProperty('--pcv2-ring-size', size + 'px');
+        wrap.style.setProperty('--pcv2-ring-glow', glowColor);
+        wrap.style.setProperty('--pcv2-ring-tone-color', tone);
+
+        // ---- SVG ring --------------------------------------------
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+        svg.setAttribute('class', 'pcv2__score-ring-svg');
+        svg.setAttribute('focusable', 'false');
+        svg.setAttribute('aria-hidden', 'true');
+
+        // Background track — the dim ring behind everything.
+        var bg = document.createElementNS(ns, 'circle');
+        bg.setAttribute('cx', cx);
+        bg.setAttribute('cy', cy);
+        bg.setAttribute('r', radius);
+        bg.setAttribute('fill', 'none');
+        bg.setAttribute('stroke', 'var(--pcv2-surface-sunken)');
+        bg.setAttribute('stroke-width', String(stroke));
+        bg.setAttribute('class', 'pcv2__score-ring-bg');
+        svg.appendChild(bg);
+
+        // Glow halo — a thicker, blurred stroke that pulses behind
+        // the filled arc. This is the "dynamic color effect" — the
+        // halo colour tracks the severity tone, and a CSS keyframe
+        // animates the opacity + stroke-width for a breathing feel.
+        var halo = document.createElementNS(ns, 'circle');
+        halo.setAttribute('cx', cx);
+        halo.setAttribute('cy', cy);
+        halo.setAttribute('r', radius);
+        halo.setAttribute('fill', 'none');
+        halo.setAttribute('stroke', glowColor);
+        halo.setAttribute('stroke-width', String(stroke + 10));
+        halo.setAttribute('class', 'pcv2__score-ring-halo');
+        halo.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+        // Same dasharray as the filled arc so they stay in sync.
+        halo.setAttribute('stroke-dasharray', String(arcLen) + ' ' + String(C));
+        halo.setAttribute('stroke-dashoffset', String(arcLen));
+        halo.setAttribute('data-pcv2-ring-target', '0');
+        halo.setAttribute('data-pcv2-ring-init', String(arcLen));
+        svg.appendChild(halo);
+
+        // Filled arc — the actual score percentage. Animated via
+        // stroke-dashoffset from full-hidden to its target arc length.
+        var fill = document.createElementNS(ns, 'circle');
+        fill.setAttribute('cx', cx);
+        fill.setAttribute('cy', cy);
+        fill.setAttribute('r', radius);
+        fill.setAttribute('fill', 'none');
+        fill.setAttribute('stroke', tone);
+        fill.setAttribute('stroke-width', String(stroke));
+        fill.setAttribute('stroke-linecap', 'round');
+        fill.setAttribute('class', 'pcv2__score-ring-fill');
+        // Rotate -90 so the arc starts at the top.
+        fill.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+        var arcLen = (pct / 100) * C;
+        fill.setAttribute('stroke-dasharray', String(arcLen) + ' ' + String(C));
+        // Initial dashoffset = arcLen (hidden); CSS/JS animates to 0.
+        fill.setAttribute('stroke-dashoffset', String(arcLen));
+        fill.setAttribute('data-pcv2-ring-target', '0');
+        fill.setAttribute('data-pcv2-ring-init', String(arcLen));
+        fill.setAttribute('data-pcv2-ring-c', String(C));
+        svg.appendChild(fill);
+
+        // Sparkle dots — small circles placed at evenly-spaced points
+        // around the ring. Each fades in + scales, then disappears.
+        // Purely decorative; aria-hidden by the SVG aria attribute.
+        var sparkles = 6;
+        for (var i = 0; i < sparkles; i++) {
+            var ang = (i / sparkles) * 2 * Math.PI - Math.PI / 2;
+            var px = cx + (radius + 4) * Math.cos(ang);
+            var py = cy + (radius + 4) * Math.sin(ang);
+            var dot = document.createElementNS(ns, 'circle');
+            dot.setAttribute('cx', String(px));
+            dot.setAttribute('cy', String(py));
+            dot.setAttribute('r', '3');
+            dot.setAttribute('fill', tone);
+            dot.setAttribute('class', 'pcv2__score-ring-sparkle');
+            dot.style.animationDelay = (0.15 * i) + 's';
+            svg.appendChild(dot);
+        }
+
+        wrap.appendChild(svg);
+
+        // ---- Central readout (number + suffix + label) -------------
+        var inner = el('div', { class: 'pcv2__score-ring-inner' });
+        var valueWrap = el('div', { class: 'pcv2__score-ring-value-wrap' });
+        var valueText = el('div', { class: 'pcv2__score-ring-value' });
+        if (showValue) {
+            // Start at 0 — animateScoreCountUp() bumps this to the
+            // target. The suffix is appended AFTER the count so the
+            // animation handler can safely overwrite textContent.
+            valueText.textContent = '0';
+            valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-suffix', text: '/100' }));
+        } else {
+            valueText.textContent = '—';
+            valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-pending', text: PCV2.i18n.scorePending || 'Score pending' }));
+        }
+        valueWrap.appendChild(valueText);
+        valueWrap.appendChild(el('div', {
+            class: 'pcv2__score-ring-label',
+            text: label
+        }));
+        inner.appendChild(valueWrap);
+        wrap.appendChild(inner);
+
+        // Cache the value node + target so the caller (renderScoreHero)
+        // can run the count-up animation after the SVG is in the DOM.
+        wrap._valueNode = valueText;
+        wrap._valueTarget = showValue ? value : null;
+
+        // Kick off the ring draw-in animation on the next frame so the
+        // browser commits the initial dashoffset first.
+        if (showValue && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(function () { animateRingDraw(wrap, 1100); });
+        } else if (!showValue) {
+            // Snap to final state when no value is available.
+            fill.setAttribute('stroke-dashoffset', '0');
+        }
+        return wrap;
+    }
+
+    /**
+     * Animate the lg ring's filled arc from fully-hidden to its target
+     * arc length using a single rAF loop. The CSS keyframe
+     * `pcv2-ring-fill-pulse` provides the glow pulse; this just
+     * handles the dashoffset interpolation + stagger so it works
+     * alongside the CSS animation.
+     */
+    function animateRingDraw(wrap, duration) {
+        var fill = wrap.querySelector('.pcv2__score-ring-fill');
+        var halo = wrap.querySelector('.pcv2__score-ring-halo');
+        if (!fill) return;
+        var reduce = window.matchMedia &&
+                     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var target = parseFloat(fill.getAttribute('data-pcv2-ring-target')) || 0;
+        var init   = parseFloat(fill.getAttribute('data-pcv2-ring-init'))   || 0;
+        if (reduce) {
+            fill.setAttribute('stroke-dashoffset', String(target));
+            if (halo) halo.setAttribute('stroke-dashoffset', String(target));
+            return;
+        }
+        var start = null;
+        var dur = duration || 1100;
+        function step(ts) {
+            if (start === null) start = ts;
+            var local = Math.min(1, (ts - start) / dur);
+            var eased = 1 - Math.pow(1 - local, 3);
+            var v = init + (target - init) * eased;
+            fill.setAttribute('stroke-dashoffset', String(v));
+            if (halo) halo.setAttribute('stroke-dashoffset', String(v));
+            if (local < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
     function renderMiniScoreCard(opts) {
         var cardAttrs = { class: 'pcv2__mini-card' };
         if (opts.key) {
@@ -919,7 +1115,20 @@
             hero._valueTarget = score;
         }
         if (grade) {
-            main.appendChild(el('div', { class: 'pcv2__score-grade', text: grade }));
+            // Grade badge — large letter + small descriptor. The
+            // badge gets a holographic gradient background that
+            // rotates slowly via CSS animation, plus a severity-mapped
+            // border colour so the visual ties to the ring tone.
+            var gradeBadge = el('div', {
+                class: 'pcv2__score-grade pcv2__score-grade--animated',
+                'data-pcv2-tone': mainTone
+            });
+            gradeBadge.appendChild(el('span', { class: 'pcv2__score-grade-letter', text: grade }));
+            gradeBadge.appendChild(el('span', {
+                class: 'pcv2__score-grade-label',
+                text: PCV2.i18n.gradeLabel || 'Grade'
+            }));
+            main.appendChild(gradeBadge);
         }
         hero.appendChild(main);
 

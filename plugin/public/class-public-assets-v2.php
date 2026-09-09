@@ -173,6 +173,7 @@ final class PublicAssetsV2 {
                 'recTitle'         => __( 'What you can do', 'privacy-checker' ),
                 'scorePending'     => __( 'Score pending', 'privacy-checker' ),
                 'radialAriaLabel'  => __( 'Sub-score breakdown chart', 'privacy-checker' ),
+                'gradeLabel'       => __( 'Grade', 'privacy-checker' ),
                 'dnsNotRun'        => __( 'DNS test not yet run — the probe runs automatically with each scan.', 'privacy-checker' ),
                 // Plain-language (ELI5) labels — when the visitor flips the
                 // "Explain simply" toggle, the card titles and finding
