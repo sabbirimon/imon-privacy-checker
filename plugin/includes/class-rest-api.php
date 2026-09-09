@@ -63,16 +63,27 @@ final class RestApi {
             'permission_callback' => '__return_true',
         ) );
 
-        // Connection / IP intel.
+        // Connection / IP intel. Accepts both GET (v1 scanner) and POST
+        // (v2 scanner, which sends the same body shape as /scan).
         register_rest_route( $ns, '/scan/connection', array(
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => array( $this, 'scan_connection' ),
             'permission_callback' => '__return_true',
         ) );
+        register_rest_route( $ns, '/scan/connection', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => array( $this, 'scan_connection' ),
+            'permission_callback' => '__return_true',
+        ) );
 
-        // Reputation.
+        // Reputation. Accepts both GET (v1 scanner) and POST (v2 scanner).
         register_rest_route( $ns, '/scan/reputation', array(
             'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'scan_reputation' ),
+            'permission_callback' => '__return_true',
+        ) );
+        register_rest_route( $ns, '/scan/reputation', array(
+            'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => array( $this, 'scan_reputation' ),
             'permission_callback' => '__return_true',
         ) );

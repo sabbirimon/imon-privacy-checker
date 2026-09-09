@@ -482,11 +482,49 @@
         if (content) body.appendChild(content);
     }
 
+    function rebuildReportSkeleton(dashboard) {
+        // Mirror the server-side skeleton in class-public-assets-v2.php
+        // so a rescan (which clears reportRegion) still renders the
+        // expected structure without needing a full page reload.
+        var reportRegion = dashboard.querySelector('[data-pcv2-region="report"]');
+        if (!reportRegion) return;
+
+        var summary = el('div', { class: 'pcv2__summary', 'data-pcv2-region': 'summary' });
+        var grid = el('div', { class: 'pcv2__grid' });
+        var findings = el('div', { class: 'pcv2__findings', 'data-pcv2-region': 'findings' });
+
+        var cardKeys = ['overview', 'connection', 'anonymity', 'dns', 'browser', 'security'];
+        cardKeys.forEach(function (key) {
+            var card = el('article', { class: 'pcv2__card', 'data-pcv2-card': key });
+            card.appendChild(el('header', { class: 'pcv2__card-header' }, [
+                el('h2', { 'data-pcv2-region': 'card-title' })
+            ]));
+            card.appendChild(el('div', { class: 'pcv2__card-body', 'data-pcv2-region': 'card-body' }));
+            grid.appendChild(card);
+        });
+
+        reportRegion.appendChild(summary);
+        reportRegion.appendChild(grid);
+        reportRegion.appendChild(findings);
+    }
+
     function renderReport(dashboard, report) {
         var intel = report.intel || {};
         var proxy = report.proxy || {};
         var conn = report.connection || {};
         var rep = report.reputation || {};
+
+        // The static skeleton (summary region, 6 cards, findings container)
+        // is rendered once by the server-side shortcode. The reset path in
+        // runScan() calls clear(reportRegion) which removes those nodes
+        // along with their previous content. If they're gone (re-render
+        // after a rescan), rebuild the skeleton before populating it.
+        var reportRegion = dashboard.querySelector('[data-pcv2-region="report"]');
+        if (!reportRegion) return;
+
+        if (!dashboard.querySelector('[data-pcv2-region="summary"]')) {
+            rebuildReportSkeleton(dashboard);
+        }
 
         // Summary.
         var summary = dashboard.querySelector('[data-pcv2-region="summary"]');

@@ -57,8 +57,19 @@ get_header();
         </p>
 
         <?php
-        // Plugin shortcode renders the dashboard.
-        if ( shortcode_exists( 'privacy_checker' ) ) {
+        // Plugin shortcode renders the dashboard. If the visitor has
+        // opted into v2 via the `pc_ui_v2` cookie or the `?v=2` query
+        // arg (the toggle pill on this page sets both), render the v2
+        // dashboard instead of the v1 one. v1 stays the default and
+        // the rollback path is unchanged.
+        $wants_v2 = (
+            ( isset( $_COOKIE['pc_ui_v2'] ) && '1' === (string) $_COOKIE['pc_ui_v2'] ) ||
+            ( isset( $_GET['v'] ) && '2' === (string) wp_unslash( $_GET['v'] ) )
+        );
+
+        if ( $wants_v2 && shortcode_exists( 'privacy_checker_v2' ) ) {
+            echo do_shortcode( '[privacy_checker_v2]' );
+        } elseif ( shortcode_exists( 'privacy_checker' ) ) {
             echo do_shortcode( '[privacy_checker]' );
         } else {
             echo '<p>' . esc_html__( 'The privacy checker plugin is not active.', 'privacy-checker-theme' ) . '</p>';

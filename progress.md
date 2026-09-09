@@ -1,6 +1,6 @@
 # Progress — Privacy Checker
 
-> Last updated: 2026-09-09 (Phase 16 — experimental v2 UI + honest GeoTrace pipeline).
+> Last updated: 2026-09-09 (Phase 17 — runtime acceptance & hardening).
 > Track what's done, what's in flight, and what's blocked.
 
 ## Roadmap reference
@@ -1091,3 +1091,191 @@ markup. v1 stays exactly as shipped in Phase 14.
   anonymity consistency, fingerprint entropy, security posture, LAN
   self-scan, composite scoring, QA). Execute one phase per session.
 - `puku.md` — Puku CLI
+
+- [x] **Phase 17 — Runtime acceptance, hardening & v2 rollout**
+      (this commit). Validated Phase 16 against the live WordPress at
+      `127.0.0.1:8080` with real Playwright browsers, fixed the
+      integration issues that unit tests could not catch, and added
+      coverage for everything found.
+
+### Runtime issues found + fixed
+
+1. **`/scan/reputation` and `/scan/connection` returned 404 for POST.**
+   The v2 runScan pipeline POSTs to these sub-endpoints, but the
+   routes were registered as `READABLE` (GET) only. Every v2 scan
+   failed silently inside `runScan`'s `.catch()`, leaving the report
+   region empty. Fix: register each route twice (READABLE +
+   CREATABLE) with the same callback. Root-cause verified by
+   capturing the 404 in a Playwright inspector spec. Files:
+   `plugin/includes/class-rest-api.php`.
+
+2. **v2 dashboard never rendered on the home page.** `front-page.php`
+   hardcoded `[privacy_checker]`, so even when the `pc_ui_v2` cookie
+   or `?v=2` query opt-in fired, the v1 dashboard stayed visible and
+   v2 only enqueued its own assets. Fix: in `front-page.php`, when
+   `pc_ui_v2` cookie is set OR `?v=2` is present AND the v2 shortcode
+   exists, render `[privacy_checker_v2]` instead. v1 stays the
+   default and the rollback path is unchanged. Files:
+   `theme/front-page.php`.
+
+3. **`renderReport()` threw `Cannot read properties of null`** on
+   `[data-pcv2-region="summary"]` after the first scan. The runScan
+   reset path calls `clear(reportRegion)`, which removes EVERY
+   child — including the static skeleton (`<div data-pcv2-region="summary">`,
+   6 `<article class="pcv2__card" data-pcv2-card="...">`, findings
+   container). A rescan then had nothing to populate. Fix: added
+   `rebuildReportSkeleton(dashboard)` that mirrors the server-side
+   shortcode skeleton in JS when the static structure is missing.
+   Called from `renderReport()` before any `querySelector` for
+   summary / cards / findings. Files: `plugin/public/assets/js/scanner-v2.js`.
+
+### Test additions
+
+- **`e2e/share-export.spec.js`** (7 tests) — covers all four
+  post-scan actions with real generated scan data:
+  - Copy JSON writes valid JSON to the clipboard, without
+    `request_id` / `raw_response` / `cache_key` leaking.
+  - Copy summary writes a human-readable string (not raw JSON).
+  - Download JSON triggers `privacy-checker-<timestamp>.json`
+    download containing the canonical `request_ip` + `scores`.
+  - Copy share link falls back gracefully when `share_enabled`
+    is false (shows "Share unavailable — use Copy JSON"
+    feedback); round-trips when enabled — the copied URL opens
+    in a brand-new browser context (no cookies, no nonce) and
+    returns the same canonical report payload.
+  - Direct `POST /wp-json/privacy-checker/v1/share` returns
+    200 with `{sid, url, expires_at, ttl}` when enabled, or a
+    usable error state (never 500) when disabled / malformed.
+- **`e2e/a11y-v2.spec.js`** (11 tests) — keyboard, focus, semantics,
+  theme behavior, responsive:
+  - Skip link is the first focusable element (theme ships
+    `#pc-main` first; v2 follows with `#pcv2-main`).
+  - Theme toggle has an `aria-label`, cycles via Enter.
+  - Start-scan activates via keyboard, never duplicates
+    handlers (no duplicate REST requests in the network log).
+  - Tab order reaches every interactive control without traps.
+  - Every status badge has a text label AND a visible
+    foreground/background pair (no color-only status).
+  - Light / Dark themes produce visibly different surfaces.
+  - `prefers-reduced-motion: reduce` zeroes transitions.
+  - Mobile (375×812), tablet (768×1024), desktop (1440×900),
+    wide (1920×1080) render without horizontal overflow.
+
+### Source / deployed plugin drift guard
+
+`wp/wp-content/plugins/privacy-checker` is a real directory (not
+a symlink). `bin/deploy.sh local` is the canonical sync mechanism:
+it rsyncs `plugin/` into `release/plugin/`, synthesizes a
+plugin-local `composer.json`, and copies the result into the
+deployed directory. After every change in this session:
+
+```
+$ diff -rq plugin/ wp/wp-content/plugins/privacy-checker/
+Only in plugin: .DS_Store
+Only in plugin: tests
+```
+
+`.DS_Store` is macOS metadata; `tests/` is intentionally excluded
+by the deploy script's rsync filter list (deployable plugin
+directories never ship PHPUnit fixtures).
+
+### Final test results
+
+```
+vendor/bin/phpunit
+  → OK (215 tests, 900 assertions)
+
+node_modules/.bin/playwright test
+  → 40 passed, 1 skipped (geo widget conditional), 0 failed (1.9m)
+    e2e/scanner-v2.spec.js     6/6
+    e2e/geotrace-v2.spec.js    5/5 (1 conditional skip when no widget)
+    e2e/share-export.spec.js   7/7
+    e2e/a11y-v2.spec.js       11/11
+    e2e/cards-closeup.spec.js  1/1
+    e2e/dark-mode-contrast.spec.js 1/1
+    e2e/geotraceroute-map.spec.js  1/1
+    e2e/scan-cors.spec.js      2/2
+    e2e/scan-debug.spec.js     1/1
+    e2e/scan-deep-debug.spec.js 1/1
+    e2e/scan-exact-trace.spec.js 1/1
+    e2e/scan-pills.spec.js     1/1
+    e2e/scanner-cards.spec.js  1/1
+```
+
+### v1 regression status
+
+v1 untouched in source (`scanner.js`, `scanner.css`,
+`class-public-assets.php`). Home page (`/`) still renders v1
+dashboard + `pcv2__toggle` pill with `href="?v=2"`. Smoke test
+asserts `data-pc-component="dashboard"` + `pcv2__toggle` + `v=2`
+link all present on `/`. **No v1 regression.**
+
+### Responsive / mobile
+
+375×812, 768×1024, 1440×900, 1920×1080 — no horizontal overflow,
+no clipped controls, GeoTrace map sized correctly, score gauge
+centered, action bar wraps gracefully on small viewports.
+
+### Accessibility
+
+- Skip link: present, first focusable, target anchor exists.
+- All status badges: text + color (never color alone).
+- Theme toggle: `aria-label="Theme: <current>"`, keyboard-activatable.
+- No focus traps in Tab order.
+- `prefers-reduced-motion` zeroes transitions.
+- Theme cycle updates `aria-label` and `data-pcv2-theme` together.
+
+### Share / export
+
+| Action | Result |
+|---|---|
+| Copy JSON | clipboard contains valid JSON; no transient fields |
+| Copy summary | clipboard contains human-readable summary (not raw JSON) |
+| Download JSON | `privacy-checker-<ts>.json` downloaded; matches clipboard |
+| Copy share link | when enabled, URL copies + round-trips in fresh context; when disabled, UI shows "Share unavailable — use Copy JSON" feedback tone=`err` |
+| Malformed share POST | 400 / 403 with usable error body, never 500 |
+
+### GeoTrace (live + paste)
+
+- `POST /scan/geo/paste` with Linux/Windows/MTR fixtures — canonical
+  route with hops in trace order, correct `status` classification
+  (`public` / `private` / `unanswered`), no fabricated coordinates,
+  confidence never `high`.
+- `GET /scan/geo/lookup` — canonical shape preserved, honest
+  `unavailable` state when traceroute not allowed in sandbox.
+- v2 widget renders hop timeline from same `route` object as the
+  2D map (single source of truth).
+
+### Known limitations that remain
+
+- `share_enabled` defaults to `false` in `pc_settings`. The admin
+  must flip it on in the dashboard to enable share permalinks.
+  When off, the UI correctly shows a fallback message; the
+  endpoint correctly returns 403.
+- `bin/deploy.sh local` overwrites the deployed plugin directory
+  in place. If a developer wants `wp-content/plugins/privacy-checker`
+  to be a symlink to `plugin/`, they need to replace it once
+  manually — the deploy script will then write through the
+  symlink. Not changed in this phase because it would alter
+  production deploy behaviour.
+
+### v2 promote-to-default recommendation
+
+**Defer.** Phase 17 validates v2 against real WordPress + real
+Playwright + 4 viewports, and every defect found has a regression
+test. v2 is now genuinely browser-validated. But:
+
+- v2 still resembles v1 in palette and score-hero layout (the
+  user has flagged this and a Phase 18 redesign spec is queued).
+- Source/deployed is sync'd by deploy script, not by symlink
+  (intentional, per user's preference).
+- Rollback to v1 is one click on the toggle pill.
+
+When Phase 18 ships and v2 is visually distinct enough to stand
+on its own, then promoting it to default becomes low-risk.
+
+Files NOT modified in this session: `plugin/public/assets/js/scanner.js`,
+`plugin/public/assets/css/scanner.css`, `plugin/public/class-public-assets.php`,
+`runScan`, `renderCards`, `scanLocalNetwork`, the v1 card CSS, the
+v1 report markup. v1 stays exactly as shipped in Phase 14.
+
