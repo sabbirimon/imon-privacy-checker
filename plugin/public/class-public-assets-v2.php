@@ -178,6 +178,7 @@ final class PublicAssetsV2 {
         ob_start();
         ?>
         <section class="pcv2" data-pcv2-component="dashboard" data-pcv2-theme="system">
+            <span class="pcv2__orb pcv2__orb--bottom" aria-hidden="true"></span>
             <a class="pcv2__skip-link" href="#pcv2-main"><?php esc_html_e( 'Skip to main content', 'privacy-checker' ); ?></a>
 
             <header class="pcv2__header">
@@ -236,7 +237,7 @@ final class PublicAssetsV2 {
                 </section>
 
                 <section class="pcv2__dashboard" data-pcv2-region="report" hidden>
-                    <div class="pcv2__summary" data-pcv2-region="summary"></div>
+                    <div class="pcv2__score-hero-host" data-pcv2-region="summary"></div>
                     <div class="pcv2__grid">
                         <article class="pcv2__card" data-pcv2-card="overview">    <header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
                         <article class="pcv2__card" data-pcv2-card="connection">  <header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>

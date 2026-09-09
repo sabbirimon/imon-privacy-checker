@@ -5,9 +5,10 @@
 > tokens and rules defined here. If a page needs something not in MASTER,
 > add it to MASTER first, then reference it from the page.
 
-**Version:** 1.0.0 · **Stack:** vanilla CSS custom properties + WordPress
-plugin + theme · **Targets:** WordPress 6.2+, PHP 8.1+, evergreen
-browsers (last 2 versions of Chrome / Edge / Firefox / Safari).
+**Version:** 1.1.0 (v2 redesign · Phase 18) · **Stack:** vanilla CSS custom
+properties + WordPress plugin + theme · **Targets:** WordPress 6.2+,
+PHP 8.1+, evergreen browsers (last 2 versions of Chrome / Edge /
+Firefox / Safari).
 
 ---
 
@@ -460,3 +461,133 @@ design-system/
 - v2 registers its own DOM hooks (`data-pcv2-*`) so it never collides
   with v1's `data-pc-*` selectors.
 - Deleting the v2 files removes v2 entirely; v1 is unaffected.
+
+---
+
+## 12. v2 visual language (Phase 18 redesign)
+
+Phase 18 replaced the v2 presentation layer with a Dribbble-inspired
+dark dashboard pattern. The redesign fixes four v1-era defects:
+
+- **(A) Dark mode used to flip the page bg only** — cards stayed light.
+  v2 now uses translucent glass surfaces (`var(--pcv2-surface)`) that
+  ride on top of a full-bleed `linear-gradient` page background. Both
+  light and dark themes get a soft purple wash, and the cards remain
+  legible in both.
+- **(B) Status badges used 5 severity colors** with weak contrast.
+  v2 collapses them to 5 tones (`safe` / `warning` / `danger` /
+  `info` / `neutral`) where each tone has a paired
+  `--pcv2-{tone}-bg` / `--pcv2-{tone}-fg` / `--pcv2-{tone}-border`
+  triple. Badges get a soft glow via
+  `box-shadow: 0 0 12px var(--pcv2-status-glow)`.
+- **(C) v2 looked too similar to v1.** v2's score hero now uses a
+  large circular ring (conic-gradient mask) flanked by four sub-score
+  mini rings, in the spirit of system-monitoring dashboards rather than
+  the v1 single-number panel.
+- **(D) Missing data was a bare em-dash `—`** that was visually
+  indistinguishable from intentional dashes. v2 now renders
+  `.pcv2__row-missing` ("Not available") in faint italic, so the
+  user can tell what we don't know from what we do.
+
+### 12.1 Token architecture (v2)
+
+```text
+SURFACE
+  --pcv2-page-grad          linear-gradient(page bg, full-bleed)
+  --pcv2-page               solid bg fallback (matches page-grad last stop)
+  --pcv2-surface            translucent glass card (rgba)
+  --pcv2-surface-strong     translucent glass card (elevated)
+  --pcv2-surface-sunken     inset / input bg
+  --pcv2-border             hairline (1px, alpha-aware)
+  --pcv2-border-strong      divider
+
+TEXT
+  --pcv2-text               body
+  --pcv2-text-muted         secondary
+  --pcv2-text-faint         tertiary / "Not available" placeholder
+  --pcv2-text-inverse       text on primary fill
+  --pcv2-text-link          links
+
+ACCENT (gradient fills — the design language's signature)
+  --pcv2-grad-purple        linear-gradient(135deg, #8b5cf6 → #6b3ce0)
+  --pcv2-grad-pink          linear-gradient(135deg, #ec4899 → #d946ef)
+  --pcv2-grad-orange        linear-gradient(135deg, #fb923c → #f97316)
+  --pcv2-grad-cyan          linear-gradient(135deg, #22d3ee → #0ea5e9)
+  --pcv2-grad-mixed         linear-gradient(135deg, purple → pink → orange)
+  --pcv2-action             solid fallback (last stop of action-grad)
+  --pcv2-action-grad        primary button fill
+  --pcv2-action-hover       hover state
+  --pcv2-action-active      active/pressed
+  --pcv2-action-fg          text on action fill
+
+STATUS (5 tones; each tone has bg/fg/border)
+  --pcv2-safe-bg / -fg / -border
+  --pcv2-warning-bg / -fg / -border
+  --pcv2-danger-bg / -fg / -border
+  --pcv2-info-bg / -fg / -border
+  --pcv2-neutral-bg / -fg / -border
+
+DECORATIVE ORBS (radial gradients behind content, blurred)
+  --pcv2-orb-1 / -2 / -3    ambient color spots
+
+EFFECTS
+  --pcv2-shadow-1           card resting shadow
+  --pcv2-shadow-2           card hover shadow
+  --pcv2-shadow-glow-purple / -pink / -orange
+  --pcv2-focus-ring         keyboard focus outline
+```
+
+### 12.2 Component rules (v2)
+
+- **Cards are glass surfaces, not solid panels.** Use
+  `--pcv2-surface` with `backdrop-filter: blur(14px) saturate(150%)`.
+  Hover raises to `--pcv2-surface-strong`.
+- **No hardcoded `#fff` or `#000`.** All surfaces resolve to a token.
+- **Decorative orbs are `position: fixed` and `pointer-events: none`.**
+  Two come from the `.pcv2` pseudo-elements (`::before` / `::after`);
+  the third is a `<span class="pcv2__orb pcv2__orb--bottom">` child
+  so it can sit at the bottom of the page, not just the top.
+- **Score rings use conic-gradient.** The ring fill is
+  `conic-gradient(from -90deg, var(--pcv2-ring-fill) var(--pcv2-ring-pct), var(--pcv2-surface-sunken) var(--pcv2-ring-pct))`,
+  masked with `radial-gradient(circle, transparent 60%, black 60.5%)`.
+  No SVG arcs. No JS animation. Honors `prefers-reduced-motion`.
+- **Status badges always include icon + label.** Mapping:
+  - `safe`     → ✓  ("Safe" / "Healthy" / "Strong")
+  - `warning`  → !  ("Warning" / "Elevated")
+  - `danger`   → ✕  ("Danger" / "Critical")
+  - `info`     → ⓘ  ("Info" / "Noted")
+  - `neutral`  → ·  ("Unknown" / "No signal" / "Not available")
+- **Missing data is labeled, not erased.** A null/empty value renders
+  as `<span class="pcv2__row-missing">Not available</span>` — faint
+  italic, never just a dash.
+- **All copy is honest.** No fake "fake progress" timers; no animation
+  count-up that races the score; no fabricated sub-scores. When a
+  sub-score is missing, the mini ring shows "—".
+
+### 12.3 v2 component list
+
+```text
+.pcv2__header                  sticky glass nav bar
+.pcv2__brand / -mark / -tag    "IMON / I AM ON" wordmark (gradient)
+.pcv2__nav                     inline nav links
+.pcv2__theme-toggle            38px square theme cycle button
+.pcv2__btn                     base button (--primary | --ghost | --lg)
+.pcv2__hero                    landing section
+.pcv2__hero-title              gradient-filled heading
+.pcv2__eyebrow                 pill-style category tag
+.pcv2__progress                live scan progress card
+.pcv2__score-hero              big card with main ring + 4 mini rings
+.pcv2__score-ring              200px conic-gradient ring
+.pcv2__mini-card               72px mini ring + label
+.pcv2__grid                    3-col card grid (responsive)
+.pcv2__card                    glass card with header + body
+.pcv2__row / dt / dd           key/value pairs
+.pcv2__status                  status badge (color + label + icon)
+.pcv2__findings                findings list container
+.pcv2__finding                 finding row (icon + body + score, tone-tinted left border)
+.pcv2__post-scan               copy/download/share toolbar
+.pcv2__post-scan-feedback      toolbar feedback chip
+.pcv2__toggle                  floating "back to v1" / "try v2" pill
+.pcv2__orb--bottom             3rd decorative orb
+.pcv2--geo / .pcv2__geo        GeoTrace v2 widget (separate section)
+```

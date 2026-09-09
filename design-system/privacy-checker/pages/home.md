@@ -1,72 +1,123 @@
-# Home Page — Page Override
+# Home Page — Page Override (v2 · Phase 18)
 
 > Extends `../MASTER.md`. Document only what's **specific to this page**
 > — tokens live in MASTER.
 
 ## Composition
 
-1. **Header** (sticky, translucent): brand mark + minimal nav (Home, IP
-   Check, DNS Leak, Browser, About) + theme toggle + Run-Check button.
-2. **Hero** — single primary CTA, no decorative media above.
-3. **Privacy Score** — top-level summary (0–100 gauge + 5 chips: Connection,
-   Anonymity, Browser, DNS, Reputation).
-4. **Cards** — Overview / Connection / Anonymity / DNS / Browser Privacy /
-   Security Findings.
-5. **Anonymity Tips** strip (3 highest-priority tips).
-6. **Footer** — methodology + credits + "no analytics" promise.
+1. **Header** (sticky, glass): brand mark + minimal nav (Home, IP Check,
+   DNS Leak, Browser, About) + theme toggle + Run-Check button.
+2. **Hero** — single primary CTA, gradient-filled heading, soft purple
+   page background with three decorative orbs.
+3. **Score hero** — large central ring (Privacy Score) + 4 sub-score
+   mini rings (IP exposure, Fingerprint, Connection, DNS) in a 2-col
+   grid that becomes 4-col on ≥ md.
+4. **Detail grid** — 6 glass cards: Overview, Connection (wide),
+   Anonymity, DNS, Browser Privacy, Security Findings. The Connection
+   card spans 2 columns on ≥ 1100px.
+5. **Privacy Findings** — list of category rows with tone-tinted left
+   border + icon + body + score.
+6. **Post-scan toolbar** — Copy JSON / Copy summary / Download JSON /
+   Copy share link + inline feedback chip.
+7. **Footer** — methodology + credits + "no analytics" promise.
 
 ## Hero
 
 ```text
-eyebrow:     "Privacy & anonymity diagnostic"
-title (h1):  "How Private Are You Online?"
-subtitle:    "See what your browser and network reveal about you. We analyze your IP,
-              connection, VPN/proxy status, DNS exposure, browser signals, and privacy
-              risks — entirely from your browser and our server. No analytics, no profiles."
-primary CTA: "Run Privacy Check"           # fills 100% on mobile, auto-width on ≥ md
-ghost CTA:   "Learn how it works"          # href=/anonymity-tips/
+eyebrow:     "Privacy & anonymity diagnostic"  (pill, glass bg)
+title (h1):  "How Private Are You Online?"     (gradient-filled text)
+subtitle:    "See what your browser and network reveal about you..."
+primary CTA: "Run Privacy Check"                (gradient + glow)
+ghost CTA:   "Learn how it works"               (glass)
 ```
 
 **Layout rule:** The hero must not exceed one viewport on a 1440px display.
 The CTA must be reachable without scrolling on 375 / 768 / 1024.
 
+## Decorative orbs
+
+Three large blurred radial-gradient orbs sit behind the content via
+`position: fixed; pointer-events: none; filter: blur(60px);`:
+
+- `.pcv2::before` — top-left, purple
+- `.pcv2::after` — top-right, pink
+- `.pcv2__orb--bottom` — bottom-center, cyan (real DOM element)
+
+The orbs are decorative only and must remain
+`pointer-events: none` and `aria-hidden="true"`.
+
 ## Scan progress (before result)
 
-Vertical timeline of 6 steps; the current step pulses. Labels:
+Vertical list of 6 steps inside a glass card; the current step pulses
+with a `--pcv2-action` border + glow:
 
 ```text
 1. Detecting IP
 2. Resolving geolocation
-3. Checking reputation
-4. Estimating fingerprint
-5. Testing WebRTC
-6. Calculating score
+3. Checking IP reputation
+4. Estimating browser fingerprint       (Browser-only)
+5. Testing WebRTC exposure              (Browser-only)
+6. Calculating privacy score
 ```
 
-Each step is gated on a real network call (POST /scan, /scan/connection,
-/scan/reputation, etc.). No fake progress. On a step that has no
-backend endpoint (e.g. browser-only signals), the JS labels it
-"Browser-only · no network call" so users understand why it's instant.
+Each step is gated on a real network call. Browser-only steps are
+labeled with the "Browser-only" pill so users understand why they're
+instant. No fake progress timers.
 
-## Dashboard cards
+## Score hero
+
+```text
+.pcv2__score-hero
+├── .pcv2__score-hero-main           (left, on ≥ 900px)
+│   ├── .pcv2__score-ring             (200px conic-gradient ring)
+│   └── .pcv2__score-grade            ("Strong / Moderate / At Risk")
+└── .pcv2__score-hero-grid            (right, 4 mini cards)
+    ├── .pcv2__mini-card × 4
+    │   ├── .pcv2__mini-ring           (72px ring)
+    │   ├── .pcv2__mini-card-label
+    │   └── .pcv2__mini-card-tone      (small dot, color = tone)
+```
+
+If `report.privacy_report.subscores` is missing, the mini cards fall
+back to `report.privacy_report.categories` (the same data the
+findings list uses). If both are empty, the score hero still renders
+with just the main ring showing "—" for the value.
+
+## Detail cards
 
 | Section | Card title | Primary value | Severity rules |
 |---|---|---|---|
-| Overview | Privacy Score | 0–100 + grade A–F | 90+ SAFE, 70–89 LOW, 50–69 MED, <50 HIGH |
-| Connection | Connection Details | IP + city/country | LOW if VPN, MED if proxy, HIGH if datacenter/tor + service denies (combined rule) |
-| Anonymity | VPN / Proxy / Tor | clean / vpn / proxy / tor | HIGH if tor; LOW if vpn |
-| DNS | DNS Resolver | provider + leak verdict | MED if mismatch with browser IP family; LOW if mismatch within same family |
-| Browser Privacy | Browser Exposure | entropy bit + capability list | band by entropy |
-| Security Findings | Security Posture | TLS + browser status | HIGH if very outdated; LOW if current |
+| Overview | Overview | score + grade + confidence | informational only |
+| Connection | Connection | IPv4/IPv6 + city/country + ISP + ASN + timezone | n/a (data) |
+| Anonymity | Anonymity | VPN/Proxy/Tor detection + type + confidence | SAFE if "No signal", DANGER if Tor, WARNING if VPN/Proxy, NEUTRAL otherwise |
+| DNS | DNS Resolver | provider + status + latency | n/a (data) |
+| Browser Privacy | Browser Privacy | UA + languages + timezone + screen + entropy | n/a (data) |
+| Security Findings | Security Findings | TLS version + status + browser + outdated | n/a (data) |
 
-Every card includes a `Privacy Findings` list at the bottom where each
-finding has: `severity chip` + `headline` + `one-line explanation` + `?`
-icon linking to the relevant `Learn how it works` page.
+Each card is a glass surface with translucent bg, 1px border,
+backdrop-blur, and a hover lift. Missing data renders as
+`.pcv2__row-missing` ("Not available", faint italic) — never a bare
+em-dash.
+
+## Privacy Findings
+
+```text
+.pcv2__findings
+└── .pcv2__finding [data-pcv2-severity="safe|warning|danger|info|neutral"]
+    ├── .pcv2__finding-icon          (icon per tone)
+    ├── .pcv2__finding-title         (category name + score)
+    ├── .pcv2__finding-body          (one-line explanation)
+    └── .pcv2__finding-score         (e.g. "85%")
+```
+
+The left border of each finding row is tinted to its severity tone
+with a soft glow. Icons are tone-aware (✓ / ! / ✕ / ⓘ / ·).
 
 ## Theme toggle
 
-Position: header, right side. Cycles Light → Dark → System. The active
-mode is announced via `aria-label="Theme: Dark"` on the button.
+Position: header, right side. Cycles System → Light → Dark. The active
+mode is announced via `aria-label="Theme: Dark"` on the button. The
+theme is persisted in `localStorage.pcv2_theme`.
 
 ## v2 toggle
 
@@ -78,20 +129,24 @@ not present and no `pc_ui_v2` cookie exists. Click sets the cookie
 ## Responsive behaviour
 
 ```text
-< 768 px      single-column stack; cards become full-width
-              hero CTA fills width; nav collapses to a sheet menu
-768–1023 px   two-column dashboard grid (cards 2-up)
-≥ 1024 px     three-column dashboard grid
-≥ 1440 px     three-column with wider gutter (var(--pc-s-8))
+< 768 px      single-column stack
+              score hero: main ring on top, mini rings in 2x2 below
+              cards full-width
+              hero CTA fills width; nav collapses
+768–1099 px   score hero: main ring on top, mini rings 4-across
+              cards 2-up
+≥ 1100 px     score hero: side-by-side
+              cards 3-up; Connection card spans 2 columns
 ```
 
-Long technical strings (`AS13335 Cloudflare, Inc.`) must wrap safely —
-never break the card grid.
+Long technical strings (`AS13335 Cloudflare, Inc.`) wrap inside the
+row `<dd>` via `overflow-wrap: anywhere` — never break the card grid.
 
 ## What this page does NOT do
 
-- Does not animate the hero background.
-- Does not show testimonials, social proof, or "trusted by 10k users".
+- Does not animate the score ring (conic-gradient renders the final
+  state directly; no count-up; honors `prefers-reduced-motion`).
+- Does not show testimonials, social proof, or "trusted by N users".
 - Does not auto-start the scan.
 - Does not request notification permission.
 - Does not load third-party scripts.

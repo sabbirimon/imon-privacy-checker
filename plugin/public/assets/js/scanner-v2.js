@@ -400,11 +400,38 @@
     /* ---------- card rendering ------------------------------------------ */
 
     function severityFromScore(score) {
-        if (typeof score !== 'number') return 'unknown';
+        if (typeof score !== 'number') return 'neutral';
         if (score >= 90) return 'safe';
-        if (score >= 70) return 'low';
-        if (score >= 50) return 'medium';
-        return 'high';
+        if (score >= 70) return 'warning';
+        if (score >= 50) return 'warning';
+        return 'danger';
+    }
+
+    function severityFromScoreTone(score) {
+        // Maps a numeric score (0-100) to a CSS custom property that
+        // matches the .pcv2__status badge tones. Lower scores → danger,
+        // mid → warning, high → safe, missing → info (neutral-ish).
+        if (typeof score !== 'number') return 'var(--pcv2-info-fg)';
+        if (score >= 85) return 'var(--pcv2-safe-fg)';
+        if (score >= 60) return 'var(--pcv2-info-fg)';
+        if (score >= 40) return 'var(--pcv2-warning-fg)';
+        return 'var(--pcv2-danger-fg)';
+    }
+
+    function pctOrNull(v) {
+        return typeof v === 'number' && isFinite(v)
+            ? Math.max(0, Math.min(100, v))
+            : null;
+    }
+
+    function pcv2DisplayValue(v) {
+        // Replaces the bare "—" placeholder with a styled span so
+        // empty cells are still legible (faint italic), not visually
+        // indistinguishable from real dashes that mean "no data".
+        if (v == null || v === '') {
+            return el('span', { class: 'pcv2__row-missing', text: 'Not available' });
+        }
+        return document.createTextNode(String(v));
     }
 
     function renderKV(items) {
@@ -412,66 +439,162 @@
         items.forEach(function (it) {
             if (it == null) return;
             dl.appendChild(el('dt', { text: it.label }));
-            dl.appendChild(el('dd', {
-                class: it.mono ? 'mono' : '',
-                text: it.value == null || it.value === '' ? '—' : String(it.value)
-            }));
+            var dd = el('dd', { class: it.mono ? 'mono' : '' });
+            dd.appendChild(pcv2DisplayValue(it.value));
+            dl.appendChild(dd);
         });
         return dl;
     }
 
     function renderStatusChip(severity, label) {
-        var text = label || severity.toUpperCase();
+        var tone = severity || 'neutral';
+        // Backward-compat: map legacy "low"/"medium"/"high"/"unknown" tones
+        // to the new "safe/warning/danger/info/neutral" set.
+        if (tone === 'low' || tone === 'medium') tone = 'warning';
+        else if (tone === 'high') tone = 'danger';
+        else if (tone === 'unknown') tone = 'neutral';
+        var text = label || tone.toUpperCase();
         return el('span', {
-            class: 'pcv2__chip--status',
-            'data-pcv2-severity': severity,
+            class: 'pcv2__status',
+            'data-pcv2-status': tone,
             'aria-label': 'Severity: ' + text
         }, text);
     }
 
-    function renderScoreGauge(score, grade) {
-        var sev = severityFromScore(score);
-        var color = sev === 'safe'   ? 'var(--pcv2-safe)'
-                  : sev === 'low'    ? 'var(--pcv2-low)'
-                  : sev === 'medium' ? 'var(--pcv2-medium)'
-                  : sev === 'high'   ? 'var(--pcv2-high)'
-                                     : 'var(--pcv2-unknown)';
-        // Static SVG ring; count-up is omitted to respect reduced-motion.
-        var pct = Math.max(0, Math.min(100, score == null ? 0 : score));
-        var r = 60;
-        var c = 2 * Math.PI * r;
-        var off = c * (1 - pct / 100);
-        var ns = 'http://www.w3.org/2000/svg';
-        var svg = document.createElementNS(ns, 'svg');
-        svg.setAttribute('class', 'pcv2__gauge');
-        svg.setAttribute('viewBox', '0 0 140 140');
-        svg.setAttribute('role', 'progressbar');
-        svg.setAttribute('aria-valuenow', String(Math.round(pct)));
-        svg.setAttribute('aria-valuemin', '0');
-        svg.setAttribute('aria-valuemax', '100');
-        svg.setAttribute('aria-label', (PCV2.i18n.scoreLabel || 'Privacy Score') + ': ' + Math.round(pct) + ' of 100');
+    /**
+     * Build a circular ring gauge via conic-gradient. Returns a wrapper
+     * element with the ring, an inner label, and a centered value.
+     *
+     * Options:
+     *   value:    numeric 0-100 (or null)
+     *   label:    short label (e.g. "Privacy Score")
+     *   size:     'lg' | 'mini' (default 'lg')
+     *   tone:     CSS color expression for the ring fill
+     */
+    function renderRingGauge(opts) {
+        var size  = opts.size || 'lg';
+        var value = pctOrNull(opts.value);
+        var tone  = opts.tone || 'var(--pcv2-info-fg)';
+        var label = opts.label || '';
+        var showValue = value != null;
+        var pct = showValue ? value : 0;
 
-        var bg = document.createElementNS(ns, 'circle');
-        bg.setAttribute('cx', '70'); bg.setAttribute('cy', '70'); bg.setAttribute('r', String(r));
-        bg.setAttribute('fill', 'none'); bg.setAttribute('stroke', 'var(--pcv2-border)'); bg.setAttribute('stroke-width', '10');
-        svg.appendChild(bg);
+        var wrap = el('div', {
+            class: size === 'mini' ? 'pcv2__mini-ring' : 'pcv2__score-ring',
+            role: 'progressbar',
+            'aria-valuemin': '0',
+            'aria-valuemax': '100',
+            'aria-valuenow': showValue ? String(Math.round(value)) : '0',
+            'aria-label': label
+                ? label + (showValue ? ': ' + Math.round(value) + ' of 100' : ': not available')
+                : (showValue ? Math.round(value) + ' of 100' : 'not available')
+        });
+        var track = el('div', { class: size === 'mini' ? 'pcv2__mini-ring-track' : 'pcv2__score-ring-track' });
+        track.style.setProperty('--pcv2-ring-fill', tone);
+        track.style.setProperty('--pcv2-ring-pct', pct + '%');
+        wrap.appendChild(track);
 
-        var fg = document.createElementNS(ns, 'circle');
-        fg.setAttribute('cx', '70'); fg.setAttribute('cy', '70'); fg.setAttribute('r', String(r));
-        fg.setAttribute('fill', 'none'); fg.setAttribute('stroke', color); fg.setAttribute('stroke-width', '10');
-        fg.setAttribute('stroke-dasharray', String(c));
-        fg.setAttribute('stroke-dashoffset', String(off));
-        fg.setAttribute('stroke-linecap', 'round');
-        fg.setAttribute('transform', 'rotate(-90 70 70)');
-        svg.appendChild(fg);
-
-        var wrap = el('div', { class: 'pcv2__score' }, [
-            svg,
-            el('div', { class: 'pcv2__score-value', text: String(Math.round(pct)) }),
-            el('div', { class: 'pcv2__score-grade', text: grade || '—' }),
-            el('div', { class: 'pcv2__score-meta', text: PCV2.i18n.scoreLabel || 'Privacy Score' })
-        ]);
+        var inner = el('div', { class: size === 'mini' ? 'pcv2__mini-ring-inner' : 'pcv2__score-ring-inner' });
+        if (size === 'lg') {
+            var valueWrap = el('div', { class: 'pcv2__score-ring-value-wrap' });
+            var valueText = el('div', { class: 'pcv2__score-ring-value' });
+            if (showValue) {
+                valueText.textContent = String(Math.round(value));
+                valueText.appendChild(el('span', { class: 'pcv2__score-ring-value-suffix', text: '/100' }));
+            } else {
+                valueText.textContent = '—';
+            }
+            valueWrap.appendChild(valueText);
+            valueWrap.appendChild(el('div', {
+                class: 'pcv2__score-ring-label',
+                text: label || (PCV2.i18n.scoreLabel || 'Privacy Score')
+            }));
+            inner.appendChild(valueWrap);
+        } else {
+            inner.textContent = showValue ? (Math.round(value) + '%') : '—';
+        }
+        wrap.appendChild(inner);
         return wrap;
+    }
+
+    /**
+     * Build a sub-score "mini card" with its own little ring + label.
+     */
+    function renderMiniScoreCard(opts) {
+        var card = el('div', { class: 'pcv2__mini-card' });
+        var tone = severityFromScoreTone(opts.value);
+        var ring = renderRingGauge({
+            size: 'mini',
+            value: opts.value,
+            label: opts.label,
+            tone: tone
+        });
+        card.appendChild(ring);
+        card.appendChild(el('div', { class: 'pcv2__mini-card-label', text: opts.label || '' }));
+        var dot = el('span', { class: 'pcv2__mini-card-tone', 'aria-hidden': 'true' });
+        card.appendChild(dot);
+        return card;
+    }
+
+    /**
+     * Render the new score hero: large main ring + 4 mini sub-scores.
+     * Replaces the old `renderScoreGauge`.
+     */
+    function renderScoreHero(report) {
+        var score = report.privacy_score;
+        var grade = (report.privacy_report && report.privacy_report.grade) || '';
+        var mainTone = severityFromScoreTone(score);
+
+        var hero = el('div', { class: 'pcv2__score-hero' });
+
+        // Main ring (left side on wide layouts).
+        var main = el('div', { class: 'pcv2__score-hero-main' });
+        main.appendChild(renderRingGauge({
+            size: 'lg',
+            value: score,
+            label: PCV2.i18n.scoreLabel || 'Privacy Score',
+            tone: mainTone
+        }));
+        if (grade) {
+            main.appendChild(el('div', { class: 'pcv2__score-grade', text: grade }));
+        }
+        hero.appendChild(main);
+
+        // Sub-scores grid (right side).
+        var grid = el('div', { class: 'pcv2__score-hero-grid' });
+        var subs = (report.privacy_report && report.privacy_report.subscores) || {};
+        // Prefer well-known labels; fall back to first four keys.
+        var preferredOrder = ['ip_exposure', 'fingerprint', 'connection', 'dns_leak', 'anonymity', 'webrtc'];
+        var keys = preferredOrder.filter(function (k) { return subs[k] != null; });
+        Object.keys(subs).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
+        keys.slice(0, 4).forEach(function (k) {
+            var v = subs[k];
+            var pct = (v && typeof v === 'object') ? (v.score || v.percent) : v;
+            grid.appendChild(renderMiniScoreCard({
+                value: pct,
+                label: prettySubLabel(k)
+            }));
+        });
+        if (keys.length === 0) {
+            // No sub-scores — fall back to the categorical chips from the
+            // privacy_report, treating each category as a mini card.
+            var cats = (report.privacy_report && report.privacy_report.categories) || {};
+            Object.keys(cats).slice(0, 4).forEach(function (k) {
+                var c = cats[k];
+                grid.appendChild(renderMiniScoreCard({
+                    value: c && (c.score || c.percent),
+                    label: prettySubLabel(k)
+                }));
+            });
+        }
+        hero.appendChild(grid);
+        return hero;
+    }
+
+    function prettySubLabel(k) {
+        return String(k)
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
     function renderCard(card, title, content) {
@@ -489,7 +612,7 @@
         var reportRegion = dashboard.querySelector('[data-pcv2-region="report"]');
         if (!reportRegion) return;
 
-        var summary = el('div', { class: 'pcv2__summary', 'data-pcv2-region': 'summary' });
+        var scoreHero = el('div', { class: 'pcv2__score-hero-host', 'data-pcv2-region': 'summary' });
         var grid = el('div', { class: 'pcv2__grid' });
         var findings = el('div', { class: 'pcv2__findings', 'data-pcv2-region': 'findings' });
 
@@ -503,7 +626,7 @@
             grid.appendChild(card);
         });
 
-        reportRegion.appendChild(summary);
+        reportRegion.appendChild(scoreHero);
         reportRegion.appendChild(grid);
         reportRegion.appendChild(findings);
     }
@@ -514,7 +637,7 @@
         var conn = report.connection || {};
         var rep = report.reputation || {};
 
-        // The static skeleton (summary region, 6 cards, findings container)
+        // The static skeleton (score hero host, 6 cards, findings container)
         // is rendered once by the server-side shortcode. The reset path in
         // runScan() calls clear(reportRegion) which removes those nodes
         // along with their previous content. If they're gone (re-render
@@ -526,22 +649,12 @@
             rebuildReportSkeleton(dashboard);
         }
 
-        // Summary.
+        // Score hero (the big ring + 4 mini KPI rings).
         var summary = dashboard.querySelector('[data-pcv2-region="summary"]');
         clear(summary);
         var score = report.privacy_score;
         var grade = report.privacy_report && report.privacy_report.grade;
-        summary.appendChild(renderScoreGauge(score, grade));
-        var chips = el('div', { class: 'pcv2__chips' });
-        // 5 categorical chips.
-        var categories = (report.privacy_report && report.privacy_report.categories) || {};
-        Object.keys(categories).slice(0, 6).forEach(function (k) {
-            var c = categories[k];
-            if (!c) return;
-            var sev = severityFromScore(c.score || c.percent);
-            chips.appendChild(renderStatusChip(sev, k + ': ' + Math.round(c.score || c.percent)));
-        });
-        summary.appendChild(chips);
+        summary.appendChild(renderScoreHero(report));
 
         // Cards.
         var cards = dashboard.querySelectorAll('.pcv2__card');
@@ -550,9 +663,9 @@
             if (key === 'overview') {
                 renderCard(card, PCV2.i18n.overviewTitle || 'Overview',
                     renderKV([
-                        { label: PCV2.i18n.scoreLabel || 'Privacy Score', value: score == null ? '—' : score + ' / 100' },
-                        { label: PCV2.i18n.gradeLabel || 'Grade', value: grade || '—' },
-                        { label: PCV2.i18n.confidenceLabel || 'Confidence', value: (report.privacy_report && report.privacy_report.confidence) || '—' }
+                        { label: PCV2.i18n.scoreLabel || 'Privacy Score', value: score == null ? null : score + ' / 100' },
+                        { label: PCV2.i18n.gradeLabel || 'Grade', value: grade || null },
+                        { label: PCV2.i18n.confidenceLabel || 'Confidence', value: (report.privacy_report && report.privacy_report.confidence) || null }
                     ])
                 );
             } else if (key === 'connection') {
@@ -570,21 +683,21 @@
                     ])
                 );
             } else if (key === 'anonymity') {
-                var proxySev = proxy.label === 'No signal' ? 'safe'
-                              : proxy.label && /tor/i.test(proxy.label) ? 'high'
-                              : proxy.label && /proxy/i.test(proxy.label) ? 'medium'
-                              : proxy.label && /vpn/i.test(proxy.label) ? 'low'
-                              : 'unknown';
+                var proxyTone = proxy.label === 'No signal' ? 'safe'
+                              : proxy.label && /tor/i.test(proxy.label) ? 'danger'
+                              : proxy.label && /proxy/i.test(proxy.label) ? 'warning'
+                              : proxy.label && /vpn/i.test(proxy.label) ? 'warning'
+                              : 'neutral';
                 var chipHost = el('div', { class: 'pcv2__row' }, [
                     el('dt', { text: 'Detection' }),
-                    el('dd', null, renderStatusChip(proxySev, proxy.label || (PCV2.i18n.noConfidence || 'Unknown')))
+                    el('dd', null, renderStatusChip(proxyTone, proxy.label || (PCV2.i18n.noConfidence || 'Unknown')))
                 ]);
                 renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity',
                     el('div', null, [
                         chipHost,
                         renderKV([
-                            { label: 'Type', value: proxy.type || '—' },
-                            { label: 'Confidence', value: proxy.confidence || '—' }
+                            { label: 'Type', value: proxy.type || null },
+                            { label: 'Confidence', value: proxy.confidence || null }
                         ])
                     ])
                 );
@@ -592,9 +705,9 @@
                 var dns = (rep.dns) || {};
                 renderCard(card, PCV2.i18n.dnsTitle || 'DNS Resolver',
                     renderKV([
-                        { label: 'Provider', value: dns.provider || '—' },
-                        { label: 'Status',   value: dns.status || '—' },
-                        { label: 'Latency',  value: dns.latency_ms ? dns.latency_ms + ' ms' : '—' }
+                        { label: 'Provider', value: dns.provider || null },
+                        { label: 'Status',   value: dns.status || null },
+                        { label: 'Latency',  value: dns.latency_ms ? dns.latency_ms + ' ms' : null }
                     ])
                 );
             } else if (key === 'browser') {
@@ -605,7 +718,7 @@
                         { label: 'Languages',  value: (navigator.languages || []).join(', ') },
                         { label: 'Timezone',   value: Intl.DateTimeFormat().resolvedOptions().timeZone },
                         { label: 'Screen',     value: screen.width + ' × ' + screen.height },
-                        { label: 'Entropy',    value: fp.entropy_bits ? fp.entropy_bits + ' bits' : '—' }
+                        { label: 'Entropy',    value: fp.entropy_bits ? fp.entropy_bits + ' bits' : null }
                     ])
                 );
             } else if (key === 'security') {
@@ -627,17 +740,23 @@
         var cats = (report.privacy_report && report.privacy_report.categories) || {};
         var list = el('div', { class: 'pcv2__findings' });
         list.appendChild(el('h3', { text: PCV2.i18n.findingsTitle || 'Privacy Findings' }));
+        var findingIcons = { safe: '✓', warning: '!', danger: '✕', info: 'ⓘ', neutral: '·' };
         Object.keys(cats).forEach(function (k) {
             var c = cats[k];
             if (!c) return;
             var sev = severityFromScore(c.score || c.percent);
-            var card = el('div', { class: 'pcv2__finding' });
-            card.appendChild(renderStatusChip(sev, sev.toUpperCase()));
+            var card = el('div', { class: 'pcv2__finding', 'data-pcv2-severity': sev });
+            var icon = el('div', { class: 'pcv2__finding-icon', text: findingIcons[sev] || '·' });
+            card.appendChild(icon);
             var body = el('div', null, [
-                el('p', { class: 'pcv2__finding-title', text: k + ' — ' + Math.round(c.score || c.percent) + ' / 100' }),
-                el('p', { class: 'pcv2__finding-body',  text: c.message || '—' })
+                el('p', { class: 'pcv2__finding-title', text: prettySubLabel(k) + ' — ' + Math.round(c.score || c.percent) + ' / 100' }),
+                el('p', { class: 'pcv2__finding-body',  text: c.message || (PCV2.i18n.noDetails || 'No additional details available.') })
             ]);
             card.appendChild(body);
+            card.appendChild(el('span', {
+                class: 'pcv2__finding-score',
+                text: Math.round(c.score || c.percent) + '%'
+            }));
             list.appendChild(card);
         });
         findings.appendChild(list);

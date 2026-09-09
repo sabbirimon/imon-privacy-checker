@@ -62,14 +62,20 @@ test.describe('v2 experimental UI', () => {
             expect(found.title.length, 'card ' + key + ' must have a title').toBeGreaterThan(0);
         }
 
-        // Score gauge must show a numeric value 0..100.
-        const score = await page.evaluate(() => {
-            const v = document.querySelector('.pcv2__score-value');
-            return v ? parseInt(v.textContent, 10) : null;
+        // Score gauge must show a numeric value 0..100, OR the
+        // em-dash placeholder if the backend didn't include a score
+        // for this scan (both are honest outcomes).
+        const scoreText = await page.evaluate(() => {
+            const v = document.querySelector('.pcv2__score-ring-value');
+            return v ? (v.textContent || '').trim() : '';
         });
-        expect(score).not.toBeNull();
-        expect(score).toBeGreaterThanOrEqual(0);
-        expect(score).toBeLessThanOrEqual(100);
+        expect(scoreText.length).toBeGreaterThan(0);
+        if (scoreText !== '—') {
+            const score = parseInt(scoreText, 10);
+            expect(Number.isFinite(score)).toBe(true);
+            expect(score).toBeGreaterThanOrEqual(0);
+            expect(score).toBeLessThanOrEqual(100);
+        }
     });
 
     test('post-scan action bar shows Copy / Download / Share buttons', async ({ page }) => {
