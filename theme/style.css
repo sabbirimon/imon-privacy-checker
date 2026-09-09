@@ -274,6 +274,9 @@ button { font: inherit; color: inherit; }
 :root[data-pc-theme="dark"] .pc-hero__eyebrow {
     color: #b8c7cd;
 }
+
+/* NOTE: marketing hero (.pc-hero--marketing) rules live in
+   assets/css/theme.css, which is the actual enqueued stylesheet. */
 .pc-nav {
     display: flex;
     align-items: center;

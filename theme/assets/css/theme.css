@@ -77,7 +77,11 @@ Tags: light, teal, privacy, dashboard
     --pc-maxw: 1200px;
 }
 
-/* Dark theme — Whoer's actual dark teal palette */
+/* Dark theme — Whoer's actual dark teal palette.
+   Cards STAY WHITE on the dark page (Whoer design intent — see the
+   reference screenshots), so any selector that uses var(--pc-text)
+   for text inside a card surface needs an explicit override to keep
+   it dark. The per-component overrides in scanner.css provide that. */
 :root[data-pc-theme="dark"] {
     --pc-bg:        #20586f;
     --pc-bg-2:      #1a4659;
@@ -557,6 +561,49 @@ button { font: inherit; color: inherit; }
     background: #c82333;
     border-color: #c82333;
     color: #fff;
+}
+
+/* =========================================================
+   7.  Marketing homepage hero (.pc-hero--marketing)
+   The privacy-report card (.pc-hero) stays white on both themes,
+   but the marketing hero sits directly on the page bg with no card.
+   In dark mode the page bg is the deep Whoer teal, so we override
+   the white card background to transparent and use light text.
+   ========================================================= */
+.pc-hero--marketing {
+    background: transparent;
+    border-bottom-color: var(--pc-border);
+}
+.pc-hero--marketing .pc-hero__title {
+    color: var(--pc-text);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 0.4rem 0 0.8rem;
+    letter-spacing: -0.01em;
+}
+.pc-hero--marketing .pc-hero__subtitle {
+    color: var(--pc-text-dim);
+    font-size: 1rem;
+    max-width: 64ch;
+    margin: 0 auto 1.4rem;
+    line-height: 1.6;
+}
+.pc-hero--marketing .pc-hero__cta {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+}
+.pc-hero--marketing .pc-btn--ghost {
+    background: transparent;
+    color: inherit;
+    border-color: var(--pc-border-2);
+}
+.pc-hero--marketing .pc-btn--ghost:hover {
+    background: var(--pc-surface-3);
+    border-color: var(--pc-accent);
+    color: var(--pc-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

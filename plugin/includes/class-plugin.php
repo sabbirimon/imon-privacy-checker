@@ -291,6 +291,52 @@ final class Plugin {
 
         // Touch the upload directory once so the WP_Filesystem listing is hot.
         GeoIpDatabase::upload_dir();
+
+        // Local-dev CORS: when the WP siteurl differs from the page origin
+        // (e.g. user accessed http://localhost:8080 but WP siteurl is
+        // http://127.0.0.1:8080), the browser blocks cross-origin POSTs to
+        // /scan. WP's stock rest_send_cors_headers() echoes the Origin
+        // header back, but only when the request reaches the REST
+        // dispatcher — a 403 from rest_cookie_invalid_nonce still emits
+        // it, but the browser then drops the response because the body
+        // is empty for CORS-checked fetches. We re-emit the headers
+        // ourselves on rest_pre_serve_request with priority 9 (just
+        // before WP core's default 10) so the browser always sees them.
+        // No-op in production where siteurl matches the request origin.
+        add_filter( 'rest_pre_serve_request', array( self::class, 'maybe_emit_cors_headers' ), 9, 4 );
+    }
+
+    /**
+     * Re-emit CORS headers for privacy-checker routes regardless of
+     * siteurl mismatch. Mirrors WP core's rest_send_cors_headers() but
+     * runs unconditionally and only for this plugin's namespace.
+     *
+     * @param mixed              $value  Existing serve value (passthrough).
+     * @param \WP_REST_Response  $response Current response object.
+     * @param \WP_REST_Request   $request Current request.
+     * @param \WP_REST_Server    $server REST server instance.
+     * @return mixed Unchanged passthrough.
+     */
+    public static function maybe_emit_cors_headers( $value, $response = null, $request = null, $server = null ) {
+        // Derive the matched route from the request URI rather than
+        // relying on a 4th filter arg (the WP filter signature doesn't
+        // pass $route here).
+        if ( ! $request instanceof \WP_REST_Request ) {
+            return $value;
+        }
+        $route = $request->get_route();
+        if ( strpos( $route, '/' . PRIVACY_CHECKER_REST_NS ) !== 0 ) {
+            return $value;
+        }
+        $origin = get_http_origin();
+        if ( $origin ) {
+            header( 'Access-Control-Allow-Origin: ' . esc_url_raw( $origin ) );
+            header( 'Access-Control-Allow-Methods: OPTIONS, GET, POST, PUT, PATCH, DELETE' );
+            header( 'Access-Control-Allow-Credentials: true' );
+            header( 'Access-Control-Allow-Headers: Authorization, X-WP-Nonce, Content-Type, Content-Disposition' );
+            header( 'Vary: Origin', false );
+        }
+        return $value;
     }
 
     /**

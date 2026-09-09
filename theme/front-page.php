@@ -8,7 +8,7 @@
 get_header();
 ?>
 
-<section class="pc-hero" aria-labelledby="pc-hero-title">
+<section class="pc-hero pc-hero--marketing" aria-labelledby="pc-hero-title">
     <div class="pc-container">
         <div class="pc-hero__brand">
             <span class="pc-hero__brand-mark" aria-hidden="true">IMON</span>
