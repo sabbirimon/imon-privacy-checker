@@ -1,7 +1,7 @@
 # Progress — Privacy Checker
 
-> Last updated: 2026-09-06 (Phase 9 backlog cleanup shipped). Track
-> what's done, what's in flight, and what's blocked.
+> Last updated: 2026-09-09 (Phase 14 — live-site bug fixes + bin/deploy.sh shipped).
+> Track what's done, what's in flight, and what's blocked.
 
 ## Roadmap reference
 
@@ -582,6 +582,93 @@ file. Source-clean:
 `grep -R "raw.githubusercontent.com/tmusabaika" plugin/` → empty.
 No new composer / npm dependencies. No new REST routes. No new
 settings keys. No new secrets, no PII handling, no write paths.
+
+## Phase 15 — `bin/deploy.sh` (one-command deploy)
+
+The user asked for a single script that can either host the plugin
+locally, ship it to a real web server via rsync, or zip it for manual
+upload. The result is `bin/deploy.sh` — a 400-line shell script that
+walks through 8 phases:
+
+1. **Pre-flight** — `php`, `composer`, `rsync`, `ssh` (info-level) in
+   PATH; PHP ≥ 8.1; plugin + theme version read from source headers;
+   release staging dir prepared.
+2. **Mode selection** — `local` (copy into `./wp`), `rsync user@host:/path`,
+   `remote user@host` (rsync to `${WP_ROOT}`), `zip /path/release.zip`
+   (build-only), or no-arg usage.
+3. **Build** — `composer install --no-dev --optimize-autoloader` then
+   `composer dump-autoload --classmap-authoritative` against the
+   project-root composer.json.
+4. **Stage release** — rsync `plugin/` + `theme/` into
+   `release/imon-privacy-checker-<ver>/`, skipping `tests/`, `*.log`,
+   `.DS_Store`, etc. Re-anchors the project-root `composer.json`'s
+   `plugin/includes/` autoload paths (which assume project-root layout)
+   to plugin-local `includes/` paths so `composer install` works from
+   `wp-content/plugins/privacy-checker/`. Done via an inline PHP
+   closure with `use (&$strip)` capture so it strips the `plugin/`
+   prefix from PSR-4 + classmap keys recursively (without the
+   capture, PHP 8.5's closure binding can't see the parent `$strip`
+   variable when called recursively — see `bin/deploy.sh:184`).
+5. **Ship** — one of three branches: `zip` (`zip -qr`), `local`
+   (`cp -a` into `wp/wp-content/plugins|themes/`), or `rsync` (two
+   rsyncs — one each for plugin + theme — followed by remote
+   `find | chmod 755/644` lockdown).
+6. **On-server install** (skipped for `zip`) — runs `composer install`
+   + `composer dump-autoload` server-side (vendor/ is huge, so we
+   don't ship it via rsync), activates theme + plugin via wp-cli,
+   flushes rewrites, creates `wp-content/uploads/maxmind/.htaccess`
+   with `Require all denied`.
+7. **Smoke test** — `curl` against `Homepage`, `REST scan/ip`,
+   `REST scan/connection`, `REST lookup/ip?ip=1.1.1.1`. The MaxMind
+   `.htaccess` deny probe is **informational** (PHP built-in server
+   ignores it, nginx needs the rule from `DEPLOYMENT.md §5.1`); only
+   Apache can return the expected 403. Failures are tracked with a
+   `SMOKE_FAIL` counter and printed as warnings — DNS hiccups during
+   a fresh deploy don't block a successful rsync. **Caught and fixed
+   a real bug** while writing this: the original `probe()` helper
+   passed `${url}` twice (once via `"$@"`, once explicitly), so
+   curl printed the full body into the captured `${code}` string,
+   producing nonsense like `code=200<!DOCTYPE html>`. The fix is
+   simpler: drop `"$@"`, read all 3 args positionally.
+8. **Done** — prints the admin panel quick-links (`/wp-admin/admin
+   .php?page=privacy-checker`, `…/privacy-checker-dashboard`,
+   `…/privacy-checker-report`, `…/privacy-checker#/scoring`), the
+   per-transport rollback command, the offline command, and a
+   "next steps" reminder (Providers, DNS Leak Test, Sharing,
+   Logging tabs).
+
+**`.gitignore`** picked up `release/` so deploy staging dirs don't
+leak into commits.
+
+**Verification (local)**:
+```bash
+WP_SITE_URL=http://127.0.0.1:8080 bin/deploy.sh local
+# ✓ Homepage → 200
+# ✓ REST scan/ip → 200
+# ✓ REST scan/connection → 200
+# ✓ REST lookup/ip → 200 (real Cloudflare geolocation for 1.1.1.1)
+# ℹ MaxMind deny → 200 (expected; PHP built-in ignores .htaccess)
+```
+
+**Verification (zip-only)**:
+```bash
+bin/deploy.sh zip /tmp/imon-test.zip   # 5.3 MB, includes composer.json+lock
+unzip -l /tmp/imon-test.zip | head
+# plugin/, theme/, release.json, README.md, composer.json, composer.lock
+# Excludes: tests/, *.log, .DS_Store
+```
+
+**Modes parse cleanly**: `bin/deploy.sh` (help), `bin/deploy.sh
+local` (deploys), `bin/deploy.sh zip /path` (builds), `bin/deploy.sh
+remote user@host` (interactively prompts for WP_ROOT via env var),
+`bin/deploy.sh rsync user@host:/var/www/wordpress` (full remote
+deploy). `bash -n bin/deploy.sh` clean. All four transports
+recognised. `.env` is auto-loaded if present so CI shells don't have
+to export `WP_ROOT` / `WP_USER` / `WP_SITE_URL`.
+
+**Constraints honoured**: no new composer / npm dependencies. No new
+REST routes. No source-code changes outside `bin/deploy.sh` +
+`.gitignore` + `progress.md` (this entry).
 
 ## Phase 1 — Bug fixes
 

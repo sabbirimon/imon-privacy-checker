@@ -49,3 +49,6 @@ node_modules/
 vendor-src/
 Screenshots/
 tools/
+
+# Deploy staging dir (output of bin/deploy.sh)
+release/
