@@ -699,22 +699,73 @@ final class RestApi {
 
     /**
      * GET /lookup/ip
+     *
+     * Accepts either an IPv4 / IPv6 literal or a hostname. Hostnames
+     * are resolved to a public IP first; if the resolved IP is not
+     * public (loopback, private, multicast) we return a 400 with the
+     * same shape IP Fallback uses, so the frontend can show a friendly
+     * "non-public IP" warning instead of an opaque 500.
      */
     public function lookup_ip( WP_REST_Request $request ) {
         $limit = $this->enforce_rate_limit( $request, 'lookup' );
         if ( is_wp_error( $limit ) ) {
             return $limit;
         }
-        $ip = trim( (string) $request->get_param( 'ip' ) );
-        if ( '' === $ip ) {
+        $input = trim( (string) $request->get_param( 'ip' ) );
+        if ( '' === $input ) {
             return new WP_Error( 'pc_missing_ip', __( 'IP is required.', 'privacy-checker' ), array( 'status' => 400 ) );
         }
+
+        // If it's not an IP literal, try to resolve as a hostname.
+        $resolved = false;
+        if ( ! filter_var( $input, FILTER_VALIDATE_IP ) ) {
+            // Strip any URL scheme / path (e.g. "https://example.com/").
+            $host = preg_replace( '#^https?://#i', '', $input );
+            $host = preg_replace( '#/.*$#', '', $host );
+            $host = trim( (string) $host );
+            if ( '' === $host || ! preg_match( '/^[A-Za-z0-9.\-]+$/', $host ) ) {
+                return new WP_Error(
+                    'pc_bad_ip',
+                    sprintf( __( '"%s" is not a valid IP address or hostname.', 'privacy-checker' ), esc_html( $input ) ),
+                    array( 'status' => 400 )
+                );
+            }
+            $ip = gethostbyname( $host );
+            if ( '' === $ip || $ip === $host ) {
+                return new WP_Error(
+                    'pc_dns_failed',
+                    sprintf( __( 'Could not resolve %s.', 'privacy-checker' ), esc_html( $host ) ),
+                    array( 'status' => 404 )
+                );
+            }
+            $resolved = true;
+        } else {
+            $ip = $input;
+        }
+
+        if ( ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+            // Surface the same shape IP Fallback would have produced so
+            // the UI can render a clean "non-public IP" message.
+            return rest_ensure_response( array(
+                'ip'         => $ip,
+                'resolved'   => $resolved,
+                'reverse_dns'=> null,
+                'intel'      => array(
+                    'status' => 'error',
+                    'ip'     => $ip,
+                    'error'  => __( 'Non-public IP literals are not looked up.', 'privacy-checker' ),
+                    'chain'  => array(),
+                ),
+            ) );
+        }
+
         $intel   = IpFallback::lookup( $ip );
         $reverse = IpDetector::reverse_dns( $ip );
         return rest_ensure_response( array(
             'ip'         => $ip,
-            'intel'      => $intel,
+            'resolved'   => $resolved,
             'reverse_dns'=> $reverse,
+            'intel'      => $intel,
         ) );
     }
 

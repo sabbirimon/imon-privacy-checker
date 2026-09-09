@@ -11,7 +11,22 @@
     if (typeof window === 'undefined') return;
 
     var globals = window.PC_SCAN || {};
-    var REST_URL = globals.restUrl || '';
+    // WordPress localizes `restUrl` as an absolute URL built from
+    // `siteurl()`. When the visitor accesses the site via a different
+    // hostname (e.g. `localhost` while WP is configured at `127.0.0.1`)
+    // the absolute URL becomes cross-origin and `credentials: 'same-origin'`
+    // strips the WP auth cookie, breaking POST /scan with what looks
+    // like a CORS failure (`net::ERR_FAILED`). To stay same-origin
+    // regardless of hostname, rebuild the path against the current
+    // origin: `${origin}/wp-json/privacy-checker/v1/`.
+    var PC_REST_PATH = '/wp-json/privacy-checker/v1/';
+    var REST_URL = '';
+    try {
+        if (typeof window !== 'undefined' && window.location && window.location.origin) {
+            REST_URL = window.location.origin + PC_REST_PATH;
+        }
+    } catch (e) { /* fall through */ }
+    if (!REST_URL) REST_URL = globals.restUrl || '';
     var REST_NONCE = globals.restNonce || '';
     var I18N = globals.i18n || {};
     var IS_MOCK = !!globals.isMock;
@@ -1206,7 +1221,7 @@
             var deadline = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            var init = { method: 'GET', mode: 'no-cors', cache: 'no-store', redirect: 'manual' };
+            var init = { method: 'GET', mode: 'no-cors', cache: 'no-store' };
             if (ctl) init.signal = ctl.signal;
             return fetch(url, init).then(function (resp) {
                 var recv = (typeof performance !== 'undefined' && performance.now)
@@ -3520,9 +3535,18 @@
         'cell-tower': 'iHub.svg',
         satellite:    'iHub.svg'
     };
-    // Same-origin plugin URL (window.PC_SCAN.assetUrl is localised server-side
-    // in class-public-assets.php as PRIVACY_CHECKER_URL + 'public/assets/').
-    var PC_NET_PNG_CDN = window.PC_SCAN.assetUrl + 'img/net-icons/';
+    // Same-origin plugin URL. We rebuild the asset URL against the
+    // current origin so cross-origin visitors (e.g. `localhost` while
+    // WP is configured at `127.0.0.1`) don't trip CORS on these
+    // image fetches.
+    var PC_ASSET_PATH = '/wp-content/plugins/privacy-checker/public/assets/';
+    var PC_NET_PNG_CDN = '';
+    try {
+        if (typeof window !== 'undefined' && window.location && window.location.origin) {
+            PC_NET_PNG_CDN = window.location.origin + PC_ASSET_PATH + 'img/net-icons/';
+        }
+    } catch (e) { /* fall through */ }
+    if (!PC_NET_PNG_CDN) PC_NET_PNG_CDN = (window.PC_SCAN.assetUrl || '') + 'img/net-icons/';
     var PC_ICON_FETCH_PROMISE = null;
     var PC_ICON_FETCH_DONE = false;
     var PC_ICON_FETCH_FAIL = false;
@@ -4464,9 +4488,14 @@
         // Run WebRTC in parallel; UI updates sequentially.
         var webrtcPromise = runWebrtcTest();
 
+        // Accumulator for partial data so the cards can still render
+        // if any individual API call in the chain fails.
+        var partial = {};
+
         api('scan/ip').then(function (resp) {
             complete('ip');
             if (resp.ok) {
+                partial.ip = resp.data || null;
                 advance(); // intel
                 return api('scan/connection');
             }
@@ -4475,6 +4504,7 @@
         }).then(function (resp) {
             complete('intel');
             if (resp.ok) {
+                partial.connection = resp.data || null;
                 advance(); // reputation
                 return api('scan/reputation');
             }
@@ -4483,6 +4513,7 @@
         }).then(function (resp) {
             complete('reputation');
             if (resp.ok) {
+                partial.reputation = resp.data || null;
                 advance(); // fingerprint
                 return Promise.all([fingerprint, webrtcPromise]).then(function (results) {
                     var fp = results[0] || {};
@@ -4498,6 +4529,7 @@
         }).then(function (resp) {
             complete('fingerprint');
             if (resp.ok) {
+                partial.fingerprint = resp.data || null;
                 advance(); // webrtc
                 complete('webrtc');
                 advance(); // score
@@ -4518,12 +4550,55 @@
                 fail('fingerprint');
                 hideSpinner();
                 if (rescanBtn) rescanBtn.classList.remove('is-scanning');
-                showError(region);
+                // The POST /scan failed (e.g. nonce error, fingerprint
+                // payload rejected) but earlier steps (ip/connection/
+                // reputation) succeeded. Render the dashboard with
+                // whatever data we did collect so the user sees the IP
+                // ADDRESS / CONNECTION DETAILS / BROWSER FINGERPRINT
+                // cards instead of a blank "Something went wrong" box.
+                var partialReport = {
+                    ip: partial.ip || null,
+                    intel: partial.intel || null,
+                    reputation: partial.reputation || null,
+                    fingerprint: partial.fingerprint || null,
+                    webrtc: partial.webrtc || null,
+                    connection: partial.connection || null,
+                    scores: null,
+                    _partial: true,
+                };
+                renderCards(partialReport, region);
+                var warn2 = el('div', { class: 'pc-card pc-status--warning' }, [
+                    el('h2', { class: 'pc-card__title', text: I18N.errorTitle || 'Something went wrong' }),
+                    el('p', { text: I18N.errorBody || 'Please retry. The score could not be computed; partial data is shown above.' })
+                ]);
+                region.appendChild(warn2);
             }
         }).catch(function () {
             hideSpinner();
             if (rescanBtn) rescanBtn.classList.remove('is-scanning');
-            showError(region);
+            // Even on failure, render the dashboard cards with whatever
+            // data we did collect (IP, fingerprint, webrtc) so the user
+            // still sees the IP ADDRESS / CONNECTION DETAILS / BROWSER
+            // FINGERPRINT charts. The error banner appears as a card on
+            // top so they know some signals are missing.
+            var partialReport = {
+                ip: partial.ip || null,
+                intel: partial.intel || null,
+                reputation: partial.reputation || null,
+                fingerprint: partial.fingerprint || null,
+                webrtc: partial.webrtc || null,
+                connection: partial.connection || null,
+                scores: null,
+                _partial: true,
+            };
+            renderCards(partialReport, region);
+            // Append a non-fatal warning card so the user knows some
+            // signals couldn't be loaded (e.g. CORS, API down).
+            var warn = el('div', { class: 'pc-card pc-status--warning' }, [
+                el('h2', { class: 'pc-card__title', text: I18N.errorTitle || 'Something went wrong' }),
+                el('p', { text: I18N.errorBody || 'Please retry. Some signals may be missing from the report above.' })
+            ]);
+            region.appendChild(warn);
         });
     }
 

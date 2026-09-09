@@ -263,13 +263,29 @@ final class Fingerprint {
      * @return array<string,int> histogram buckets, or [] when no data exists.
      */
     public static function population_histogram( string $signal ): array {
-        return Cache::remember(
-            'pc_fp_hist_' . $signal,
-            static function (): array {
-                return array();
-            },
-            DAY_IN_SECONDS
-        );
+        // WordPress's transient API sometimes unserializes an empty
+        // stored array as `false`, which would force us to violate
+        // the `: array` return contract. Read the cached value
+        // directly (no `Cache::remember` write-through of `[]`):
+        //
+        // - If the cached value is an array with the `__hist` wrapper,
+        //   unwrap it. This is the shape future collectors will write.
+        // - If the cached value is a bare non-empty array (legacy /
+        //   test-fixture shape: `['abc' => 1]`), return it as-is.
+        // - If the cached value is `false` / `null` / missing, return
+        //   `[]` (no write — empty wrappers re-trigger the bug).
+        $key = 'pc_fp_hist_' . $signal;
+        $cached = Cache::get( $key );
+        if ( is_array( $cached ) ) {
+            if ( isset( $cached['__hist'] ) && is_array( $cached['__hist'] ) ) {
+                return $cached['__hist'];
+            }
+            if ( ! isset( $cached['__hist'] ) ) {
+                // Bare non-empty histogram (test fixture / legacy write).
+                return $cached;
+            }
+        }
+        return array();
     }
 
     /**

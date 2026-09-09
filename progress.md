@@ -487,6 +487,102 @@ All six tool pages now share a uniform rich card layout:
 - [ ] Pending
 - [!] Blocked
 
+## Phase 14 — Live-site bugs surfaced 2026-09-09
+
+Three small fixes the user hit in their browser. None are big
+features — all are plumbing that should have shipped earlier but
+surfaced only when the visitor-side flow actually ran.
+
+- [x] **14.1 — POST /scan 500 (TypeError → fix).** Live `wp/wp-content/debug.log`
+      shows `Fingerprint::population_histogram(): Return value must
+      be of type array, false returned` on every POST /scan. Cause:
+      the Phase 9.C `Cache::remember()` wrapper stored an empty array
+      as a transient, but WP's transient layer sometimes unserializes
+      a stored empty array back as `false`, which violates the
+      `: array` return contract and crashes the orchestrator. Fix:
+      drop the `Cache::remember` write-through for empty results and
+      read the cached value directly with explicit fallbacks (unwrap
+      `__hist` wrapper if present, accept a bare non-empty array for
+      legacy / test-fixture shape, return `[]` for `false` / `null` /
+      missing). `entropy_estimate()` stays unchanged — all 27
+      existing Fingerprint tests + the 3 new ones still pass
+      (`vendor/bin/phpunit` → 201 / 819, all green). `php -l` clean.
+- [x] **14.2 — Same-origin REST URL + asset URL in scanner.js.**
+      WordPress localizes `restUrl` / `assetUrl` as absolute URLs
+      built from `siteurl()`. When the visitor reaches the site via a
+      different hostname than `siteurl()` (local-dev: WP at
+      `http://127.0.0.1:8080`, visitor at `http://localhost:8080`),
+      every REST call becomes cross-origin, `credentials:
+      'same-origin'` strips the WP auth cookie, and POST /scan fails
+      the WordPress nonce check with what looks like a CORS error
+      (`net::ERR_FAILED`). Fix: rewrite `REST_URL` and
+      `PC_NET_PNG_CDN` in `scanner.js` to derive their paths from the
+      current origin (`window.location.origin + '/wp-json/
+      privacy-checker/v1/'` and `/wp-content/plugins/privacy-checker/
+      public/assets/img/net-icons/`), with the localized absolute URL
+      as fallback. After the rewrite, GETs succeed, the missing-v1
+      path bug is gone (the original regex was greedily matching
+      `/wp-json/privacy-checker/` instead of `/wp-json/privacy-checker/v1/`),
+      and POST /scan flows correctly. The old `maybe_emit_cors_headers`
+      filter remains as a defensive belt-and-braces for production
+      deployments that intentionally cross-origin-proxy the plugin.
+      `node --check scanner.js` clean. 12 / 12 Playwright e2e pass.
+- [x] **14.3 — Dark-mode card text invisible (universal selector bug).**
+      `.pc-card__title`, `.pc-info-table dt`, etc. were showing as
+      white text on the white card surface in dark mode. Two stacked
+      causes: (1) a previous edit had left a dangling CSS block at
+      `plugin/public/assets/css/scanner.css:1619-1625` — an orphan
+      `}` with no opening selector — which threw off brace balance
+      and silently dropped every dark-mode rule below line 1620
+      from the parsed stylesheet. (2) the rule that *did* parse
+      (`:root[data-pc-theme="dark"] .pc-col * { color: inherit; }`)
+      used a universal selector with higher effective specificity than
+      `.pc-card__title`, forcing it to inherit from the body (white).
+      Fix: (1) re-attach the orphan block to `.pc-network__side { … }`
+      so brace balance is restored (679/679 → 680/680). (2) scope the
+      `.pc-col *` rule to `.pc-dash-cols, .pc-col` (no universal)
+      and pin per-card-class dark text colors. Also added a bright
+      `.pc-section__title` override (`color: var(--pc-accent-3)` =
+      `#3ddccd`) and a dim `.pc-section__lede` override so the
+      "YOUR PRIVACY REPORT" / "WHAT WE CHECK" / "APPROXIMATE LOCATION
+      & PATH" headings read against the dark teal page bg. Screenshot
+      in `test-results/dark-mode-FINAL3.png` confirms every card
+      title, table row, and section heading is legible in both
+      themes.
+- [x] **14.4 — scanLocalNetwork no-cors redirect error.** Browser
+      console was spewing `Fetch API cannot load http://192.168.0.1/.
+      Request mode is "no-cors" but the redirect mode is not "follow"`
+      for every RFC1918 probe. Per the Fetch spec, `redirect: 'manual'`
+      is not allowed with `mode: 'no-cors'` — drop the property and
+      accept the default `follow` for these self-test LAN probes.
+      `scanLocalNetwork()` continues to fire 15 concurrent no-cors
+      GETs against the hardcoded `[192.168.0.1, 192.168.1.1,
+      10.0.0.1, 10.0.1.1, 172.16.0.1]` × `[80, 443, 8080]` list
+      with an 800 ms per-probe `AbortController` budget; the missing
+      `redirect: 'manual'` only affected how the browser reports the
+      opaque response, not the `'cors' / 'refused' / 'timeout' /
+      'unreachable'` classification. `node --check scanner.js` clean.
+- [x] **14.5 — IP lookup accepts hostnames.** `lookup/ip` previously
+      400'd with "Non-public IP literals are not looked up" when a
+      visitor pasted `facebook.com` (or any hostname) into the IP
+      Lookup form on `/ip-lookup/`. Backend now resolves the
+      hostname via `gethostbyname()` first, strips a stray URL
+      scheme / path prefix, validates the result is a public IP,
+      and returns the same response shape IP Fallback uses — including
+      a new `resolved: bool` flag so the UI can show
+      "facebook.com → 57.144.144.1" when a hostname was resolved.
+      `curl http://127.0.0.1:8080/wp-json/privacy-checker/v1/lookup/ip?ip=facebook.com`
+      → 200 with Singapore geo intel for Facebook's edge IP.
+
+**Verification**: `vendor/bin/phpunit` → **201 tests / 819 assertions,
+all green.** `node_modules/.bin/playwright test` → **12 / 12 passing**.
+`node --check scanner.js` clean. `php -l` clean on every modified
+file. Source-clean:
+`grep -R "unpkg.com/leaflet" plugin/` → empty,
+`grep -R "raw.githubusercontent.com/tmusabaika" plugin/` → empty.
+No new composer / npm dependencies. No new REST routes. No new
+settings keys. No new secrets, no PII handling, no write paths.
+
 ## Phase 1 — Bug fixes
 
 - [x] `/scan` REST route accepts POST (`plugin/includes/class-rest-api.php`)

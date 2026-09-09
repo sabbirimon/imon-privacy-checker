@@ -1617,6 +1617,7 @@
 .pc-geo__hop-name, .pc-geo__hop-sub, .pc-geo__hop-pills { flex-wrap: wrap; }
 .pc-geo__hop-name { overflow-wrap: anywhere; }
 
+.pc-network__side {
     background: var(--pc-surface-2);
     border: 1px solid var(--pc-border);
     border-radius: 8px;
@@ -2996,20 +2997,21 @@
 /* =========================================================
    Dark-mode contrast overrides
    =========================================================
-   The hero card and the disguise pill stay white-on-white in
-   both modes (because --pc-surface is #ffffff in both themes),
-   so we MUST force dark text on these white surfaces regardless
-   of the page-level --pc-text (which is white in dark mode for
-   dark-teal page backgrounds).
+   Cards (.pc-card / .pc-info-table / .pc-network / .pc-map-card
+   / .pc-recos / .pc-tips__card / .pc-tips__tier) stay white in
+   both themes (--pc-surface is #ffffff in both), so any selector
+   that uses var(--pc-text) for text inside one of those surfaces
+   needs an explicit override to keep it dark. var(--pc-text) is
+   white in dark mode (so elements on the dark page bg read
+   correctly), but on a white card it would be invisible.
 
-   Without these overrides, the hero text and the "Privacy Score:
-   N%" pill text vanish against their white backgrounds in dark
-   mode.
+   The marketing homepage hero (.pc-hero__title / __subtitle /
+   __eyebrow / __brand) sits directly on the dark page bg with
+   no card — no override needed; it inherits var(--pc-text) which
+   is correctly light on dark. The privacy-report hero inside the
+   scanner (different .pc-hero__ip / __country / __score-* children
+   inside a white .pc-hero card) needs dark text overrides.
    ========================================================= */
-:root[data-pc-theme="dark"] .pc-hero {
-    background: linear-gradient(180deg, #ffffff, #f7fafc);
-    color: #1f2c3a;
-}
 :root[data-pc-theme="dark"] .pc-hero__ip,
 :root[data-pc-theme="dark"] .pc-hero__country,
 :root[data-pc-theme="dark"] .pc-hero__score-num,
@@ -3040,6 +3042,10 @@
 }
 :root[data-pc-theme="dark"] .pc-card__title,
 :root[data-pc-theme="dark"] .pc-card__subtitle {
+    /* The `color: inherit` reset on `.pc-col *` (below) tries to make
+       card children inherit from `.pc-card`, which would itself
+       inherit the body white. To keep dark text on white cards we
+       pin an explicit color here. */
     color: #1f2c3a;
 }
 :root[data-pc-theme="dark"] .pc-network {
@@ -3070,15 +3076,44 @@
 :root[data-pc-theme="dark"] .pc-network__detail-meta {
     color: #1f2c3a;
 }
+/* Section titles live on the dark page bg (NOT inside a white card),
+   so use the bright accent — light-mode keeps the dark accent which
+   only reads on white. */
+:root[data-pc-theme="dark"] .pc-section__title {
+    color: var(--pc-accent-3);
+    border-bottom-color: var(--pc-accent-3);
+}
+:root[data-pc-theme="dark"] .pc-section__lede {
+    color: var(--pc-text-dim);
+}
 /* Sidebars + recommendation text on the white card surface */
 :root[data-pc-theme="dark"] .pc-recos,
 :root[data-pc-theme="dark"] .pc-recos__title,
-:root[data-pc-theme="dark"] .pc-tips__card {
+:root[data-pc-theme="dark"] .pc-tips__card,
+:root[data-pc-theme="dark"] .pc-tips__tier {
     color: #1f2c3a;
 }
+:root[data-pc-theme="dark"] .pc-tips__title,
+:root[data-pc-theme="dark"] .pc-tips__summary,
+:root[data-pc-theme="dark"] .pc-tips__why,
+:root[data-pc-theme="dark"] .pc-tips__examples {
+    color: #1f2c3a;
+}
+:root[data-pc-theme="dark"] .pc-tips__examples,
+:root[data-pc-theme="dark"] .pc-tips__why {
+    color: #5a6779; /* dim */
+}
+:root[data-pc-theme="dark"] .pc-tips__priority {
+    color: #5a6779;
+}
+/* `.pc-col * { color: inherit }` was poisoning `.pc-card` descendants:
+   any text inside a column (titles, info-table cells, tips) would
+   inherit the body's white text and disappear on a white card. We
+   keep the inherit reset for the column LAYOUT (none — `.pc-col` has
+   no children that need it) and instead pin dark text per-card-class
+   below. Drop the universal selector. */
 :root[data-pc-theme="dark"] .pc-dash-cols,
-:root[data-pc-theme="dark"] .pc-col,
-:root[data-pc-theme="dark"] .pc-col * {
+:root[data-pc-theme="dark"] .pc-col {
     color: inherit;
 }
 
