@@ -823,6 +823,23 @@
 }
 .pc-tips-inline__hint { margin: 0; color: var(--pc-text-dim); font-size: 0.85rem; }
 
+/* Dark-mode surface fix for the inline Anonymity Tips card on the
+   scanner homepage. `--pc-text` is set to `#ffffff` for elements that
+   sit on the dark page bg (header, hero, nav), but the inline tips
+   card sits on a white `.pc-card` surface — so leaving
+   `--pc-text`-derived inheritance here would render white text on
+   near-white, invisible. Mirror the pattern used for `.pc-card__title`,
+   `.pc-info-table dd`, `.pc-recos`, etc.: force the dark text color
+   on dark mode. Same for `.pc-tips-inline__hint` (uses
+   `--pc-text-dim`, which is `#ffffff` on dark → also invisible).
+   The `.pc-tips-inline__cat` pill background uses `--pc-accent`
+   (`#2a8a9a` on dark), which is too close to the dark page bg
+   (`#20586f`) — swap to the brighter accent-3 (`#3ddccd`) so the
+   pill reads as a pill against the page background. */
+:root[data-pc-theme="dark"] .pc-tips-inline__desc { color: #1f2c3a; }
+:root[data-pc-theme="dark"] .pc-tips-inline__hint { color: #5a6779; }
+:root[data-pc-theme="dark"] .pc-tips-inline__cat { background: var(--pc-accent-3); color: #0f3245; }
+
 /* =========================================================
    17. Anonymity Tips page (full tiered layout)
    ========================================================= */
