@@ -1186,10 +1186,16 @@ vendor/bin/phpunit
   → OK (215 tests, 900 assertions)
 
 node_modules/.bin/playwright test
-  → 40 passed, 1 skipped (geo widget conditional), 0 failed (1.9m)
+  → 39 passed, 2 skipped (both server-state conditional), 0 failed (1.9m)
     e2e/scanner-v2.spec.js     6/6
-    e2e/geotrace-v2.spec.js    5/5 (1 conditional skip when no widget)
-    e2e/share-export.spec.js   7/7
+    e2e/geotrace-v2.spec.js    5/5 (1 skip: home page does not embed the
+                                          v2 geotrace widget, test bails
+                                          gracefully)
+    e2e/share-export.spec.js   7/7 (1 skip: full share round-trip — only
+                                     runs when pc_settings.share_enabled
+                                     is true. In Phase 17 acceptance we
+                                     flipped it on, ran the test, then
+                                     restored the admin default of false)
     e2e/a11y-v2.spec.js       11/11
     e2e/cards-closeup.spec.js  1/1
     e2e/dark-mode-contrast.spec.js 1/1
