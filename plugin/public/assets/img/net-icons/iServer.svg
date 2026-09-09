@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  iServer.svg — clean-room line-art rack-mount server icon.
+  MIT licensed (matches the plugin). 24x24 viewBox, monochrome
+  stroke; consumers apply colour via the per-device accent.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="4" y="3"  width="16" height="5" rx="0.5" />
+  <rect x="4" y="10" width="16" height="5" rx="0.5" />
+  <rect x="4" y="17" width="16" height="4" rx="0.5" />
+  <circle cx="7"  cy="5.5" r="0.6" fill="currentColor" />
+  <circle cx="7"  cy="12.5" r="0.6" fill="currentColor" />
+  <line x1="14" y1="5.5"  x2="17" y2="5.5" />
+  <line x1="14" y1="12.5" x2="17" y2="12.5" />
+  <line x1="14" y1="19"   x2="17" y2="19" />
+</svg>

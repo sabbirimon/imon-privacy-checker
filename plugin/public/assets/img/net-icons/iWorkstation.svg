@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  iWorkstation.svg — clean-room line-art desktop workstation
+  (monitor + stand). MIT licensed (matches the plugin).
+  24x24 viewBox, monochrome stroke; consumers apply colour via the
+  per-device accent.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- monitor -->
+  <rect x="2" y="3" width="20" height="13" rx="1" />
+  <!-- screen inset -->
+  <rect x="4" y="5" width="16" height="9" rx="0.5" />
+  <!-- stand neck -->
+  <line x1="9"  y1="16" x2="8"  y2="20" />
+  <line x1="15" y1="16" x2="16" y2="20" />
+  <!-- stand base -->
+  <line x1="6" y1="20" x2="18" y2="20" />
+</svg>

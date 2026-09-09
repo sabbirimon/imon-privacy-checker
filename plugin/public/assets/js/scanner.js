@@ -3469,68 +3469,71 @@
         return parts.join(' · ');
     }
 
-    // Distinct device icon — loaded from
-// https://github.com/tmusabaika/minimalistic-networking-icons
-// (GNS3 / Packet Tracer style PNGs, public-license images that work as
-// <image> embeds inside our SVG without any CORS or parsing woes).
+    // Distinct device icon — clean-room SVG originals vendored under
+// plugin/public/assets/img/net-icons/ (MIT-licensed to match the plugin).
+// Phase 9.B: previously these were borrowed PNGs from
+// https://github.com/tmusabaika/minimalistic-networking-icons, but that
+// repo has no LICENSE file, so we replaced them with our own.
 //
-// Mapping of our network-path device categories to the icons in that
-// repository:
-//   server       → iServer.png        (rack-mount server icon)
-//   mobile       → iWorkstation.png   (laptop / PDA / phone — Packet Tracer
-//                                      uses the same iWorkstation icon for
-//                                      desktop PCs, laptops, and mobile
-//                                      endpoints)
-//   home-router  → iRouter.png        (home/residential router)
-//   router       → iRouter.png        (enterprise / backbone router)
-//   switch       → iSwitch.png        (network switch)
-//   firewall     → iSwitch.png + red overlay (the repo doesn't ship a
-//                                      dedicated firewall; we draw a red
-//                                      diamond accent on top of the switch
-//                                      to signal the firewall role)
-//   vpn          → iRouter.png + lock overlay (encrypted tunnel gateway;
+// Mapping of our network-path device categories to the icons:
+//   server       → iServer.svg        (rack-mount server icon)
+//   mobile       → iWorkstation.svg   (laptop / PDA / phone — single icon
+//                                      stands in for desktop PCs, laptops,
+//                                      and mobile endpoints)
+//   home-router  → iRouter.svg        (home/residential router)
+//   router       → iRouter.svg        (enterprise / backbone router)
+//   switch       → iSwitch.svg        (network switch)
+//   firewall     → iSwitch.svg + red overlay (no dedicated firewall icon;
+//                                      we draw a red diamond accent on top
+//                                      of the switch to signal the firewall
+//                                      role)
+//   vpn          → iRouter.svg + lock overlay (encrypted tunnel gateway;
 //                                              router base + padlock accent)
-//   tor          → iServer.png + onion overlay (onion-routing relay;
+//   tor          → iServer.svg + onion overlay (onion-routing relay;
 //                                              server base + concentric rings)
-//   device       → iWorkstation.png   (source client — generic PC/laptop)
-//   destination  → iServer.png        (web / cloud origin)
-//   hub          → iHub.png           (optional — not currently rendered)
-//   cell-tower   → iHub.png + tower overlay (cellular / radio base station)
-//   satellite    → iSatelliteDish.png does NOT exist in this repo, so we
-//                  render the cell-tower icon with a small "dish" accent —
-//                  covers Starlink-style satellite internet scenarios.
+//   device       → iWorkstation.svg   (source client — generic PC/laptop)
+//   destination  → iServer.svg        (web / cloud origin)
+//   hub          → iHub.svg           (optional — not currently rendered)
+//   cell-tower   → iHub.svg + tower overlay (cellular / radio base station)
+//   satellite    → iHub.svg + dish accent (Starlink-style satellite;
+//                                       same base as cell-tower + dish arc)
 //
-// We render the PNG via <image href="..."> inside the SVG node, then draw
-// a colored accent so the borrowed icon adopts the per-device color.
+// We render the icon via <image href="..."> inside the SVG node, then draw
+// a colored accent so the (currently stroked) icon adopts the per-device
+// color. Icons are clean-room SVG originals vendored under
+// plugin/public/assets/img/net-icons/ — see that folder's README.md for
+// license + provenance.
     var PC_ICON_MAP = {
-        device:       'iWorkstation.png',
-        mobile:       'iWorkstation.png',
-        tablet:       'iWorkstation.png',
-        pc:           'iWorkstation.png',
-        'home-router':'iRouter.png',
-        router:       'iRouter.png',
-        server:       'iServer.png',
-        switch:       'iSwitch.png',
-        firewall:     'iSwitch.png',
-        vpn:          'iRouter.png',
-        tor:          'iServer.png',
-        destination:  'iServer.png',
-        hub:          'iHub.png',
-        'cell-tower': 'iHub.png',
-        satellite:    'iHub.png'
+        device:       'iWorkstation.svg',
+        mobile:       'iWorkstation.svg',
+        tablet:       'iWorkstation.svg',
+        pc:           'iWorkstation.svg',
+        'home-router':'iRouter.svg',
+        router:       'iRouter.svg',
+        server:       'iServer.svg',
+        switch:       'iSwitch.svg',
+        firewall:     'iSwitch.svg',
+        vpn:          'iRouter.svg',
+        tor:          'iServer.svg',
+        destination:  'iServer.svg',
+        hub:          'iHub.svg',
+        'cell-tower': 'iHub.svg',
+        satellite:    'iHub.svg'
     };
-    var PC_NET_PNG_CDN = 'https://raw.githubusercontent.com/tmusabaika/minimalistic-networking-icons/master/png/monochrome/strokes-digital_minima_icons_blue/';
+    // Same-origin plugin URL (window.PC_SCAN.assetUrl is localised server-side
+    // in class-public-assets.php as PRIVACY_CHECKER_URL + 'public/assets/').
+    var PC_NET_PNG_CDN = window.PC_SCAN.assetUrl + 'img/net-icons/';
     var PC_ICON_FETCH_PROMISE = null;
     var PC_ICON_FETCH_DONE = false;
     var PC_ICON_FETCH_FAIL = false;
     var PC_ICON_CACHE = {}; // file -> data-URI (preloaded as Blob)
 
     function fetchIconMarkup(file) {
-        // Fetches a PNG as a Blob and converts to a data: URI so the
-        // <image> stays valid forever (no later network required).
+        // Fetches the icon (SVG since Phase 9.B) as a Blob and converts to a
+        // data: URI so the <image> stays valid forever (no later network required).
         return new Promise(function (resolve, reject) {
             fetch(PC_NET_PNG_CDN + file, {
-                mode: 'cors',
+                mode: 'cors', // same-origin now; option left in for defensive safety
                 credentials: 'omit',
                 cache: 'force-cache'
             })
