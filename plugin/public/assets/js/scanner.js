@@ -5573,54 +5573,144 @@
         }
 
         function setGeoView(useGlobe) {
+            // Honor prefers-reduced-motion: the 3D globe is a decorative
+            // animation; visitors who opted out get a clear toast and the
+            // 2D map instead. The toggle is also hidden via CSS in that
+            // mode (see .pc-geo__view-toggle at reducedMotion).
+            if (useGlobe && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                showToast('3D Globe is disabled because you requested reduced motion.', 'warn');
+                if (mapEl) mapEl.hidden = false;
+                if (globeEl) globeEl.hidden = true;
+                globeState.mode = '2d';
+                if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
+                return;
+            }
+
             // Reveal the container first so getBoundingClientRect returns a
             // non-zero size when ensureGlobe3d measures the canvas.
             if (mapEl) mapEl.hidden = useGlobe;
             if (globeEl) globeEl.hidden = !useGlobe;
             if (useGlobe) {
+                // Lazy-load three.js + three-globe on demand. The
+                // wp_register_script() calls in class-public-assets.php
+                // make these available; wp_enqueue_script() + a script
+                // tag fetch is the standard WordPress idiom for lazy
+                // loading. If we already loaded them (globeState.loaded)
+                // we skip straight to the init.
+                if (!globeState.loaded) {
+                    loadGlobeLibraries(function (ok) {
+                        if (!ok) {
+                            showToast('3D Globe is unavailable; using the 2D map.', 'warn');
+                            if (mapEl) mapEl.hidden = false;
+                            if (globeEl) globeEl.hidden = true;
+                            globeState.mode = '2d';
+                            if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
+                            return;
+                        }
+                        globeState.loaded = true;
+                        initGlobeAfterLoad();
+                    });
+                    return;
+                }
                 // Defer init to next frame so the browser has sized the
                 // (now unhidden) globe container.
-                requestAnimationFrame(function () {
-                    // Bounded retry: if three.js / three-globe haven't finished
-                    // loading yet (slow CDN, ad-blocker, dropped request),
-                    // poll every 250ms up to 5s before falling back to 2D.
-                    // This replaces the old behavior of caching
-                    // `globeState.available = false` once at bind time and
-                    // stranding the toggle for the rest of the page's life.
-                    var retries = 0;
-                    var MAX_RETRIES = 20; // 20 * 250ms = 5s
-                    function attempt() {
-                        if (ensureGlobe3d()) {
-                            globeState.mode = '3d';
-                            if (viewBtn) viewBtn.setAttribute('aria-pressed', 'true');
-                            if (lastReport) drawGlobe(lastReport);
-                            return;
-                        }
-                        if (!isGlobeLibraryAvailable() && retries < MAX_RETRIES) {
-                            retries++;
-                            setTimeout(attempt, 250);
-                            return;
-                        }
-                        // Either the library failed to load, or WebGL / texture
-                        // init threw — fall back to 2D with diagnostics.
-                        if (!isGlobeLibraryAvailable()) {
-                            // eslint-disable-next-line no-console
-                            console.error('[IMON globe] three.js / three-globe library did not load within 5s.');
-                        }
-                        showToast('3D Globe is unavailable; using the 2D map.', 'warn');
-                        if (mapEl) mapEl.hidden = false;
-                        if (globeEl) globeEl.hidden = true;
-                        globeState.mode = '2d';
-                        if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
-                        if (map) setTimeout(function () { map.invalidateSize(); }, 50);
-                    }
-                    attempt();
-                });
+                requestAnimationFrame(initGlobeAfterLoad);
             } else {
                 globeState.mode = '2d';
                 if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
                 if (map) setTimeout(function () { map.invalidateSize(); }, 50);
             }
+        }
+
+        /**
+         * Init the 3D globe after the libraries have finished loading.
+         * Runs inside requestAnimationFrame so the just-unhidden
+         * container has a measured size. Bounded retry handles the case
+         * where the script tag just appended to <head> hasn't evaluated
+         * yet (slow CDN, ad-blocker, dropped request).
+         */
+        function initGlobeAfterLoad() {
+            var retries = 0;
+            var MAX_RETRIES = 20; // 20 * 250ms = 5s
+            function attempt() {
+                if (ensureGlobe3d()) {
+                    globeState.mode = '3d';
+                    if (viewBtn) viewBtn.setAttribute('aria-pressed', 'true');
+                    if (lastReport) drawGlobe(lastReport);
+                    return;
+                }
+                if (!isGlobeLibraryAvailable() && retries < MAX_RETRIES) {
+                    retries++;
+                    setTimeout(attempt, 250);
+                    return;
+                }
+                // Either the library failed to load, or WebGL / texture
+                // init threw — fall back to 2D with diagnostics.
+                if (!isGlobeLibraryAvailable()) {
+                    // eslint-disable-next-line no-console
+                    console.error('[IMON globe] three.js / three-globe library did not load within 5s.');
+                }
+                showToast('3D Globe is unavailable; using the 2D map.', 'warn');
+                if (mapEl) mapEl.hidden = false;
+                if (globeEl) globeEl.hidden = true;
+                globeState.mode = '2d';
+                if (viewBtn) viewBtn.setAttribute('aria-pressed', 'false');
+                if (map) setTimeout(function () { map.invalidateSize(); }, 50);
+            }
+            attempt();
+        }
+
+        /**
+         * Lazy-load three.js + three-globe on the first toggle to 3D.
+         * The WordPress wp_register_script() calls in
+         * class-public-assets.php made the assets available; this
+         * function appends a <script> tag for each so the libraries
+         * load only when the user actually wants 3D. Honors a 10s
+         * timeout per script so a stalled CDN doesn't strand the
+         * toggle.
+         */
+        function loadGlobeLibraries(cb) {
+            var urls = window.PC_GLOBE_LIBS;
+            if (!urls || typeof urls.three !== 'string' || typeof urls.globe !== 'string') {
+                // The plugin didn't register the URLs — server-side admin
+                // disabled the 3D globe path. Fall back to 2D.
+                cb(false);
+                return;
+            }
+            var done = 0;
+            var failed = false;
+            function once(name, src) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.async = false;
+                s.onload = function () {
+                    if (failed) return;
+                    done++;
+                    if (done === 2) cb(true);
+                };
+                s.onerror = function () {
+                    if (failed) return;
+                    failed = true;
+                    // eslint-disable-next-line no-console
+                    console.error('[IMON globe] failed to load', name, src);
+                    cb(false);
+                };
+                document.head.appendChild(s);
+                // Timeout safety: 10s per script.
+                setTimeout(function () {
+                    if (failed || done === 2) return;
+                    var hasThree = typeof window.THREE !== 'undefined';
+                    var hasGlobe = typeof window.ThreeGlobe !== 'undefined'
+                                || typeof window.ThreeGlobe3D !== 'undefined'
+                                || typeof window.Globe !== 'undefined';
+                    if (!hasThree || (name === 'three-globe' && !hasGlobe)) {
+                        failed = true;
+                        cb(false);
+                    }
+                }, 10000);
+            }
+            once('three', urls.three);
+            once('three-globe', urls.globe);
         }
 
         function setStatus(text, kind) {

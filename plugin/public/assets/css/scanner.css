@@ -945,6 +945,11 @@
         transition-duration: 0.001ms !important;
         scroll-behavior: auto !important;
     }
+    /* Hide the 3D Globe toggle: the JS handler already shows a
+       friendly toast if it's clicked anyway, but hiding it removes
+       the temptation. The 2D Leaflet map is the default for visitors
+       who opted out of motion. */
+    .pc-geo__view-toggle { display: none !important; }
 }
 
 /* =========================================================

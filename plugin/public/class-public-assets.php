@@ -178,11 +178,15 @@ final class PublicAssets {
             true
         );
 
-        // Optional 3D globe for Geo Traceroute. The existing Leaflet map is
-        // retained as a fallback when WebGL or these CDN assets are blocked.
-        // We prefer the locally bundled copies under assets/js/ when present
-        // so the globe works on locked-down networks (corporate / airgapped /
-        // GDPR-strict EU hosting where unpkg.com is unreachable).
+        // Optional 3D globe for Geo Traceroute. The 2D Leaflet map is the
+        // default; the three.js + three-globe stack (~600 KB) is only
+        // loaded on demand when the visitor explicitly toggles to the
+        // 3D view AND has not requested prefers-reduced-motion. We
+        // register the scripts (not enqueue) so the toggle handler in
+        // scanner.js can load them lazily via wp_enqueue_script() +
+        // a one-shot fetch of the script tag. When the toggle is never
+        // clicked, the 3D library is never downloaded — significant
+        // wins for first-paint on the Geo Traceroute page.
         if ( false !== strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'geotraceroute' )
             || ( is_singular() && has_shortcode( get_post()->post_content ?? '', 'privacy_checker_geotraceroute' ) ) ) {
             $local_three = PRIVACY_CHECKER_DIR . 'public/assets/js/three.min.js';
@@ -191,20 +195,18 @@ final class PublicAssets {
             $globe_src   = is_readable( $local_globe ) ? PRIVACY_CHECKER_URL . 'public/assets/js/three-globe.min.js' : 'https://unpkg.com/three-globe@2.33.0/dist/three-globe.min.js';
             $three_ver   = is_readable( $local_three ) ? filemtime( $local_three ) : '0.160.0';
             $globe_ver   = is_readable( $local_globe ) ? filemtime( $local_globe ) : '2.33.0';
-            wp_enqueue_script(
-                'pc-three',
-                $three_src,
-                array(),
-                $three_ver,
-                true
-            );
-            wp_enqueue_script(
-                'pc-three-globe',
-                $globe_src,
-                array( 'pc-three' ),
-                $globe_ver,
-                true
-            );
+            // Register (not enqueue) so scanner.js can wp_enqueue_script()
+            // these on demand when the user clicks the 3D Globe toggle.
+            wp_register_script( 'pc-three', $three_src, array(), $three_ver, true );
+            wp_register_script( 'pc-three-globe', $globe_src, array( 'pc-three' ), $globe_ver, true );
+            // Expose the URLs so the JS toggle handler can lazy-load
+            // them on first click (wp_register_script alone doesn't
+            // surface the URL the way wp_enqueue_script would). This is
+            // the standard WordPress idiom for on-demand script loads.
+            wp_localize_script( 'pc-scanner', 'PC_GLOBE_LIBS', array(
+                'three'    => $three_src,
+                'globe'    => $globe_src,
+            ) );
         }
 
         wp_register_script(
