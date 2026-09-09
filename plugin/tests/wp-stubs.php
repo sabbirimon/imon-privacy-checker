@@ -450,6 +450,11 @@ if ( ! function_exists( 'plugin_dir_url' ) ) {
         return 'https://example.test/wp-content/plugins/privacy-checker/';
     }
 }
+if ( ! function_exists( 'content_url' ) ) {
+    function content_url( string $path = '' ): string {
+        return 'https://example.test/wp-content/' . ltrim( $path, '/' );
+    }
+}
 if ( ! function_exists( 'load_plugin_textdomain' ) ) {
     function load_plugin_textdomain( string $domain, string $deprecated = '', string $plugin_rel_path = '' ): bool {
         return true;
