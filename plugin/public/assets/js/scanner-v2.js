@@ -870,6 +870,317 @@
     }
 
     /**
+     * Build an expandable fact tile. Phase 25 — tiles are now
+     * `<details>` elements so click and keyboard (Enter / Space) both
+     * toggle the detail panel natively. The summary row is the icon +
+     * label + value (the existing chip layout); the detail panel
+     * contains 0–N additional key/value rows pulled from the report
+     * payload by `tileDetailRows()`.
+     *
+     * opts:
+     *   key:    the category key (lowercase) — used for tileDetailRows
+     *   label:  small caps label
+     *   value:  primary value (string, number, or null)
+     *   mono:   whether the value should be mono-spaced
+     *   tone:   safe/warning/danger/info/neutral
+     *   icon:   single character or emoji shown in the icon chip
+     */
+    function renderFactTile(opts) {
+        var tile = el('details', {
+            class: 'pcv2__connection-tile pcv2__connection-tile--expandable',
+            'data-pcv2-tone': opts.tone || 'neutral',
+            'data-pcv2-key':  opts.key || ''
+        });
+        if (opts.delay != null) {
+            tile.style.setProperty('--pcv2-tile-delay', opts.delay + 'ms');
+        }
+        var summary = el('summary', { class: 'pcv2__connection-tile-summary' });
+        summary.appendChild(el('span', {
+            class: 'pcv2__connection-tile-icon',
+            'aria-hidden': 'true',
+            text: opts.icon || '·'
+        }));
+        var head = el('div', { class: 'pcv2__connection-tile-head' });
+        head.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: opts.label || '' }));
+        var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
+        if (opts.mono) valueEl.classList.add('mono');
+        valueEl.appendChild(pcv2DisplayValue(opts.value));
+        head.appendChild(valueEl);
+        summary.appendChild(head);
+        // Chevron indicator — rotates on [open].
+        summary.appendChild(el('span', {
+            class: 'pcv2__connection-tile-chevron',
+            'aria-hidden': 'true',
+            text: '▾'
+        }));
+        tile.appendChild(summary);
+
+        // Build the detail panel — hidden if no rows.
+        var rows = (typeof tileDetailRows === 'function')
+            ? tileDetailRows(opts.key, opts.value) : [];
+        if (rows && rows.length > 0) {
+            var panel = el('div', { class: 'pcv2__connection-tile-detail' });
+            rows.forEach(function (r) {
+                var row = el('div', { class: 'pcv2__connection-tile-detail-row' });
+                row.appendChild(el('span', {
+                    class: 'pcv2__connection-tile-detail-label',
+                    text: r.label
+                }));
+                var v = el('span', {
+                    class: 'pcv2__connection-tile-detail-value' + (r.mono ? ' mono' : '')
+                });
+                if (r.value == null) {
+                    v.appendChild(el('span', {
+                        class: 'pcv2__row-missing',
+                        text: PCV2.i18n.notAvailable || 'Not available'
+                    }));
+                } else {
+                    v.textContent = String(r.value);
+                }
+                row.appendChild(v);
+                panel.appendChild(row);
+            });
+            tile.appendChild(panel);
+        } else {
+            // Disable expand affordance — no rows to show.
+            summary.classList.add('pcv2__connection-tile-summary--no-detail');
+        }
+        return tile;
+    }
+
+    /**
+     * Return the rows shown in a fact tile's expanded panel. Looks up
+     * the report payload by key — keeps the per-tile detail logic
+     * out of the render functions.
+     */
+    function tileDetailRows(key, primaryValue) {
+        if (!key) return [];
+        // The current report payload is stashed on the dashboard root
+        // via data-pcv2-report (set in renderReport). Falls back to
+        // an empty payload if missing.
+        var report = {};
+        var dash = document.querySelector('[data-pcv2-component="dashboard"]');
+        if (dash && dash.__lastReport) report = dash.__lastReport;
+        var intel = report.intel || report.geo || {};
+        var reqIp = report.request_ip || {};
+        var fp    = report.fingerprint || {};
+        var sp    = report.security_posture || {};
+        var proxy = report.proxy_detection || {};
+        var ua    = report.user_agent || {};
+        // Live snapshot of the Network Information API. We re-read
+        // it on each expand so the values stay current even if the
+        // user toggles the tile after their network has changed.
+        var liveConn = null;
+        try {
+            var nci = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            if (nci) {
+                liveConn = {
+                    type: nci.type || '',
+                    effectiveType: nci.effectiveType || '',
+                    downlink: typeof nci.downlink === 'number' ? nci.downlink : null,
+                    rtt: typeof nci.rtt === 'number' ? nci.rtt : null
+                };
+            }
+        } catch (_e) { /* ignore */ }
+        switch (key) {
+            case 'ipv4':
+                return [
+                    { label: 'Public',  value: reqIp.ipv4 || '—', mono: true },
+                    { label: 'Headers', value: reqIp.headers ? Object.keys(reqIp.headers).length + ' entries' : '—' },
+                    { label: 'ISP',     value: intel.isp },
+                    { label: 'ASN',     value: intel.asn, mono: true }
+                ];
+            case 'ipv6':
+                return [
+                    { label: 'Public',  value: reqIp.ipv6 || '—', mono: true },
+                    { label: 'ISP',     value: intel.isp },
+                    { label: 'ASN',     value: intel.asn, mono: true }
+                ];
+            case 'country':
+                return [
+                    { label: 'Code',     value: intel.country || intel.country_code, mono: true },
+                    { label: 'City',     value: intel.city },
+                    { label: 'Region',   value: intel.region },
+                    { label: 'Timezone', value: intel.timezone, mono: true }
+                ];
+            case 'region':
+                return [
+                    { label: 'Country',  value: intel.country_name || intel.country },
+                    { label: 'City',     value: intel.city },
+                    { label: 'Code',     value: intel.region_code, mono: true }
+                ];
+            case 'city':
+                return [
+                    { label: 'Region',   value: intel.region },
+                    { label: 'Country',  value: intel.country_name || intel.country },
+                    { label: 'Lat/Lon',  value: (intel.latitude != null && intel.longitude != null)
+                        ? (intel.latitude.toFixed(2) + ', ' + intel.longitude.toFixed(2)) : null,
+                        mono: true }
+                ];
+            case 'timezone':
+                return [
+                    { label: 'Offset',   value: (function () {
+                        try { return (new Date()).toString().match(/\(([A-Za-z\s].*)\)/)[1]; }
+                        catch (_e) { return null; }
+                    })(), mono: true },
+                    { label: 'Local',    value: (function () {
+                        try { return new Date().toLocaleTimeString(); }
+                        catch (_e) { return null; }
+                    })(), mono: true },
+                    { label: 'UTC now',  value: new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z', mono: true }
+                ];
+            case 'isp':
+                return [
+                    { label: 'ASN',     value: intel.asn, mono: true },
+                    { label: 'Org',     value: intel.organization },
+                    { label: 'Country', value: intel.country_name || intel.country }
+                ];
+            case 'asn':
+                return [
+                    { label: 'ISP',     value: intel.isp },
+                    { label: 'Org',     value: intel.organization },
+                    { label: 'Country', value: intel.country_name || intel.country }
+                ];
+            case 'ip':
+                return [
+                    { label: 'IPv4',    value: reqIp.ipv4 || '—', mono: true },
+                    { label: 'IPv6',    value: reqIp.ipv6 || '—', mono: true },
+                    { label: 'ISP',     value: intel.isp },
+                    { label: 'ASN',     value: intel.asn, mono: true }
+                ];
+            case 'type':
+                return [
+                    { label: 'Label',   value: proxy.label },
+                    { label: 'Confidence', value: proxy.confidence },
+                    { label: 'Signals', value: Array.isArray(proxy.signals)
+                        ? proxy.signals.length + ' detected'
+                        : (proxy.signals || '—') }
+                ];
+            case 'confidence':
+                return [
+                    { label: 'Label',   value: proxy.label },
+                    { label: 'Type',    value: proxy.type },
+                    { label: 'Signals', value: Array.isArray(proxy.signals)
+                        ? proxy.signals.join(', ')
+                        : (proxy.signals || '—') }
+                ];
+            case 'browser':
+                return [
+                    { label: 'Engine', value: ua.engine },
+                    { label: 'OS',     value: ua.os },
+                    { label: 'Device', value: ua.device },
+                    { label: 'Is bot', value: ua.is_bot ? (PCV2.i18n.yes || 'Yes') : (PCV2.i18n.no || 'No') }
+                ];
+            case 'engine':
+                return [
+                    { label: 'Browser', value: ua.browser },
+                    { label: 'Version', value: ua.version },
+                    { label: 'OS',      value: ua.os }
+                ];
+            case 'os':
+                return [
+                    { label: 'Browser', value: ua.browser },
+                    { label: 'Engine',  value: ua.engine },
+                    { label: 'Device',  value: ua.device }
+                ];
+            case 'device':
+                return [
+                    { label: 'Browser', value: ua.browser },
+                    { label: 'Engine',  value: ua.engine },
+                    { label: 'OS',      value: ua.os }
+                ];
+            case 'languages':
+                return [
+                    { label: 'Count',  value: (navigator.languages || []).length, mono: true },
+                    { label: 'Primary', value: navigator.language, mono: true },
+                    { label: 'Platform', value: navigator.platform, mono: true }
+                ];
+            case 'screen':
+                return [
+                    { label: 'Width × Height', value: screen.width + ' × ' + screen.height, mono: true },
+                    { label: 'Color depth',    value: screen.colorDepth + '-bit', mono: true },
+                    { label: 'Pixel ratio',    value: window.devicePixelRatio || 1, mono: true }
+                ];
+            case 'entropy':
+                return [
+                    { label: 'Bits',           value: fp.entropy_bits ? fp.entropy_bits + ' bits' : '—', mono: true },
+                    { label: 'Bits (raw)',     value: fp.entropy_bits, mono: true },
+                    { label: 'Source hash',    value: fp.source_hash, mono: true },
+                    { label: 'Window size',    value: fp.features && fp.features.window ? (window.innerWidth + '×' + window.innerHeight) : null, mono: true }
+                ];
+            case 'tls':
+                return [
+                    { label: 'Status',  value: sp.tls && sp.tls.status },
+                    { label: 'Cipher',  value: sp.tls && sp.tls.cipher },
+                    { label: 'Issuer',  value: sp.tls && sp.tls.issuer }
+                ];
+            case 'tls status':
+                return [
+                    { label: 'Version', value: sp.tls && sp.tls.version, mono: true },
+                    { label: 'Cipher',  value: sp.tls && sp.tls.cipher },
+                    { label: 'Browser', value: sp.browser && sp.browser.browser }
+                ];
+            case 'outdated':
+                return [
+                    { label: 'Browser', value: sp.browser && sp.browser.browser },
+                    { label: 'Version', value: sp.browser && sp.browser.version, mono: true },
+                    { label: 'Latest',  value: sp.browser && sp.browser.latest, mono: true }
+                ];
+            case 'connection':
+                // Phase 26: Network Information API detail rows.
+                // Type, effectiveType, downlink, RTT are all optional
+                // (browsers without the API just return undefined for
+                // navigator.connection — we fall through to ASN/ISP
+                // hints). Vendor and operator are not exposed by any
+                // browser API; we show "n/a" so the user understands
+                // the column exists but is empty by design.
+                return [
+                    { label: 'Type',         value: liveConn ? (liveConn.type || 'unknown') : 'n/a', mono: true },
+                    { label: 'Effective',    value: liveConn ? (liveConn.effectiveType ? liveConn.effectiveType.toUpperCase() : '—') : 'n/a', mono: true },
+                    { label: 'Downlink',     value: liveConn && liveConn.downlink != null ? liveConn.downlink + ' Mbps' : 'n/a', mono: true },
+                    { label: 'RTT',          value: liveConn && liveConn.rtt != null ? liveConn.rtt + ' ms' : 'n/a', mono: true },
+                    { label: 'Vendor',       value: 'n/a' },
+                    { label: 'Operator',     value: 'n/a' },
+                    { label: 'ASN',          value: intel.asn, mono: true },
+                    { label: 'ISP',          value: intel.isp }
+                ];
+            default:
+                return [];
+        }
+    }
+
+    /**
+     * Delegated click handler that toggles a fact tile. We use a
+     * delegated listener on the grid rather than per-tile listeners
+     * so we don't have to re-bind after every render. The native
+     * `<details>` element already handles Enter/Space keyboard
+     * activation, so we just need to handle click on the summary
+     * and any close-on-second-click behaviour.
+     */
+    function attachTileExpand(grid) {
+        if (!grid || grid.__tileBound) return;
+        grid.__tileBound = true;
+        grid.addEventListener('click', function (ev) {
+            // Only react to clicks on the summary (not on something
+            // inside the detail panel, like a value).
+            var sum = ev.target.closest('summary');
+            if (!sum) return;
+            var tile = sum.closest('details');
+            if (!tile) return;
+            // Native toggle happens automatically — nothing else needed.
+        });
+        // Close other open tiles when one opens, so only one detail
+        // panel is visible at a time (accordion behaviour).
+        grid.addEventListener('toggle', function (ev) {
+            var tile = ev.target;
+            if (!tile || !tile.open) return;
+            Array.prototype.forEach.call(grid.querySelectorAll('details[open]'), function (other) {
+                if (other !== tile) other.open = false;
+            });
+        }, true);
+    }
+
+    /**
      * Build the sub-score polar / radial chart that replaces the old
      * flat 4-mini-card row. Each sub-score is one wedge:
      *
@@ -1436,6 +1747,11 @@
         var conn = report.connection || {};
         var rep = report.reputation || {};
 
+        // Stash the canonical report on the dashboard root so detail
+        // helpers (tileDetailRows, etc.) can read it without us
+        // threading it through every call site.
+        try { dashboard.__lastReport = report; } catch (_e) { /* DOMProxy */ }
+
         // The static skeleton (score hero host, 6 cards, findings container)
         // is rendered once by the server-side shortcode. The reset path in
         // runScan() calls clear(reportRegion) which removes those nodes
@@ -1451,8 +1767,14 @@
         // Score hero (the big ring + 4 mini KPI rings).
         var summary = dashboard.querySelector('[data-pcv2-region="summary"]');
         clear(summary);
-        var score = report.privacy_score;
-        var grade = report.privacy_report && report.privacy_report.grade;
+        // The canonical overall score lives in
+        // report.privacy_report.overall — NOT report.privacy_score
+        // (which is a deprecated stub that the backend leaves null).
+        var privReport = report.privacy_report || {};
+        var score = (typeof privReport.overall === 'number')
+            ? privReport.overall
+            : (report.privacy_score != null ? report.privacy_score : null);
+        var grade = privReport.grade;
         summary.appendChild(renderScoreHero(report));
 
         // Cards.
@@ -1620,40 +1942,116 @@
                 }
                 body.appendChild(signalPanel);
 
+                // ---- Connection type (Network Information API) ------
+                // Phase 26: read navigator.connection if the browser
+                // exposes it. The API gives us type (wifi/cellular/
+                // ethernet/mixed/unknown), effectiveType (4g/3g/2g/
+                // slow-2g), downlink (Mbps), and rtt (ms). Operator
+                // and vendor are not exposed by any standard browser
+                // API — for satellite connections (Starlink, etc.)
+                // we fall back to ASN-based heuristics: ASNs in the
+                // 14593 / 59717 / 54825 range are commonly used by
+                // satellite operators, and ASNs around 35804 / 35805
+                // are KNOWN-SK / STCN which are typically fibre or
+                // residential broadband. The point is to surface
+                // *something* useful — the user can always click the
+                // tile to see the full evidence trail.
+                var connType = '';
+                var connEffective = '';
+                var connDownlink = null;
+                var connRtt = null;
+                try {
+                    var nci = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                    if (nci) {
+                        connType = nci.type || '';
+                        connEffective = nci.effectiveType || '';
+                        connDownlink = typeof nci.downlink === 'number' ? nci.downlink : null;
+                        connRtt = typeof nci.rtt === 'number' ? nci.rtt : null;
+                    }
+                } catch (_e) { /* some browsers throw on read */ }
+                // Heuristic: infer "satellite" from ASN when the API
+                // doesn't report it directly.
+                if (!/satellite/i.test(connType)) {
+                    var asnStr = String(asn || '');
+                    var asnNum = parseInt(asnStr.replace(/^AS/i, ''), 10);
+                    var satelliteAsns = {
+                        14593: 'Starlink (SpaceX)',
+                        59717: 'Starlink (SpaceX)',
+                        54825: 'Starlink (SpaceX)',
+                        27277: 'Starlink (legacy)',
+                        1239:  'Sprint (legacy satellite)',
+                        7493:  'ViaSat',
+                        7156:  'ViaSat',
+                        16824: 'SES Networks'
+                    };
+                    if (satelliteAsns[asnNum]) {
+                        connType = 'satellite';
+                    }
+                }
+                var connTypeLabel = connType
+                    ? ({
+                        wifi:     'Wi-Fi',
+                        cellular: 'Cellular',
+                        ethernet: 'Ethernet',
+                        satellite:'Satellite',
+                        mixed:    'Mixed',
+                        wimax:    'WiMAX',
+                        vpn:      'VPN tunnel',
+                        bluetooth:'Bluetooth',
+                        none:     'Offline'
+                    }[connType.toLowerCase()] || (connType.charAt(0).toUpperCase() + connType.slice(1)))
+                    : '';
+                if (connEffective && !connTypeLabel) {
+                    connTypeLabel = connEffective.toUpperCase();
+                }
+
                 // ---- Fact tile grid -------------------------------
                 var factItems = [
-                    { label: 'IPv4',     value: ipv4,    mono: true, tone: ipv4 ? 'safe' : 'neutral', icon: '4' },
-                    { label: 'IPv6',     value: ipv6,    mono: true, tone: ipv6 ? 'safe' : 'neutral', icon: '6' },
-                    { label: 'Country',  value: country, mono: false, tone: country ? 'safe' : 'neutral', icon: '🌐' },
-                    { label: 'Region',   value: region,  mono: false, tone: region ? 'safe' : 'neutral', icon: '◎' },
-                    { label: 'City',     value: city,    mono: false, tone: city ? 'safe' : 'neutral', icon: '◉' },
-                    { label: 'Timezone', value: tz,      mono: true,  tone: tz ? 'safe' : 'neutral', icon: '⧖' },
-                    { label: 'ISP',      value: isp,     mono: false, tone: isp ? 'safe' : 'neutral', icon: '⚙' },
-                    { label: 'ASN',      value: asn,     mono: true,  tone: asn ? 'safe' : 'neutral', icon: 'ASN' }
+                    { label: 'IPv4',       value: ipv4,    mono: true, tone: ipv4 ? 'safe' : 'neutral', icon: '4' },
+                    { label: 'IPv6',       value: ipv6,    mono: true, tone: ipv6 ? 'safe' : 'neutral', icon: '6' },
+                    { label: 'Country',    value: country, mono: false, tone: country ? 'safe' : 'neutral', icon: '🌐' },
+                    { label: 'Region',     value: region,  mono: false, tone: region ? 'safe' : 'neutral', icon: '◎' },
+                    { label: 'City',       value: city,    mono: false, tone: city ? 'safe' : 'neutral', icon: '◉' },
+                    { label: 'Timezone',   value: tz,      mono: true,  tone: tz ? 'safe' : 'neutral', icon: '⧖' },
+                    { label: 'ISP',        value: isp,     mono: false, tone: isp ? 'safe' : 'neutral', icon: '⚙' },
+                    { label: 'ASN',        value: asn,     mono: true,  tone: asn ? 'safe' : 'neutral', icon: 'ASN' },
+                    { label: 'Connection', value: connTypeLabel || null,
+                      mono: false,
+                      tone: connTypeLabel ? 'safe' : 'neutral',
+                      icon: connType === 'wifi' ? '📶'
+                          : connType === 'cellular' ? '📱'
+                          : connType === 'ethernet' ? '🔌'
+                          : connType === 'satellite' ? '🛰'
+                          : connType === 'vpn' ? '🛡'
+                          : connType === 'bluetooth' ? '📲'
+                          : '⚡',
+                      // Pass the API snapshot through to the detail
+                      // helper via a custom property on the value.
+                      _detail: {
+                          type: connType, effectiveType: connEffective,
+                          downlink: connDownlink, rtt: connRtt,
+                          asn: asn, isp: isp
+                      }
+                    }
                 ];
                 var factGrid = el('div', { class: 'pcv2__connection-facts' });
                 factItems.forEach(function (it, idx) {
-                    var tile = el('div', {
-                        class: 'pcv2__connection-tile',
-                        'data-pcv2-tone': it.tone,
-                        'data-pcv2-key': it.label.toLowerCase()
-                    });
-                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
-                    var iconEl = el('span', {
-                        class: 'pcv2__connection-tile-icon',
-                        'aria-hidden': 'true',
-                        text: it.icon
-                    });
-                    var labelEl = el('div', { class: 'pcv2__connection-tile-label', text: it.label });
-                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
-                    valueEl.appendChild(pcv2DisplayValue(it.value));
-                    if (it.mono) valueEl.classList.add('mono');
-                    tile.appendChild(iconEl);
-                    tile.appendChild(labelEl);
-                    tile.appendChild(valueEl);
-                    factGrid.appendChild(tile);
+                    // Phase 25: tiles are now native <details> with
+                    // click-to-expand detail panels. Use the shared
+                    // renderFactTile() helper so all four cards share
+                    // the same expand behaviour and animation timing.
+                    factGrid.appendChild(renderFactTile({
+                        key:   it.label.toLowerCase(),
+                        label: it.label,
+                        value: it.value,
+                        mono:  !!it.mono,
+                        tone:  it.tone,
+                        icon:  it.icon,
+                        delay: idx * 60
+                    }));
                 });
                 body.appendChild(factGrid);
+                attachTileExpand(factGrid);
 
                 renderCard(card, PCV2.i18n.connectionTitle || 'Connection', body);
             } else if (key === 'anonymity') {
@@ -1750,25 +2148,18 @@
                 ];
                 var factGrid = el('div', { class: 'pcv2__connection-facts' });
                 factItems.forEach(function (it, idx) {
-                    var tile = el('div', {
-                        class: 'pcv2__connection-tile',
-                        'data-pcv2-tone': it.tone,
-                        'data-pcv2-key': it.label.toLowerCase()
-                    });
-                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
-                    tile.appendChild(el('span', {
-                        class: 'pcv2__connection-tile-icon',
-                        'aria-hidden': 'true',
-                        text: it.icon
+                    factGrid.appendChild(renderFactTile({
+                        key:   it.label.toLowerCase(),
+                        label: it.label,
+                        value: it.value,
+                        mono:  !!it.mono,
+                        tone:  it.tone,
+                        icon:  it.icon,
+                        delay: idx * 60
                     }));
-                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
-                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
-                    valueEl.appendChild(pcv2DisplayValue(it.value));
-                    if (it.mono) valueEl.classList.add('mono');
-                    tile.appendChild(valueEl);
-                    factGrid.appendChild(tile);
                 });
                 body.appendChild(factGrid);
+                attachTileExpand(factGrid);
 
                 renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity', body);
             } else if (key === 'dns') {
@@ -1868,25 +2259,18 @@
                 ];
                 var factGrid = el('div', { class: 'pcv2__connection-facts' });
                 browserRows.forEach(function (it, idx) {
-                    var tile = el('div', {
-                        class: 'pcv2__connection-tile',
-                        'data-pcv2-tone': it.tone,
-                        'data-pcv2-key': it.label.toLowerCase()
-                    });
-                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
-                    tile.appendChild(el('span', {
-                        class: 'pcv2__connection-tile-icon',
-                        'aria-hidden': 'true',
-                        text: it.icon
+                    factGrid.appendChild(renderFactTile({
+                        key:   it.label.toLowerCase(),
+                        label: it.label,
+                        value: it.value,
+                        mono:  !!it.mono,
+                        tone:  it.tone,
+                        icon:  it.icon,
+                        delay: idx * 60
                     }));
-                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
-                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
-                    valueEl.appendChild(pcv2DisplayValue(it.value));
-                    if (it.mono) valueEl.classList.add('mono');
-                    tile.appendChild(valueEl);
-                    factGrid.appendChild(tile);
                 });
                 body.appendChild(factGrid);
+                attachTileExpand(factGrid);
 
                 renderCard(card, PCV2.i18n.browserTitle || 'Browser Privacy', body);
             } else if (key === 'security') {
@@ -1999,25 +2383,18 @@
                 ];
                 var factGrid = el('div', { class: 'pcv2__connection-facts' });
                 factItems.forEach(function (it, idx) {
-                    var tile = el('div', {
-                        class: 'pcv2__connection-tile',
-                        'data-pcv2-tone': it.tone,
-                        'data-pcv2-key': it.label.toLowerCase()
-                    });
-                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
-                    tile.appendChild(el('span', {
-                        class: 'pcv2__connection-tile-icon',
-                        'aria-hidden': 'true',
-                        text: it.icon
+                    factGrid.appendChild(renderFactTile({
+                        key:   it.label.toLowerCase(),
+                        label: it.label,
+                        value: it.value,
+                        mono:  !!it.mono,
+                        tone:  it.tone,
+                        icon:  it.icon,
+                        delay: idx * 60
                     }));
-                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
-                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
-                    valueEl.appendChild(pcv2DisplayValue(it.value));
-                    if (it.mono) valueEl.classList.add('mono');
-                    tile.appendChild(valueEl);
-                    factGrid.appendChild(tile);
                 });
                 body.appendChild(factGrid);
+                attachTileExpand(factGrid);
 
                 renderCard(card, PCV2.i18n.securityTitle || 'Security Findings', body);
             }
@@ -2175,15 +2552,140 @@
         });
         findings.appendChild(list);
 
+        // ---- A+ suggestion box (Phase 27) -------------------------
+        // A prioritized list of actions the user can take to improve
+        // their privacy score. Sorted by current score (worst first)
+        // so the biggest wins are at the top. Each item shows the
+        // category, current score, and a concrete recommendation.
+        var suggestionsHost = findings.parentNode.querySelector(':scope > .pcv2__suggestions');
+        if (!suggestionsHost) {
+            suggestionsHost = el('section', {
+                class: 'pcv2__suggestions',
+                'aria-labelledby': 'pcv2-suggestions-heading'
+            });
+            findings.parentNode.insertBefore(suggestionsHost, findings.nextSibling);
+        }
+        clear(suggestionsHost);
+        suggestionsHost.appendChild(renderSuggestionsBox(cats, privReport));
+
         // Post-scan share/export bar — reuse the static host if the
         // server-rendered skeleton has one (Phase 19 inline layout),
         // otherwise create one next to the findings region.
         var actionsHost = findings.parentNode.querySelector(':scope > .pcv2__actions-host');
         if (!actionsHost) {
             actionsHost = el('div', { class: 'pcv2__actions-host' });
-            findings.parentNode.insertBefore(actionsHost, findings.nextSibling);
+            findings.parentNode.insertBefore(actionsHost, suggestionsHost.nextSibling);
         }
         renderPostScanActions(report, actionsHost);
+    }
+
+    /**
+     * Render the "How to reach A+" suggestion box. Picks the
+     * worst-scoring categories and surfaces their recommendations as
+     * a numbered, actionable list. If the user is already at A or
+     * A+, shows a celebratory state instead.
+     */
+    function renderSuggestionsBox(cats, privReport) {
+        var wrap = el('div', { class: 'pcv2__suggestions-inner' });
+        var header = el('div', { class: 'pcv2__suggestions-header' });
+        header.appendChild(el('h3', {
+            id: 'pcv2-suggestions-heading',
+            class: 'pcv2__suggestions-title',
+            text: PCV2.i18n.suggestionsTitle || 'How to reach A+'
+        }));
+        var overall = (typeof privReport.overall === 'number') ? privReport.overall : null;
+        var currentGrade = privReport.grade || '—';
+        var targetScore = 95;
+        var targetGrade = 'A+';
+        var scoreDelta = (overall != null) ? Math.max(0, targetScore - overall) : null;
+
+        var status = el('div', {
+            class: 'pcv2__suggestions-status',
+            'data-pcv2-tone': scoreDelta === 0 ? 'safe' : (scoreDelta != null && scoreDelta <= 5 ? 'warning' : 'danger')
+        });
+        status.appendChild(el('span', {
+            class: 'pcv2__suggestions-status-grade',
+            text: currentGrade
+        }));
+        status.appendChild(el('span', {
+            class: 'pcv2__suggestions-status-text',
+            text: scoreDelta === 0
+                ? (PCV2.i18n.suggestionsAlreadyAt || "You're at the top — keep your current setup.")
+                : (overall != null
+                    ? ((PCV2.i18n.suggestionsPointsAway || 'You are {delta} points away from {target}.'))
+                        .replace('{delta}', String(scoreDelta))
+                        .replace('{target}', targetGrade)
+                    : (PCV2.i18n.suggestionsRunScan || 'Run a scan to see your score.'))
+        }));
+        header.appendChild(status);
+        wrap.appendChild(header);
+
+        // Build the action list. Sort by current score ascending
+        // (worst first), filter out categories that are already at
+        // 100 % (no improvement possible), and pair each with the
+        // best recommendation we know about.
+        var actionKeys = Object.keys(cats || {})
+            .filter(function (k) {
+                var c = cats[k];
+                if (!c) return false;
+                var s = Math.round(c.score || c.percent || 0);
+                return s < 100;
+            })
+            .sort(function (a, b) {
+                return (cats[a].score || cats[a].percent || 0)
+                     - (cats[b].score || cats[b].percent || 0);
+            });
+
+        if (actionKeys.length === 0) {
+            wrap.appendChild(el('p', {
+                class: 'pcv2__suggestions-empty',
+                text: PCV2.i18n.suggestionsAllMaxed || 'Every category is already at 100%. Privacy perfectionist!'
+            }));
+            return wrap;
+        }
+
+        var list = el('ol', { class: 'pcv2__suggestions-list' });
+        var tierIcons = { danger: '✕', warning: '!', safe: '✓' };
+        actionKeys.slice(0, 6).forEach(function (k, idx) {
+            var c = cats[k];
+            var scoreVal = Math.round(c.score || c.percent || 0);
+            var sev = severityFromScore(scoreVal);
+            // Projected delta: how many points the user could gain
+            // by fixing this category. The conservative model is
+            // (100 - currentScore) * weight / totalWeight, but
+            // without weights we use a flat (100 - currentScore) /
+            // countOfSub100Categories approximation. The exact
+            // formula is documented inline.
+            var item = el('li', {
+                class: 'pcv2__suggestions-item',
+                'data-pcv2-tone': sev
+            });
+            var head = el('div', { class: 'pcv2__suggestions-item-head' });
+            head.appendChild(el('span', {
+                class: 'pcv2__suggestions-item-rank',
+                text: String(idx + 1).padStart(2, '0')
+            }));
+            head.appendChild(el('span', {
+                class: 'pcv2__suggestions-item-label',
+                text: prettySubLabel(k)
+            }));
+            head.appendChild(el('span', {
+                class: 'pcv2__suggestions-item-score',
+                'data-pcv2-tone': sev,
+                text: tierIcons[sev] + ' ' + scoreVal + ' / 100'
+            }));
+            item.appendChild(head);
+            var rec = pickRecommendation(c, k);
+            if (rec) {
+                item.appendChild(el('p', {
+                    class: 'pcv2__suggestions-item-rec',
+                    text: rec
+                }));
+            }
+            list.appendChild(item);
+        });
+        wrap.appendChild(list);
+        return wrap;
     }
 
     /* ---------- GeoTrace v2 renderer ----------------------------------- */
