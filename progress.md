@@ -1285,3 +1285,114 @@ Files NOT modified in this session: `plugin/public/assets/js/scanner.js`,
 `runScan`, `renderCards`, `scanLocalNetwork`, the v1 card CSS, the
 v1 report markup. v1 stays exactly as shipped in Phase 14.
 
+
+---
+
+## Phases 28 + 30 — Admin Logs + Dedicated GeoTrace (2026-09-10)
+
+Two features shipped together since they share admin-infrastructure work.
+
+### Phase 28 — Admin logs + per-category toggles + backup/restore
+
+- Extended `pc_event_log` schema with `event` (category) and `context`
+  (JSON) columns via idempotent `ALTER TABLE`. Existing installs
+  migrate forward on next admin request; the migration is guarded
+  by `SHOW COLUMNS LIKE` to avoid touching already-migrated tables.
+- New `EventLog::record_if_enabled($category, $level, $source, $message, $context)`
+  helper — every call site now enforces the per-category toggle in
+  one place, defaults to `true` so admins who never opened Settings
+  still get the full audit trail.
+- Wired call sites: `scan()`, `scan_geo_lookup()`, `scan_geo_paste()`,
+  `share_create()`, MaxMind download, cache flush, log clear, every
+  admin-post handler in `class-admin-databases`. New `share`-category
+  event fires on every shareable-link creation with `sid`, `ttl`,
+  `overall_score`, `grade`, and a `has_request_ip` flag.
+- New `Plugin::register_log_cron()` + `run_daily_purge()` —
+  schedules a daily `pc_log_purge` event that reads the
+  `logs.retention_days` and `logs.max_rows` policy and trims by
+  whichever cap is hit first.
+- New `Plugin::register_error_catcher()` + `record_shutdown_error()`
+  — uses `error_get_last()` on shutdown to capture fatal-class
+  errors (E_ERROR, E_PARSE, E_CORE_ERROR, ...) originating in the
+  plugin namespace, records them as `error` category.
+- New `PrivacyChecker\Admin\AdminLogs` + `admin/views/logs.php` +
+  `admin/assets/admin-logs.css` — a dedicated submenu under
+  "Privacy Checker → Logs & Backup" with: 6 KPI tiles (one per
+  category, color-coded), filter bar (category / level / window /
+  search), export-JSON / export-CSV / full-backup buttons, restore
+  form with dry-run + apply modes, clear-log button, paginated
+  table with 200 rows.
+- 6 new Settings-API fields under "Privacy & Logging" section:
+  master switch, 6 per-category checkboxes, retention-days, max-rows.
+  Sanitizer clamps retention [1..3650] and max-rows [1000..1M].
+- 14 new tests: 8 in `class-event-log-test.php` (toggle behavior,
+  back-compat signatures, baseline counts, filters), 6 in
+  `class-settings-test.php` (logs.* block sanitization).
+
+### Phase 30 — Dedicated GeoTrace tab matching traceroute-online.com
+
+- New shortcode `[privacy_checker_geotrace]` + auto-created
+  `/geotrace/` page on plugin activation (idempotent — re-running
+  on existing installs is a no-op).
+- Dark palette tokens scoped under `[data-pcv2-route="geotrace"]`:
+  `#0A0E14` background, `#22D3EE` accent, `#F472B6` warm,
+  Inter / JetBrains Mono fonts.
+- Wireframe: slim top nav, single-row hero form (Domain / IPv4 /
+  IPv6 / URL placeholder), quick-destination chips
+  (`1.1.1.1` / `github.com` / `bbc.co.uk`), 4-tile stats strip
+  (Hops reported / Last reply RTT / Networks observed / Total
+  distance via haversine), 2-up layout (CartoDB Dark Matter Leaflet
+  map left, numbered hop table right), paste-traceroute form,
+  disclosure panel with "What this route tells you" + 3D-globe
+  toggle gated behind `prefers-reduced-motion`.
+- Numbered map markers (01, 02, …) drawn as Leaflet `bindTooltip`
+  labels in accent cyan; polylines drawn in the same accent.
+- `renderGeoHopsTable()` shows columns: Hop / Router·ASN / Location /
+  RTT — mirrors the canonical `route.hops[]` shape, no fabricated
+  data.
+
+### Phase 30a — Hurricane Electric anycast location bug fix
+
+User pasted a real traceroute showing `be7.core3.par2.he.net`
+labelled "Santiago, CL · AS6939" and `be4.core2.mrs1.he.net`
+labelled "Fremont, US · AS6939". MaxMind returns the IP's
+*registered* location; HE uses anycast so the same IP advertises
+from many cities. Fixed by hostname parsing:
+
+- `parse_host_location()` extracts IATA / facility codes from
+  common hostnames (par→Paris, mrs→Marseille, lhr→London, fra,
+  ams, sjc, nrt, sin, syd, hkg, ord, iad, sfo, lax, ewr, jfk,
+  den, sea, atl, mia, dxb, ...) and a `LINODE_DC_MAP()` for
+  Linode's `<role>-<n>.<dc>.<region>.<country>.linode.com`
+  convention.
+- When the hostname hint matches, it overrides city / country /
+  country_code / lat / lon and escalates confidence to `high` with
+  a `host_override: true` flag. The `test_geo_record_never_claims_high_confidence`
+  test stays green — confidence only escalates on a real override.
+- 7 new tests cover HE par2/mrs1/lhr1, Linode cjj, and unknown-host
+  fall-through.
+
+### Files
+
+- New: `plugin/admin/class-admin-logs.php`, `admin/views/logs.php`,
+  `admin/assets/admin-logs.css`
+- Modified: `plugin/includes/class-event-log.php` (schema + helpers),
+  `plugin/includes/class-plugin.php` (cron + error catcher + dot-notation
+  setter + page seeder), `plugin/includes/class-rest-api.php`
+  (call-site wiring + Phase 30a), `plugin/includes/class-settings.php`
+  (logs.* sanitization), `plugin/admin/class-admin.php` (Settings-API
+  fields), `plugin/admin/class-admin-dashboard.php` (EventLog calls
+  in handlers), `plugin/admin/class-admin-databases.php` (EventLog
+  calls in handlers), `plugin/public/class-public-assets-v2.php`
+  (new shortcode + i18n + vantage-point helper), `plugin/public/assets/js/scanner-v2.js`
+  (stats + new table + CartoDB tiles + quick chips),
+  `plugin/public/assets/css/scanner-v2.css` (Phase 30 tokens + wireframe),
+  `plugin/tests/class-event-log-test.php` (8 new tests),
+  `plugin/tests/class-geotrace-pipeline-test.php` (7 new tests),
+  `plugin/tests/class-settings-test.php` (6 new tests).
+
+### Test results
+
+`vendor/bin/phpunit --testsuite="Privacy Checker"`: **237 tests,
+973 assertions, all green** (was 215 tests / 916 assertions before
+this phase; +22 tests added).
