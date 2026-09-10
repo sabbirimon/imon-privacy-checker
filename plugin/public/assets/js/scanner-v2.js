@@ -1657,24 +1657,120 @@
 
                 renderCard(card, PCV2.i18n.connectionTitle || 'Connection', body);
             } else if (key === 'anonymity') {
-                // Anonymity: detection pill at top (always visible),
-                // then type + confidence below.
+                // Anonymity card — redesigned in Phase 24:
+                //
+                //   ┌─ verdict pill (large, tone glow, animated halo) ─┐
+                //   │  Detection                                       │
+                //   │  No signal · VPN · Tor · Proxy                   │
+                //   └──────────────────────────────────────────────────┘
+                //
+                //   ┌─ confidence meter (horizontal fill bar) ─────────┐
+                //   │  high ████████░░ low                            │
+                //   └──────────────────────────────────────────────────┘
+                //
+                //   ┌─ fact tiles ─────────────────────────────────────┐
+                //   │  Type · Confidence · ASN · Country · ISP        │
+                //   └──────────────────────────────────────────────────┘
                 var proxyTone = proxy.label === 'No signal' ? 'safe'
                               : proxy.label && /tor/i.test(proxy.label) ? 'danger'
                               : proxy.label && /proxy/i.test(proxy.label) ? 'warning'
                               : proxy.label && /vpn/i.test(proxy.label) ? 'warning'
                               : 'neutral';
-                var detectionPill = el('div', { class: 'pcv2__detection-pill' }, [
-                    el('span', { class: 'pcv2__detection-pill-label', text: 'Detection' }),
-                    renderStatusChip(proxyTone, proxy.label || (PCV2.i18n.noConfidence || 'Unknown'))
-                ]);
-                renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity', el('div', null, [
-                    detectionPill,
-                    renderKV([
-                        { label: 'Type', value: proxy.type || null },
-                        { label: 'Confidence', value: proxy.confidence || null }
-                    ])
-                ]));
+                var proxyLabel = proxy.label || (PCV2.i18n.noConfidence || 'Unknown');
+                var conf = (proxy.confidence || '').toLowerCase();
+                var confPct = conf === 'high' ? 88
+                            : conf === 'medium' ? 60
+                            : conf === 'low' ? 30
+                            : 0;
+                var body = el('div', { class: 'pcv2__anonymity-body' });
+
+                // ---- Verdict pill ------------------------------------
+                var verdict = el('div', {
+                    class: 'pcv2__anonymity-verdict',
+                    'data-pcv2-tone': proxyTone
+                });
+                var verdictLabel = el('div', {
+                    class: 'pcv2__anonymity-verdict-label',
+                    text: PCV2.i18n.detectionLabel || 'Detection'
+                });
+                var verdictName = el('div', {
+                    class: 'pcv2__anonymity-verdict-name',
+                    text: proxyLabel
+                });
+                verdict.appendChild(verdictLabel);
+                verdict.appendChild(verdictName);
+                body.appendChild(verdict);
+
+                // ---- Confidence meter --------------------------------
+                if (proxy.confidence) {
+                    var meter = el('div', {
+                        class: 'pcv2__anonymity-meter',
+                        role: 'progressbar',
+                        'aria-valuemin': '0',
+                        'aria-valuemax': '100',
+                        'aria-valuenow': String(confPct),
+                        'aria-label': (PCV2.i18n.confidenceLabel || 'Confidence') + ': ' + proxy.confidence
+                    });
+                    var meterTrack = el('div', { class: 'pcv2__anonymity-meter-track' });
+                    var meterFill = el('span', {
+                        class: 'pcv2__anonymity-meter-fill',
+                        'data-pcv2-tone': proxyTone
+                    });
+                    meterFill.style.setProperty('--pcv2-meter-target', confPct + '%');
+                    meterTrack.appendChild(meterFill);
+                    var meterLabel = el('div', { class: 'pcv2__anonymity-meter-label' });
+                    meterLabel.appendChild(el('span', {
+                        text: (PCV2.i18n.confidenceLabel || 'Confidence')
+                    }));
+                    meterLabel.appendChild(el('span', {
+                        class: 'pcv2__anonymity-meter-value',
+                        text: proxy.confidence
+                    }));
+                    meter.appendChild(meterTrack);
+                    meter.appendChild(meterLabel);
+                    body.appendChild(meter);
+                    // Animate fill on next frame.
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(function () {
+                            meterFill.style.width = confPct + '%';
+                        });
+                    } else {
+                        meterFill.style.width = confPct + '%';
+                    }
+                }
+
+                // ---- Fact tiles --------------------------------------
+                var factItems = [
+                    { label: 'Type',        value: proxy.type,  tone: proxyTone, icon: '◐' },
+                    { label: 'Confidence',  value: proxy.confidence, tone: proxyTone, icon: '◈' },
+                    { label: 'ASN',         value: intel.asn,  mono: true, tone: 'safe', icon: 'ASN' },
+                    { label: 'Country',     value: intel.country_name || intel.country, tone: 'safe', icon: '🌐' },
+                    { label: 'ISP',         value: intel.isp,  tone: 'safe', icon: '⚙' },
+                    { label: 'IP',          value: (report.request_ip && report.request_ip.ipv4) || null, mono: true, tone: 'safe', icon: '4' }
+                ];
+                var factGrid = el('div', { class: 'pcv2__connection-facts' });
+                factItems.forEach(function (it, idx) {
+                    var tile = el('div', {
+                        class: 'pcv2__connection-tile',
+                        'data-pcv2-tone': it.tone,
+                        'data-pcv2-key': it.label.toLowerCase()
+                    });
+                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
+                    tile.appendChild(el('span', {
+                        class: 'pcv2__connection-tile-icon',
+                        'aria-hidden': 'true',
+                        text: it.icon
+                    }));
+                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
+                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
+                    valueEl.appendChild(pcv2DisplayValue(it.value));
+                    if (it.mono) valueEl.classList.add('mono');
+                    tile.appendChild(valueEl);
+                    factGrid.appendChild(tile);
+                });
+                body.appendChild(factGrid);
+
+                renderCard(card, PCV2.i18n.anonymityTitle || 'Anonymity', body);
             } else if (key === 'dns') {
                 // DNS: render the resolver detail from the parallel probe
                 // result, or show a "pending" placeholder if the probe
@@ -1682,44 +1778,136 @@
                 var dns = report.dns_test || rep.dns || {};
                 renderDnsCard(card, dns);
             } else if (key === 'browser') {
-                // Browser: always-on rows from navigator/screen — never
-                // "Not available" for UA, screen, languages, timezone.
+                // Browser card — redesigned in Phase 24:
+                //
+                //   ┌─ UA badge (big, mono, copy-to-clipboard) ────────┐
+                //   │  Mozilla/5.0 ...                    [📋 copy]     │
+                //   └───────────────────────────────────────────────────┘
+                //
+                //   ┌─ feature chips (canvas / webgl / fonts / plugins) ┐
+                //   └───────────────────────────────────────────────────┘
+                //
+                //   ┌─ fact tiles ───────────────────────────────────────┐
+                //   │  Browser · Engine · OS · Screen · Languages · ...  │
+                //   └───────────────────────────────────────────────────┘
                 var fp = report.fingerprint || {};
-                var browserKV = el('dl', { class: 'pcv2__rows' });
-                var browserRows = [
-                    // user_agent in the REST payload is an object
-                    // {raw, browser, version, os, device, engine, is_bot}.
-                    // Rendering the whole object as text yielded the literal
-                    // "[object Object]". Prefer the parsed fields when they
-                    // are present, fall back to the raw UA string, and
-                    // finally to navigator.userAgent for the live browser.
-                    { label: 'User Agent', value: uaDisplayValue(report.user_agent), mono: true, always: true },
-                    { label: 'Browser',    value: uaBrowserName(report.user_agent), always: true },
-                    { label: 'Languages',  value: (navigator.languages || []).join(', ') || null, always: true },
-                    { label: 'Timezone',   value: (Intl.DateTimeFormat().resolvedOptions().timeZone) || null, always: true },
-                    { label: 'Screen',     value: screen.width + ' × ' + screen.height, always: true },
-                    { label: 'Entropy',    value: fp.entropy_bits ? fp.entropy_bits + ' bits' : null }
-                ];
-                browserRows.forEach(function (it) {
-                    var dt = el('dt', { text: it.label });
-                    var dd = el('dd', {
-                        class: (it.mono ? 'mono ' : '') + (it.always ? 'pcv2__row--always-on' : '')
+                var ua = report.user_agent || {};
+                var uaStr = uaDisplayValue(ua);
+                var body = el('div', { class: 'pcv2__browser-body' });
+
+                // ---- UA badge ----------------------------------------
+                if (uaStr) {
+                    var uaBadge = el('div', {
+                        class: 'pcv2__browser-ua',
+                        'data-pcv2-tone': 'safe'
                     });
-                    dd.appendChild(pcv2DisplayValue(it.value));
-                    browserKV.appendChild(dt);
-                    browserKV.appendChild(dd);
+                    var uaLabel = el('span', {
+                        class: 'pcv2__browser-ua-label',
+                        text: PCV2.i18n.userAgentLabel || 'User Agent'
+                    });
+                    var uaValue = el('span', {
+                        class: 'pcv2__browser-ua-value mono',
+                        text: uaStr
+                    });
+                    var uaCopy = el('button', {
+                        type: 'button',
+                        class: 'pcv2__connection-ip-copy',
+                        'data-pcv2-action': 'copy-ua',
+                        'data-pcv2-ua': uaStr,
+                        'aria-label': (PCV2.i18n.copyUaLabel || 'Copy user agent'),
+                        title: (PCV2.i18n.copyUaLabel || 'Copy user agent')
+                    }, '⧉');
+                    uaBadge.appendChild(uaLabel);
+                    uaBadge.appendChild(uaValue);
+                    uaBadge.appendChild(uaCopy);
+                    body.appendChild(uaBadge);
+                }
+
+                // ---- Feature chips -----------------------------------
+                var features = fp.features || {};
+                var featureItems = [
+                    { label: 'Canvas',  on: !!features.canvas },
+                    { label: 'WebGL',   on: !!features.webgl },
+                    { label: 'Audio',   on: !!features.audio },
+                    { label: 'Fonts',   on: !!features.fonts },
+                    { label: 'Plugins', on: !!features.plugins },
+                    { label: 'Battery', on: !!features.battery }
+                ];
+                var chipList = el('div', { class: 'pcv2__browser-chips' });
+                featureItems.forEach(function (f, idx) {
+                    var chip = el('span', {
+                        class: 'pcv2__browser-chip',
+                        'data-pcv2-on': f.on ? '1' : '0',
+                        'data-pcv2-key': f.label.toLowerCase()
+                    });
+                    chip.style.setProperty('--pcv2-chip-delay', (idx * 50) + 'ms');
+                    chip.appendChild(el('span', {
+                        class: 'pcv2__browser-chip-dot',
+                        'aria-hidden': 'true',
+                        text: f.on ? '●' : '○'
+                    }));
+                    chip.appendChild(el('span', {
+                        class: 'pcv2__browser-chip-label',
+                        text: f.label
+                    }));
+                    chipList.appendChild(chip);
                 });
-                renderCard(card, PCV2.i18n.browserTitle || 'Browser Privacy', browserKV);
+                body.appendChild(chipList);
+
+                // ---- Fact tiles --------------------------------------
+                var uaParts = ua || {};
+                var browserRows = [
+                    { label: 'Browser', value: uaBrowserName(uaParts), tone: 'safe', icon: '◉' },
+                    { label: 'Engine',  value: uaParts.engine, tone: 'safe', icon: '⚙' },
+                    { label: 'OS',      value: uaParts.os, tone: 'safe', icon: '⊞' },
+                    { label: 'Device',  value: uaParts.device, tone: 'safe', icon: '▣' },
+                    { label: 'Languages', value: (navigator.languages || []).join(', ') || null, tone: 'safe', icon: '🗣' },
+                    { label: 'Timezone',  value: (Intl.DateTimeFormat().resolvedOptions().timeZone) || null, mono: true, tone: 'safe', icon: '⧖' },
+                    { label: 'Screen',    value: screen.width + ' × ' + screen.height, mono: true, tone: 'safe', icon: '▭' },
+                    { label: 'Entropy',   value: fp.entropy_bits ? fp.entropy_bits + ' bits' : null, mono: true, tone: fp.entropy_bits >= 12 ? 'safe' : (fp.entropy_bits >= 8 ? 'warning' : 'danger'), icon: 'Σ' }
+                ];
+                var factGrid = el('div', { class: 'pcv2__connection-facts' });
+                browserRows.forEach(function (it, idx) {
+                    var tile = el('div', {
+                        class: 'pcv2__connection-tile',
+                        'data-pcv2-tone': it.tone,
+                        'data-pcv2-key': it.label.toLowerCase()
+                    });
+                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
+                    tile.appendChild(el('span', {
+                        class: 'pcv2__connection-tile-icon',
+                        'aria-hidden': 'true',
+                        text: it.icon
+                    }));
+                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
+                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
+                    valueEl.appendChild(pcv2DisplayValue(it.value));
+                    if (it.mono) valueEl.classList.add('mono');
+                    tile.appendChild(valueEl);
+                    factGrid.appendChild(tile);
+                });
+                body.appendChild(factGrid);
+
+                renderCard(card, PCV2.i18n.browserTitle || 'Browser Privacy', body);
             } else if (key === 'security') {
-                // Security: verdict strip at top (always visible).
+                // Security card — redesigned in Phase 24:
+                //
+                //   ┌─ verdict pill (large, tone glow) ──────────────┐
+                //   │  Security Posture                               │
+                //   │  STRONG · ADEQUATE · AT RISK                    │
+                //   └─────────────────────────────────────────────────┘
+                //
+                //   ┌─ threat meters (TLS + Browser version) ─────────┐
+                //   │  TLS 1.3  ███████░░  Good                       │
+                //   │  Chrome 110+ █████░░░░  Outdated                │
+                //   └─────────────────────────────────────────────────┘
+                //
+                //   ┌─ fact tiles ─────────────────────────────────────┐
+                //   │  TLS · TLS Status · Browser · Outdated · ...    │
+                //   └─────────────────────────────────────────────────┘
                 var sp = report.security_posture || {};
                 var tlsVer = sp.tls && sp.tls.version;
                 var tlsStatus = sp.tls && sp.tls.status;
-                // The REST payload's security_posture.browser uses the key
-                // `browser` for the browser family name (e.g. "Chrome") and
-                // `version` for the version string — NOT `name`. Reading
-                // `sp.browser.name` produced the literal "undefined" we
-                // shipped in earlier screenshots.
                 var browserVer = sp.browser && (
                     (sp.browser.browser || '') +
                     (sp.browser.version ? ' ' + sp.browser.version : '')
@@ -1728,26 +1916,110 @@
                 var verdictTone = (tlsStatus === 'good' && !outdated) ? 'safe'
                                 : (tlsStatus === 'bad' || outdated) ? 'danger'
                                 : 'warning';
-                var verdictLabel = (tlsStatus === 'good' && !outdated) ? 'Strong'
-                                 : (tlsStatus === 'bad' || outdated) ? 'At Risk'
-                                 : 'Adequate';
-                var verdictStrip = el('div', { class: 'pcv2__security-verdict' }, [
-                    renderStatusChip(verdictTone, verdictLabel),
-                    el('span', { class: 'pcv2__security-verdict-label', text:
-                        outdated ? 'One or both security-posture signals are below current.'
-                                : (tlsStatus === 'bad' ? 'TLS protocol is below current.'
-                                : 'Both TLS and browser version are current.')
-                    })
-                ]);
-                renderCard(card, PCV2.i18n.securityTitle || 'Security Findings', el('div', null, [
-                    verdictStrip,
-                    renderKV([
-                        { label: 'TLS',         value: tlsVer, mono: true },
-                        { label: 'TLS Status',  value: tlsStatus },
-                        { label: 'Browser',     value: browserVer || null },
-                        { label: 'Outdated',    value: outdated ? 'Yes' : 'No' }
-                    ])
-                ]));
+                var verdictLabel = (tlsStatus === 'good' && !outdated) ? (PCV2.i18n.securityStrong || 'Strong')
+                                 : (tlsStatus === 'bad' || outdated) ? (PCV2.i18n.securityAtRisk || 'At Risk')
+                                 : (PCV2.i18n.securityAdequate || 'Adequate');
+                var body = el('div', { class: 'pcv2__security-body' });
+
+                // ---- Verdict pill ------------------------------------
+                var verdict = el('div', {
+                    class: 'pcv2__anonymity-verdict',
+                    'data-pcv2-tone': verdictTone
+                });
+                verdict.appendChild(el('div', {
+                    class: 'pcv2__anonymity-verdict-label',
+                    text: PCV2.i18n.securityPostureLabel || 'Security Posture'
+                }));
+                verdict.appendChild(el('div', {
+                    class: 'pcv2__anonymity-verdict-name',
+                    text: verdictLabel
+                }));
+                body.appendChild(verdict);
+
+                // ---- Threat meters (TLS + Browser) -------------------
+                var tlsPct = tlsStatus === 'good' ? 95
+                          : tlsStatus === 'bad'  ? 20
+                          : 55;
+                var browserPct = outdated ? 35 : 90;
+                var tlsTone = tlsStatus === 'good' ? 'safe'
+                            : tlsStatus === 'bad'  ? 'danger'
+                            : 'warning';
+                var browserTone = outdated ? 'warning' : 'safe';
+                var meters = el('div', { class: 'pcv2__security-meters' });
+                function buildMeter(label, value, pct, tone) {
+                    var meter = el('div', {
+                        class: 'pcv2__security-meter',
+                        role: 'progressbar',
+                        'aria-valuemin': '0',
+                        'aria-valuemax': '100',
+                        'aria-valuenow': String(pct),
+                        'aria-label': label + ': ' + pct + ' of 100'
+                    });
+                    var meterHead = el('div', { class: 'pcv2__security-meter-head' });
+                    meterHead.appendChild(el('span', {
+                        class: 'pcv2__security-meter-label',
+                        text: label
+                    }));
+                    meterHead.appendChild(el('span', {
+                        class: 'pcv2__security-meter-value',
+                        'data-pcv2-tone': tone,
+                        text: value || '—'
+                    }));
+                    meter.appendChild(meterHead);
+                    var track = el('div', { class: 'pcv2__anonymity-meter-track' });
+                    var fill = el('span', {
+                        class: 'pcv2__anonymity-meter-fill',
+                        'data-pcv2-tone': tone
+                    });
+                    fill.style.setProperty('--pcv2-meter-target', pct + '%');
+                    track.appendChild(fill);
+                    meter.appendChild(track);
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(function () { fill.style.width = pct + '%'; });
+                    } else {
+                        fill.style.width = pct + '%';
+                    }
+                    return meter;
+                }
+                if (tlsVer) {
+                    meters.appendChild(buildMeter('TLS ' + tlsVer, tlsStatus, tlsPct, tlsTone));
+                }
+                if (sp.browser) {
+                    var browserName = (sp.browser.browser || 'Browser') + (outdated ? ' — outdated' : ' — current');
+                    meters.appendChild(buildMeter(browserName, outdated ? 'Outdated' : 'Current', browserPct, browserTone));
+                }
+                body.appendChild(meters);
+
+                // ---- Fact tiles --------------------------------------
+                var factItems = [
+                    { label: 'TLS',         value: tlsVer, mono: true, tone: tlsTone, icon: '🔒' },
+                    { label: 'TLS Status',  value: tlsStatus, tone: tlsTone, icon: tlsStatus === 'good' ? '✓' : (tlsStatus === 'bad' ? '✕' : '!') },
+                    { label: 'Browser',     value: browserVer || null, mono: true, tone: browserTone, icon: '◉' },
+                    { label: 'Outdated',    value: outdated ? (PCV2.i18n.yes || 'Yes') : (PCV2.i18n.no || 'No'), tone: outdated ? 'warning' : 'safe', icon: outdated ? '!' : '✓' }
+                ];
+                var factGrid = el('div', { class: 'pcv2__connection-facts' });
+                factItems.forEach(function (it, idx) {
+                    var tile = el('div', {
+                        class: 'pcv2__connection-tile',
+                        'data-pcv2-tone': it.tone,
+                        'data-pcv2-key': it.label.toLowerCase()
+                    });
+                    tile.style.setProperty('--pcv2-tile-delay', (idx * 60) + 'ms');
+                    tile.appendChild(el('span', {
+                        class: 'pcv2__connection-tile-icon',
+                        'aria-hidden': 'true',
+                        text: it.icon
+                    }));
+                    tile.appendChild(el('div', { class: 'pcv2__connection-tile-label', text: it.label }));
+                    var valueEl = el('div', { class: 'pcv2__connection-tile-value' });
+                    valueEl.appendChild(pcv2DisplayValue(it.value));
+                    if (it.mono) valueEl.classList.add('mono');
+                    tile.appendChild(valueEl);
+                    factGrid.appendChild(tile);
+                });
+                body.appendChild(factGrid);
+
+                renderCard(card, PCV2.i18n.securityTitle || 'Security Findings', body);
             }
         });
 
@@ -2325,11 +2597,12 @@
      */
     function initCopyIpButtons() {
         document.addEventListener('click', function (ev) {
-            var btn = ev.target.closest('[data-pcv2-action="copy-ip"]');
+            // The same handler covers both copy-ip and copy-ua actions.
+            var btn = ev.target.closest('[data-pcv2-action="copy-ip"], [data-pcv2-action="copy-ua"]');
             if (!btn) return;
             ev.preventDefault();
-            var ip = btn.getAttribute('data-pcv2-ip') || '';
-            if (!ip) return;
+            var value = btn.getAttribute('data-pcv2-ip') || btn.getAttribute('data-pcv2-ua') || '';
+            if (!value) return;
             var original = btn.textContent;
             var done = function (ok) {
                 btn.textContent = ok ? '✓' : '✕';
@@ -2340,12 +2613,11 @@
                 }, 1400);
             };
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(ip).then(function () { done(true); }, function () { done(false); });
+                navigator.clipboard.writeText(value).then(function () { done(true); }, function () { done(false); });
             } else {
-                // Fallback: hidden textarea + execCommand.
                 try {
                     var ta = document.createElement('textarea');
-                    ta.value = ip;
+                    ta.value = value;
                     ta.style.position = 'fixed';
                     ta.style.opacity = '0';
                     document.body.appendChild(ta);

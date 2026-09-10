@@ -50,11 +50,16 @@ test.describe('v2 rendering-bug regressions', () => {
         await gotoV2(page);
         const html = await page.evaluate(() => document.body.innerHTML);
         expect(html).not.toContain('[object Object]');
-        // And the Browser card must have a non-empty User Agent row
-        // whose first row is a real string, not a bare dash.
+        // The Browser card was redesigned in Phase 24 — the UA value
+        // is now in .pcv2__browser-ua-value, not a <dt>/<dd>. Look
+        // for that selector.
         const uaRow = await page.evaluate(() => {
             const card = document.querySelector('[data-pcv2-card="browser"]');
             if (!card) return null;
+            // Primary: the new UA badge value span.
+            const v = card.querySelector('.pcv2__browser-ua-value');
+            if (v) return (v.textContent || '').trim();
+            // Legacy fallback: <dt>User Agent</dt> if anyone reverts.
             const rows = card.querySelectorAll('dt');
             for (const dt of rows) {
                 if ((dt.textContent || '').trim().toLowerCase() === 'user agent') {

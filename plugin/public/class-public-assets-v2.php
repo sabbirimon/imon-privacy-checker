@@ -178,6 +178,15 @@ final class PublicAssetsV2 {
                 'signalAriaLabel'  => __( 'Signal strength', 'privacy-checker' ),
                 'signalPending'    => __( 'Awaiting connection…', 'privacy-checker' ),
                 'geoPending'       => __( 'Geo lookup unavailable', 'privacy-checker' ),
+                'detectionLabel'    => __( 'Detection', 'privacy-checker' ),
+                'userAgentLabel'    => __( 'User Agent', 'privacy-checker' ),
+                'copyUaLabel'       => __( 'Copy user agent', 'privacy-checker' ),
+                'securityPostureLabel' => __( 'Security Posture', 'privacy-checker' ),
+                'securityStrong'    => __( 'Strong', 'privacy-checker' ),
+                'securityAtRisk'    => __( 'At Risk', 'privacy-checker' ),
+                'securityAdequate'  => __( 'Adequate', 'privacy-checker' ),
+                'yes'               => __( 'Yes', 'privacy-checker' ),
+                'no'                => __( 'No', 'privacy-checker' ),
                 'dnsNotRun'        => __( 'DNS test not yet run — the probe runs automatically with each scan.', 'privacy-checker' ),
                 // Plain-language (ELI5) labels — when the visitor flips the
                 // "Explain simply" toggle, the card titles and finding
