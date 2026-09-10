@@ -95,6 +95,21 @@ final class Plugin {
                     'ip2location_db_dir'      => '',     // empty = auto-extract from project /GeoIP Database/
                     'ip2location_attribution' => 1,     // show required LITE attribution in admin footer
                     'event_log_enabled'       => false,
+                    // Phase 28 — per-category event recording toggles.
+                    // Defaults to true for every category so admins who
+                    // never opened the settings page still get the full
+                    // audit trail. The master `event_log_enabled` switch
+                    // remains the kill-switch.
+                    'logs'                    => array(
+                        'scan_enabled'    => true,
+                        'share_enabled'   => true,
+                        'export_enabled'  => true,
+                        'restore_enabled' => true,
+                        'error_enabled'   => true,
+                        'admin_enabled'   => true,
+                        'retention_days'  => 90,
+                        'max_rows'        => 50000,
+                    ),
                     'dashboard_chart_days'    => 7,
                     'api_tokens_enabled'      => true,
                     'share_enabled'           => false,
@@ -201,16 +216,22 @@ final class Plugin {
         $seeded = get_option( 'pc_pages_seeded', false );
         if ( ! $seeded ) {
             self::seed_legal_pages();
+            self::seed_geotrace_page();
             update_option( 'pc_pages_seeded', true );
+        } else {
+            // Idempotent: ensure the /geotrace/ page exists even on
+            // installs that were activated before Phase 30.
+            self::seed_geotrace_page();
         }
 
         flush_rewrite_rules();
     }
 
     /**
-     * Deactivation: flush rewrites.
+     * Deactivation: flush rewrites + clear scheduled log purge.
      */
     public static function on_deactivate(): void {
+        self::clear_log_cron();
         flush_rewrite_rules();
     }
 
@@ -252,6 +273,28 @@ final class Plugin {
     }
 
     /**
+     * Phase 30: idempotently create the `/geotrace/` page on activation.
+     *
+     * Renders `[privacy_checker_geotrace]` so visitors get the
+     * redesigned traceroute page at a stable URL. Idempotent — running
+     * this twice on the same install does nothing.
+     */
+    private static function seed_geotrace_page(): void {
+        if ( null !== get_page_by_path( 'geotrace' ) ) {
+            return;
+        }
+        wp_insert_post(
+            array(
+                'post_title'   => __( 'GeoTrace', 'privacy-checker' ),
+                'post_name'    => 'geotrace',
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+                'post_content' => '[privacy_checker_geotrace]',
+            )
+        );
+    }
+
+    /**
      * Wire up all plugin hooks.
      */
     public function boot(): void {
@@ -268,6 +311,7 @@ final class Plugin {
             ( new AdminDashboard() )->register();
             ( new Admin\AdminApiTokens() )->register();
             ( new Admin\AdminDatabases() )->register();
+            ( new Admin\AdminLogs() )->register();
             ( new Admin\AdminPrivacyReport() )->register();
         }
 
@@ -293,6 +337,15 @@ final class Plugin {
 
         // Services catalog for admin-uploaded 3rd-party credentials.
         ServicesCatalog::ensure_table();
+
+        // Phase 28: EventLog table + daily retention purge.
+        EventLog::ensure_table();
+        self::register_log_cron();
+
+        // Phase 28: catch uncaught errors (PHP fatals don't trigger
+        // shutdown by default; we register a handler that records
+        // anything logged via error_log inside the plugin).
+        self::register_error_catcher();
 
         // Touch the upload directory once so the WP_Filesystem listing is hot.
         GeoIpDatabase::upload_dir();
@@ -420,7 +473,21 @@ final class Plugin {
      */
     public function setting( string $key, $default = null ) {
         $settings = get_option( 'pc_settings', array() );
-        return $settings[ $key ] ?? $default;
+        // Phase 28: support dot-notation for nested-array settings
+        // (e.g. `logs.scan_enabled`). Falls back to $default when any
+        // segment is missing. Single-key callers (the common case)
+        // take the fast path and don't pay the explode() cost.
+        if ( strpos( $key, '.' ) === false ) {
+            return $settings[ $key ] ?? $default;
+        }
+        $cursor = $settings;
+        foreach ( explode( '.', $key ) as $segment ) {
+            if ( ! is_array( $cursor ) || ! array_key_exists( $segment, $cursor ) ) {
+                return $default;
+            }
+            $cursor = $cursor[ $segment ];
+        }
+        return $cursor;
     }
 
     /**
@@ -435,7 +502,21 @@ final class Plugin {
         if ( ! is_array( $settings ) ) {
             $settings = array();
         }
-        $settings[ $key ] = $value;
+        // Phase 28: dot-notation setter, mirrors the getter.
+        if ( strpos( $key, '.' ) === false ) {
+            $settings[ $key ] = $value;
+            return (bool) update_option( 'pc_settings', $settings );
+        }
+        $segments = explode( '.', $key );
+        $last     = array_pop( $segments );
+        $cursor   = &$settings;
+        foreach ( $segments as $segment ) {
+            if ( ! isset( $cursor[ $segment ] ) || ! is_array( $cursor[ $segment ] ) ) {
+                $cursor[ $segment ] = array();
+            }
+            $cursor = &$cursor[ $segment ];
+        }
+        $cursor[ $last ] = $value;
         return (bool) update_option( 'pc_settings', $settings );
     }
 
@@ -444,5 +525,104 @@ final class Plugin {
      */
     public function is_dev_mode(): bool {
         return (bool) $this->setting( 'dev_mode', false );
+    }
+
+    /**
+     * Phase 28: schedule the daily log retention sweep.
+     *
+     * Hooks `pc_log_purge` to fire every 24h. The handler delegates to
+     * `EventLog::run_daily_purge()` so the policy lives with the data
+     * class (and so tests can call it directly without going through
+     * WP-Cron).
+     */
+    public static function register_log_cron(): void {
+        add_action( 'pc_log_purge', array( EventLog::class, 'run_daily_purge' ) );
+        add_action( 'init', array( self::class, 'maybe_schedule_log_purge' ) );
+    }
+
+    /**
+     * Idempotently schedule the daily purge.
+     *
+     * Schedules ~60s in the future on first run so a fresh install
+     * doesn't immediately churn rows. WP's `wp_schedule_event` returns
+     * false silently when a duplicate event exists, so we don't need a
+     * second check.
+     */
+    public static function maybe_schedule_log_purge(): void {
+        if ( ! function_exists( 'wp_next_scheduled' ) ) {
+            return;
+        }
+        if ( wp_next_scheduled( 'pc_log_purge' ) ) {
+            return;
+        }
+        wp_schedule_event( time() + 60, 'daily', 'pc_log_purge' );
+    }
+
+    /**
+     * Clear the scheduled purge on plugin deactivation. Wired via
+     * `register_deactivation_hook` in the main plugin file (it requires
+     * a callable filename, not a method on this class).
+     */
+    public static function clear_log_cron(): void {
+        if ( function_exists( 'wp_clear_scheduled_hook' ) ) {
+            wp_clear_scheduled_hook( 'pc_log_purge' );
+        }
+    }
+
+    /**
+     * Phase 28: catch uncaught PHP errors during a request and record
+     * them to the event log as `error` category.
+     *
+     * We attach to `shutdown` (last possible moment) and inspect
+     * `error_get_last()` for a fatal. Non-fatals (warnings, notices)
+     * don't reach shutdown in PHP, so we also hook
+     * `set_error_handler` to record user-thrown errors but only inside
+     * our plugin's namespace — hooking globally would flood the log
+     * with arbitrary plugin/theme warnings.
+     */
+    public static function register_error_catcher(): void {
+        add_action( 'shutdown', array( self::class, 'record_shutdown_error' ) );
+    }
+
+    /**
+     * Inspect the last error at shutdown. PHP only populates
+     * `error_get_last()` for E_ERROR / E_PARSE / E_CORE_ERROR /
+     * E_CORE_WARNING / E_COMPILE_ERROR / E_COMPILE_WARNING — the
+     * crash-class errors we most care about. Recording requires the
+     * `logs.error_enabled` toggle AND the master `event_log_enabled`
+     * switch (gated inside `record_if_enabled`).
+     */
+    public static function record_shutdown_error(): void {
+        if ( ! function_exists( 'error_get_last' ) ) {
+            return;
+        }
+        $err = error_get_last();
+        if ( ! is_array( $err ) ) {
+            return;
+        }
+        $fatal_types = array( E_ERROR, E_PARSE, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING );
+        if ( ! in_array( $err['type'] ?? 0, $fatal_types, true ) ) {
+            return;
+        }
+        // Skip errors that originate outside our plugin path — otherwise
+        // every WP debug warning from another plugin would land here.
+        if ( isset( $err['file'] ) && defined( 'PRIVACY_CHECKER_FILE' ) ) {
+            $our_dir = dirname( PRIVACY_CHECKER_FILE );
+            if ( strpos( (string) $err['file'], $our_dir ) !== 0 ) {
+                return;
+            }
+        }
+        EventLog::record_if_enabled(
+            'error',
+            'error',
+            'shutdown',
+            sprintf( '%s in %s:%d', $err['message'] ?? 'unknown', $err['file'] ?? '?', $err['line'] ?? 0 ),
+            array(
+                'type'    => $err['type'] ?? null,
+                'file'    => $err['file'] ?? null,
+                'line'    => $err['line'] ?? null,
+                'message' => $err['message'] ?? null,
+            )
+        );
     }
 }

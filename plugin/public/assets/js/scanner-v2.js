@@ -2721,9 +2721,21 @@
         }
         container.innerHTML = '';
         var map = window.L.map(container, { worldCopyJump: true, scrollWheelZoom: false }).setView([20, 0], 2);
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 18
+
+        // Phase 30: when the host element is on the dedicated GeoTrace page
+        // (data-pcv2-route="geotrace"), switch to the CartoDB Dark Matter
+        // basemap so the page matches traceroute-online.com's wireframe.
+        var isGeoPage = !!(container.closest && container.closest('[data-pcv2-route="geotrace"]'));
+        var tileUrl    = isGeoPage
+            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        var tileAttrib = isGeoPage
+            ? '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            : '&copy; OpenStreetMap contributors';
+        window.L.tileLayer(tileUrl, {
+            attribution: tileAttrib,
+            maxZoom: 18,
+            subdomains: 'abcd'
         }).addTo(map);
 
         var publicPoints = [];
@@ -2731,22 +2743,36 @@
         var target = route.target && route.target.lat != null ? route.target : null;
         var hops = Array.isArray(route.hops) ? route.hops : [];
 
+        // Phase 30: accent palette for the dedicated GeoTrace page.
+        var cAccent   = isGeoPage ? '#22D3EE' : '#1ea2c4';
+        var cOrigin   = isGeoPage ? '#94A3B8' : '#5b6373';
+        var cDest     = isGeoPage ? '#F472B6' : '#2ea043';
+        var cPrivate  = isGeoPage ? '#475569' : '#8a93a3';
+
         // Build segments: contiguous runs of points that have coords.
-        function addPoint(p, opts) {
+        function addPoint(p, opts, hopIdx) {
             if (!p || p.lat == null || p.lon == null) return;
             var m = window.L.circleMarker([p.lat, p.lon], Object.assign({
-                radius: opts && opts.origin ? 8 : opts && opts.dest ? 8 : 6,
-                color: opts && opts.origin ? '#5b6373'
-                      : opts && opts.dest   ? '#2ea043'
-                      : opts && opts.private ? '#8a93a3'
-                      : '#1ea2c4',
-                fillColor: opts && opts.origin ? '#5b6373'
-                          : opts && opts.dest   ? '#2ea043'
-                          : opts && opts.private ? '#8a93a3'
-                          : '#1ea2c4',
-                fillOpacity: 0.85,
+                radius: opts && opts.origin ? 9 : opts && opts.dest ? 9 : 7,
+                color: opts && opts.origin ? cOrigin
+                      : opts && opts.dest   ? cDest
+                      : opts && opts.private ? cPrivate
+                      : cAccent,
+                fillColor: opts && opts.origin ? cOrigin
+                          : opts && opts.dest   ? cDest
+                          : opts && opts.private ? cPrivate
+                          : cAccent,
+                fillOpacity: 0.95,
                 weight: 2
             }, opts && opts.extra || {}));
+            // Phase 30: number the hop markers (01, 02, …) when on the
+            // dedicated page. The map becomes a legend for the table.
+            if (isGeoPage && typeof hopIdx === 'number' && !(opts && (opts.origin || opts.dest))) {
+                m.bindTooltip(
+                    (hopIdx < 10 ? '0' : '') + hopIdx,
+                    { permanent: true, direction: 'center', className: 'pcv2-geo-marker-label' }
+                );
+            }
             if (p.label || p.hostname) m.bindPopup(p.label || p.hostname);
             m.addTo(map);
             publicPoints.push([p.lat, p.lon]);
@@ -2754,7 +2780,7 @@
 
         addPoint(probe, { origin: true });
         hops.forEach(function (h) {
-            addPoint({ lat: h.lat, lon: h.lon, hostname: h.hostname, label: h.hostname || h.ip }, { private: h.status === 'private' });
+            addPoint({ lat: h.lat, lon: h.lon, hostname: h.hostname, label: h.hostname || h.ip }, { private: h.status === 'private' }, h.index);
         });
         addPoint(target, { dest: true });
 
@@ -2766,7 +2792,7 @@
         });
         if (target && target.lat != null) ordered.push([target.lat, target.lon]);
         if (ordered.length >= 2) {
-            window.L.polyline(ordered, { color: '#1ea2c4', weight: 3, opacity: 0.85, dashArray: null }).addTo(map);
+            window.L.polyline(ordered, { color: cAccent, weight: 3, opacity: 0.9, dashArray: null }).addTo(map);
             try { map.fitBounds(ordered, { padding: [30, 30] }); } catch (_e) {}
         }
     }
@@ -2818,6 +2844,7 @@
         var metaEl   = host.querySelector('[data-pcv2-region="geo-meta"]');
         var hopsEl   = host.querySelector('[data-pcv2-region="geo-hops"]');
         var discl    = host.querySelector('[data-pcv2-region="geo-disclaimer"]');
+        var statsEl  = host.querySelector('[data-pcv2-region="geo-stats"]');
         // Meta.
         clear(metaEl);
         var meta = [
@@ -2832,18 +2859,161 @@
         });
         if (discl) discl.textContent = PCV2.i18n.geoDisclaimer || '';
 
+        // Phase 30: stats strip on the dedicated GeoTrace page.
+        if (statsEl) {
+            updateStatsStrip(route, statsEl);
+        }
+
         // Map.
         if (route.hops && route.hops.length > 0) {
             ensureLeaflet(function (ok) {
                 if (ok) renderRoute2D(route, mapEl);
-                else mapEl.innerHTML = '<div class="pcv2__geo-map-msg">' + (PCV2.i18n.geoUnavailable || 'Map unavailable') + '</div>';
+                else mapEl.innerHTML = '<div class="pcv2__geotrace-map-msg">' + (PCV2.i18n.geoUnavailable || 'Map unavailable') + '</div>';
             });
         } else {
-            mapEl.innerHTML = '<div class="pcv2__geo-map-msg">' + (PCV2.i18n.geoUnavailable || 'No traceroute data — paste your own below') + '</div>';
+            mapEl.innerHTML = '<div class="pcv2__geotrace-map-msg">' + (PCV2.i18n.geoUnavailable || 'No traceroute data — paste your own below') + '</div>';
         }
 
-        // Hop timeline.
-        renderHopTimeline(route, hopsEl);
+        // Hop timeline / table.
+        var isGeoPage = !!(host.getAttribute && host.getAttribute('data-pcv2-route') === 'geotrace');
+        if (isGeoPage) {
+            renderGeoHopsTable(route, hopsEl);
+        } else {
+            renderHopTimeline(route, hopsEl);
+        }
+    }
+
+    /**
+     * Phase 30: update the 4-tile stats strip on the dedicated GeoTrace
+     * page (Hops / Last RTT / Networks / Total distance).
+     */
+    function updateStatsStrip(route, statsEl) {
+        var hops = Array.isArray(route.hops) ? route.hops : [];
+        var setStat = function (region, value) {
+            var node = statsEl.querySelector('[data-pcv2-region="' + region + '"]');
+            if (node) node.textContent = value;
+        };
+        // Hops reported.
+        setStat('stat-hops', hops.length ? String(hops.length) : '—');
+
+        // Last reply RTT: the RTT of the final hop that actually answered.
+        var lastRtt = null;
+        for (var i = hops.length - 1; i >= 0; i--) {
+            if (hops[i].rtt_ms != null) { lastRtt = hops[i].rtt_ms; break; }
+        }
+        setStat('stat-rtt', lastRtt == null ? '—' : lastRtt.toFixed(2) + ' ms');
+
+        // Networks observed: count distinct ASNs/AS orgs across public hops.
+        var nets = {};
+        hops.forEach(function (h) {
+            if (h.status === 'public' && h.asn) {
+                nets[h.asn] = true;
+            } else if (h.status === 'public' && h.asn_org) {
+                nets[h.asn_org] = true;
+            }
+        });
+        var netCount = Object.keys(nets).length;
+        setStat('stat-networks', netCount ? String(netCount) : '—');
+
+        // Total distance: great-circle sum across contiguous geolocatable hops.
+        var totalKm = computeTotalDistanceKm(route);
+        setStat('stat-distance', totalKm > 0 ? Math.round(totalKm).toLocaleString() + ' km' : '—');
+
+        // Reveal the strip once we have any data.
+        if (route.hops && route.hops.length > 0) {
+            statsEl.removeAttribute('hidden');
+        }
+    }
+
+    /**
+     * Great-circle distance between two lat/lon pairs (km). Used for the
+     * "Total distance" KPI on the dedicated GeoTrace page.
+     */
+    function haversineKm(lat1, lon1, lat2, lon2) {
+        if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 0;
+        var R = 6371;
+        var toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(lat2 - lat1);
+        var dLon = toRad(lon2 - lon1);
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function computeTotalDistanceKm(route) {
+        var hops = Array.isArray(route.hops) ? route.hops : [];
+        var chain = [];
+        if (route.probe && route.probe.lat != null) chain.push(route.probe);
+        hops.forEach(function (h) {
+            if (h.lat != null && h.lon != null) chain.push({ lat: h.lat, lon: h.lon });
+        });
+        if (route.target && route.target.lat != null) chain.push(route.target);
+        var total = 0;
+        for (var i = 1; i < chain.length; i++) {
+            total += haversineKm(chain[i - 1].lat, chain[i - 1].lon, chain[i].lat, chain[i].lon);
+        }
+        return total;
+    }
+
+    /**
+     * Phase 30: render the hop table on the dedicated GeoTrace page.
+     * Columns: Hop / Router / Location / RTT / No-reply marker. Each
+     * row mirrors the corresponding numbered map marker.
+     */
+    function renderGeoHopsTable(route, container) {
+        clear(container);
+        var hops = Array.isArray(route.hops) ? route.hops : [];
+        if (hops.length === 0) {
+            container.appendChild(el('div', { class: 'pcv2__geo-hops-empty', text: PCV2.i18n.geoUnavailable || 'Traceroute unavailable' }));
+            return;
+        }
+        var table = el('table', { class: 'pcv2__geotrace-hops-table' });
+        var thead = el('thead');
+        var tr = el('tr');
+        tr.appendChild(el('th', { text: 'Hop' }));
+        tr.appendChild(el('th', { text: 'Router / network' }));
+        tr.appendChild(el('th', { text: 'Location' }));
+        tr.appendChild(el('th', { text: 'Avg RTT' }));
+        thead.appendChild(tr);
+        table.appendChild(thead);
+        var tbody = el('tbody');
+        hops.forEach(function (h) {
+            var row = el('tr');
+            var numCell = el('td', { class: 'hop-num mono', text: h.index < 10 ? '0' + h.index : String(h.index) });
+            row.appendChild(numCell);
+            var hostCell = el('td', { class: 'hop-host' });
+            if (h.status === 'unanswered') {
+                hostCell.appendChild(el('strong', { text: PCV2.i18n.unansweredBadge || 'No response' }));
+            } else {
+                var strong = el('strong', { text: h.hostname || h.ip || '—' });
+                hostCell.appendChild(strong);
+                if (h.asn) {
+                    hostCell.appendChild(el('span', { class: 'hop-conf', text: h.asn }));
+                }
+            }
+            row.appendChild(hostCell);
+            var locCell = el('td', { class: 'hop-loc' });
+            if (h.status === 'private') {
+                locCell.textContent = PCV2.i18n.privateBadge || 'Private';
+            } else {
+                var city = h.city ? h.city + (h.country ? ', ' + h.country : '') : (h.country || '—');
+                locCell.textContent = city;
+            }
+            row.appendChild(locCell);
+            var rttCell = el('td', { class: 'hop-rtt mono' });
+            if (h.rtt_ms == null) {
+                rttCell.classList.add('hop-no-reply');
+                rttCell.textContent = '—';
+            } else {
+                rttCell.textContent = h.rtt_ms.toFixed(2) + ' ms';
+            }
+            row.appendChild(rttCell);
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
     }
 
     /**
@@ -2869,12 +3039,35 @@
             .then(function (route) { renderRoute(route, host); })
             .catch(function (err) {
                 host.querySelector('[data-pcv2-region="geo-map"]').innerHTML =
-                    '<div class="pcv2__geo-map-msg">' + (PCV2.i18n.geoUnavailable || 'Traceroute failed') + ' — ' + escape(err && err.message) + '</div>';
+                    '<div class="pcv2__geotrace-map-msg">' + (PCV2.i18n.geoUnavailable || 'Traceroute failed') + ' — ' + escape(err && err.message) + '</div>';
             })
             .then(function () { runBtn.disabled = false; });
         }
 
         if (runBtn) runBtn.addEventListener('click', run);
+        // Phase 30: quick-destination chips on the dedicated page.
+        host.querySelectorAll('[data-pcv2-geo-quick]').forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                if (targetInput) {
+                    targetInput.value = chip.getAttribute('data-pcv2-geo-quick') || '';
+                }
+                run();
+            });
+        });
+        // Phase 30: 3D globe toggle — gates on prefers-reduced-motion and
+        // currently only displays a friendly notice (the v1 globe lives
+        // on the existing geotraceroute page).
+        var globeBtn = host.querySelector('[data-pcv2-action="geo-3d"]');
+        if (globeBtn) {
+            globeBtn.addEventListener('click', function () {
+                var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (reduced) {
+                    window.alert(PCV2.i18n.geoPending || '3D globe disabled — your system prefers reduced motion.');
+                    return;
+                }
+                window.alert(PCV2.i18n.geoPending || '3D globe view is on the v1 GeoTrace page.');
+            });
+        }
         if (pasteForm && pasteTextarea) {
             pasteForm.addEventListener('submit', function (ev) {
                 ev.preventDefault();

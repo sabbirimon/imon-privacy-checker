@@ -48,6 +48,7 @@ final class PublicAssetsV2 {
         add_shortcode( 'privacy_checker_v2_toggle', array( $this, 'toggle_shortcode' ) );
         add_shortcode( 'privacy_checker_v2_theme', array( $this, 'theme_toggle_shortcode' ) );
         add_shortcode( 'privacy_checker_v2_geotrace', array( $this, 'geotrace_shortcode' ) );
+        add_shortcode( 'privacy_checker_geotrace', array( $this, 'geotrace_page_shortcode' ) );
     }
 
     /**
@@ -183,6 +184,21 @@ final class PublicAssetsV2 {
                 'signalAriaLabel'  => __( 'Signal strength', 'privacy-checker' ),
                 'signalPending'    => __( 'Awaiting connection…', 'privacy-checker' ),
                 'geoPending'       => __( 'Geo lookup unavailable', 'privacy-checker' ),
+                'geoVpLabel'        => __( 'YOUR VANTAGE POINT', 'privacy-checker' ),
+                'geoHeroEyebrow'    => __( '04 / NETWORK ATLAS', 'privacy-checker' ),
+                'geoHeroTitle'      => __( 'Trace the path your packets take', 'privacy-checker' ),
+                'geoHeroSub'        => __( 'Enter any domain or IP. We trace the route from this server, geolocate every hop, and visualise the journey on a dark world map.', 'privacy-checker' ),
+                'geoTargetPh'       => __( 'Domain / IPv4 / IPv6 / URL', 'privacy-checker' ),
+                'geoTryDest'        => __( 'Try a destination:', 'privacy-checker' ),
+                'geoTraceHelper'    => __( 'A trace can take up to a minute.', 'privacy-checker' ),
+                'geoStatHops'       => __( 'Hops reported', 'privacy-checker' ),
+                'geoStatRtt'        => __( 'Last reply RTT', 'privacy-checker' ),
+                'geoStatNetworks'   => __( 'Networks observed', 'privacy-checker' ),
+                'geoStatDistance'   => __( 'Total distance', 'privacy-checker' ),
+                'geoBack'           => __( '← Back to dashboard', 'privacy-checker' ),
+                'geoDisclosureTitle'=> __( 'What this route tells you', 'privacy-checker' ),
+                'geoGlobeLabel'     => __( 'View in 3D globe', 'privacy-checker' ),
+                'geoGlobeDisabled'  => __( '3D globe disabled — your system prefers reduced motion.', 'privacy-checker' ),
                 'detectionLabel'    => __( 'Detection', 'privacy-checker' ),
                 'userAgentLabel'    => __( 'User Agent', 'privacy-checker' ),
                 'copyUaLabel'       => __( 'Copy user agent', 'privacy-checker' ),
@@ -489,5 +505,188 @@ final class PublicAssetsV2 {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Phase 30 — dedicated GeoTrace page shortcode.
+     *
+     * Renders the redesigned page matching traceroute-online.com:
+     *  - Slim top nav with brand + back-to-dashboard link
+     *  - Single-row hero with target input + Trace button
+     *  - 4-tile stats strip (Hops / Last RTT / Networks / Distance)
+     *  - 2-up layout: CartoDB Dark Matter Leaflet map + numbered hop table
+     *  - Disclosure panel for "what this route tells you" with 3D globe toggle
+     *
+     * The page is auto-created on plugin activation if no page with
+     * `post_name='geotrace'` already exists. The canonical shortcode is
+     * `[privacy_checker_geotrace]`; the v1 shortcode remains intact.
+     */
+    public function geotrace_page_shortcode( $atts = array() ): string {
+        $this->enqueue_v2_assets();
+        // Vantage-point badge: who's running this trace. Cached for the
+        // request so multiple renders don't re-query.
+        $vp = $this->get_vantage_point();
+        ob_start();
+        ?>
+        <section
+            class="pcv2 pcv2--geotrace"
+            data-pcv2-component="geotrace"
+            data-pcv2-route="geotrace"
+            data-pcv2-theme="dark"
+            aria-labelledby="pcv2-geotrace-title"
+        >
+            <header class="pcv2__geotrace-nav">
+                <a class="pcv2__geotrace-brand" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                    <span class="pcv2__geotrace-brand-mark" aria-hidden="true"></span>
+                    <span class="pcv2__geotrace-brand-text">
+                        <strong><?php esc_html_e( 'Privacy Checker', 'privacy-checker' ); ?></strong>
+                        <em><?php esc_html_e( 'GeoTrace', 'privacy-checker' ); ?></em>
+                    </span>
+                </a>
+                <a class="pcv2__geotrace-back" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                    <?php esc_html_e( '← Back to dashboard', 'privacy-checker' ); ?>
+                </a>
+            </header>
+
+            <section class="pcv2__geotrace-hero">
+                <p class="pcv2__geotrace-eyebrow">04 / <?php esc_html_e( 'NETWORK ATLAS', 'privacy-checker' ); ?></p>
+                <h1 id="pcv2-geotrace-title" class="pcv2__geotrace-title">
+                    <?php esc_html_e( 'Trace the path your packets take', 'privacy-checker' ); ?>
+                </h1>
+                <p class="pcv2__geotrace-sub">
+                    <?php esc_html_e(
+                        'Enter any domain or IP. We trace the route from this server, geolocate every hop, and visualise the journey on a dark world map.',
+                        'privacy-checker'
+                    ); ?>
+                </p>
+
+                <div class="pcv2__geotrace-vp">
+                    <span class="pcv2__geotrace-vp-label"><?php esc_html_e( 'YOUR VANTAGE POINT', 'privacy-checker' ); ?></span>
+                    <span class="pcv2__geotrace-vp-value">
+                        <?php echo esc_html( $vp['label'] ?? __( 'Unknown', 'privacy-checker' ) ); ?>
+                    </span>
+                </div>
+
+                <form class="pcv2__geotrace-form" data-pcv2-action="geo-target">
+                    <label class="pcv2__sr-only" for="pcv2-geo-target-v2"><?php esc_html_e( 'Target host, IP, or URL', 'privacy-checker' ); ?></label>
+                    <input
+                        id="pcv2-geo-target-v2"
+                        type="text"
+                        data-pcv2-region="geo-target"
+                        placeholder="<?php esc_attr_e( 'Domain / IPv4 / IPv6 / URL', 'privacy-checker' ); ?>"
+                        value="<?php echo esc_attr( home_url() ); ?>"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                    />
+                    <button type="button" class="pcv2__btn pcv2__btn--accent" data-pcv2-action="geo-run">
+                        <?php esc_html_e( 'Trace route ↗', 'privacy-checker' ); ?>
+                    </button>
+                </form>
+
+                <div class="pcv2__geotrace-chips" aria-label="<?php esc_attr_e( 'Quick destinations', 'privacy-checker' ); ?>">
+                    <span class="pcv2__geotrace-chips-label"><?php esc_html_e( 'Try a destination:', 'privacy-checker' ); ?></span>
+                    <button type="button" class="pcv2__chip" data-pcv2-geo-quick="1.1.1.1">1.1.1.1</button>
+                    <button type="button" class="pcv2__chip" data-pcv2-geo-quick="github.com">github.com</button>
+                    <button type="button" class="pcv2__chip" data-pcv2-geo-quick="bbc.co.uk">bbc.co.uk</button>
+                </div>
+
+                <p class="pcv2__geotrace-helper"><?php esc_html_e( 'A trace can take up to a minute.', 'privacy-checker' ); ?></p>
+            </section>
+
+            <section class="pcv2__geotrace-stats" data-pcv2-region="geo-stats" hidden>
+                <div class="pcv2__geotrace-stat" data-pcv2-stat="hops">
+                    <span class="pcv2__geotrace-stat-label"><?php esc_html_e( 'Hops reported', 'privacy-checker' ); ?></span>
+                    <span class="pcv2__geotrace-stat-value mono" data-pcv2-region="stat-hops">—</span>
+                </div>
+                <div class="pcv2__geotrace-stat" data-pcv2-stat="last-rtt">
+                    <span class="pcv2__geotrace-stat-label"><?php esc_html_e( 'Last reply RTT', 'privacy-checker' ); ?></span>
+                    <span class="pcv2__geotrace-stat-value mono" data-pcv2-region="stat-rtt">—</span>
+                </div>
+                <div class="pcv2__geotrace-stat" data-pcv2-stat="networks">
+                    <span class="pcv2__geotrace-stat-label"><?php esc_html_e( 'Networks observed', 'privacy-checker' ); ?></span>
+                    <span class="pcv2__geotrace-stat-value mono" data-pcv2-region="stat-networks">—</span>
+                </div>
+                <div class="pcv2__geotrace-stat" data-pcv2-stat="distance">
+                    <span class="pcv2__geotrace-stat-label"><?php esc_html_e( 'Total distance', 'privacy-checker' ); ?></span>
+                    <span class="pcv2__geotrace-stat-value mono" data-pcv2-region="stat-distance">—</span>
+                </div>
+            </section>
+
+            <section class="pcv2__geotrace-2up">
+                <div class="pcv2__geotrace-map" data-pcv2-region="geo-map">
+                    <div class="pcv2__geotrace-map-msg">
+                        <?php esc_html_e( 'Enter a target host above and click Trace route, or paste traceroute output below.', 'privacy-checker' ); ?>
+                    </div>
+                </div>
+                <div class="pcv2__geotrace-hops" data-pcv2-region="geo-hops"></div>
+            </section>
+
+            <details class="pcv2__geotrace-paste">
+                <summary><?php esc_html_e( 'Paste traceroute', 'privacy-checker' ); ?></summary>
+                <form data-pcv2-action="geo-paste">
+                    <label class="pcv2__sr-only" for="pcv2-geo-paste-v2"><?php esc_html_e( 'Traceroute text', 'privacy-checker' ); ?></label>
+                    <textarea id="pcv2-geo-paste-v2" data-pcv2-region="geo-paste" placeholder="1  192.0.2.1 (192.0.2.1)  1.123 ms  1.245 ms  1.301 ms"></textarea>
+                    <button type="submit" class="pcv2__btn pcv2__btn--accent"><?php esc_html_e( 'Visualize', 'privacy-checker' ); ?></button>
+                </form>
+            </details>
+
+            <details class="pcv2__geotrace-disclosure">
+                <summary><?php esc_html_e( 'What this route tells you', 'privacy-checker' ); ?></summary>
+                <div class="pcv2__geotrace-disclosure-body">
+                    <p data-pcv2-region="geo-disclaimer">
+                        <?php esc_html_e(
+                            'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS — coordinates show each hop IP\'s registered location, not its physical router.',
+                            'privacy-checker'
+                        ); ?>
+                    </p>
+                    <ul>
+                        <li><?php esc_html_e( 'Each numbered marker is one router along the path.', 'privacy-checker' ); ?></li>
+                        <li><?php esc_html_e( 'A polyline connects them in order — gaps mean hops that didn\'t reply.', 'privacy-checker' ); ?></li>
+                        <li><?php esc_html_e( 'RTT is round-trip time in milliseconds; large jumps may indicate satellite or transoceanic links.', 'privacy-checker' ); ?></li>
+                        <li><?php esc_html_e( 'Hostname hints override GeoIP when the IP block is anycast (e.g. Hurricane Electric\'s core routers advertise from many cities under one IP).', 'privacy-checker' ); ?></li>
+                    </ul>
+                    <button type="button" class="pcv2__btn" data-pcv2-action="geo-3d">
+                        <?php esc_html_e( 'View in 3D globe', 'privacy-checker' ); ?>
+                    </button>
+                </div>
+            </details>
+        </section>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Resolve the server's own IP-based vantage point for the badge.
+     *
+     * Cached per-request in a static so multiple renders don't re-query.
+     * Falls back to "Unknown" if no IP intel is available.
+     *
+     * @return array{label:string}
+     */
+    private static ?array $vantage_cache = null;
+
+    private function get_vantage_point(): array {
+        if ( null !== self::$vantage_cache ) {
+            return self::$vantage_cache;
+        }
+        try {
+            $ip = \PrivacyChecker\IpFallback::server_self_ip();
+            $intel = array();
+            if ( null !== $ip && '' !== $ip ) {
+                $intel = \PrivacyChecker\IpFallback::lookup( $ip );
+            }
+            $city  = (string) ( $intel['city']    ?? '' );
+            $cc    = strtoupper( (string) ( $intel['country'] ?? $intel['country_code'] ?? '' ) );
+            $isp   = (string) ( $intel['asn_org'] ?? $intel['isp'] ?? '' );
+            $label = trim( sprintf( '%s%s%s', $isp ? $isp . ' — ' : '', $city, $cc ? ', ' . $cc : '' ) );
+            if ( '' === $label ) {
+                $label = $ip ?: __( 'Unknown', 'privacy-checker' );
+            }
+        } catch ( \Throwable $e ) {
+            $label = __( 'Unknown', 'privacy-checker' );
+        }
+        self::$vantage_cache = array( 'label' => $label );
+        return self::$vantage_cache;
     }
 }

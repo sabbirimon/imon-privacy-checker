@@ -418,6 +418,20 @@ final class RestApi {
             'report'     => $report,
         ), $ttl );
 
+        EventLog::record_if_enabled(
+            'share',
+            'info',
+            'share',
+            sprintf( 'share link created sid=%s ttl=%ds', $sid, $ttl ),
+            array(
+                'sid'              => $sid,
+                'ttl'              => $ttl,
+                'overall_score'    => $report['privacy_report']['overall'] ?? null,
+                'grade'            => $report['privacy_report']['grade'] ?? null,
+                'has_request_ip'   => ! empty( $report['request_ip'] ),
+            )
+        );
+
         return rest_ensure_response( array(
             'sid'        => $sid,
             'url'        => rest_url( trailingslashit( self::namespace_name() ) . 'share/' . $sid ),
@@ -645,7 +659,33 @@ final class RestApi {
         }
 
         $client_signals = $this->collect_client_signals( $request );
-        return rest_ensure_response( ScannerOrchestrator::scan( $client_signals ) );
+        $start          = microtime( true );
+        $report         = ScannerOrchestrator::scan( $client_signals );
+        $duration_ms    = (int) round( ( microtime( true ) - $start ) * 1000 );
+
+        // Phase 28: record the scan event. Only the audit trail
+        // fields we want retained go in `context` — the full report
+        // is too large to log on every scan and is already available
+        // via the Privacy Report Inspector.
+        if ( is_array( $report ) ) {
+            $ip     = isset( $report['request_ip']['ipv4'] ) ? (string) $report['request_ip']['ipv4'] : 'unknown';
+            $score  = isset( $report['privacy_report']['overall'] ) ? (int) $report['privacy_report']['overall'] : null;
+            $grade  = isset( $report['privacy_report']['grade'] ) ? (string) $report['privacy_report']['grade'] : '';
+            EventLog::record_if_enabled(
+                'scan',
+                'info',
+                'scan',
+                sprintf( 'v%d scan from %s — score=%s grade=%s', 2, $ip, $score === null ? '—' : (string) $score, $grade ?: '—' ),
+                array(
+                    'ip'          => $ip,
+                    'score'       => $score,
+                    'grade'       => $grade,
+                    'duration_ms' => $duration_ms,
+                    'version'     => 2,
+                )
+            );
+        }
+        return rest_ensure_response( $report );
     }
 
     /**
@@ -1135,6 +1175,27 @@ final class RestApi {
                 count( $trace['hops'] )
             );
 
+        // Phase 28: record the live-traceroute event. Surface failures
+        // (source_kind=unavailable) at warning level so the admin can
+        // see them in the logs view.
+        EventLog::record_if_enabled(
+            'share',
+            $source_kind === 'unavailable' ? 'warning' : 'info',
+            'geotrace',
+            sprintf(
+                /* translators: 1: target host, 2: number of hops */
+                __( 'Live traceroute to %1$s — %2$d hops.', 'privacy-checker' ),
+                $host,
+                count( $trace['hops'] )
+            ),
+            array(
+                'source_kind' => $source_kind,
+                'hop_count'   => count( $trace['hops'] ),
+                'target_host' => $host,
+                'method'      => $trace['method'],
+            )
+        );
+
         return rest_ensure_response( array(
             'probe'      => $probe_record,
             'target'     => $target_record,
@@ -1199,6 +1260,24 @@ final class RestApi {
             'isp'          => '',
             'confidence'   => 'unknown',
             'flag'         => '',
+        );
+
+        // Phase 28: record the paste event. No PII (paste content) in
+        // context — just the count and the parsed target.
+        EventLog::record_if_enabled(
+            'share',
+            'info',
+            'geotrace',
+            sprintf(
+                /* translators: %d = number of hops */
+                __( 'Pasted traceroute — %d hops.', 'privacy-checker' ),
+                count( $hops )
+            ),
+            array(
+                'source_kind' => 'pasted-traceroute',
+                'hop_count'   => count( $hops ),
+                'target_host' => (string) ( $parsed['target_host'] ?? '' ),
+            )
         );
 
         return rest_ensure_response( array(
@@ -1595,12 +1674,38 @@ final class RestApi {
 
         // Confidence heuristic: country + city + ASN → medium; country
         // only → low; nothing → unknown. We never claim "high" because IP
-        // geolocation is inherently approximate.
+        // geolocation is inherently approximate — unless the hostname
+        // carries an authoritative facility code (Phase 30a).
         $confidence = 'unknown';
+        $overridden_by_host = false;
         if ( '' !== $country && '' !== $city && '' !== $asn ) {
             $confidence = 'medium';
         } elseif ( '' !== $country ) {
             $confidence = 'low';
+        }
+
+        // Phase 30a: hostname-driven location override.
+        //
+        // Some providers (Hurricane Electric / AS6939, many CDNs, etc.)
+        // advertise the *same* IP from many countries via anycast. The
+        // MaxMind / IP2Location registration of that IP block often
+        // points at one specific country (the one where the block was
+        // allocated), not the country the router physically sits in.
+        //
+        // When the hostname carries an authoritative IATA / facility code
+        // (`be7.core3.par2.he.net` → Paris, `be4.core2.mrs1.he.net` →
+        // Marseille, `lo0-0.gw1.cjj1.us.linode.com` → Newark), trust the
+        // hostname over the IP-registered country. Escalate confidence
+        // to `high` because the facility is named explicitly in DNS.
+        $host_hint = self::parse_host_location( $hostname );
+        if ( null !== $host_hint ) {
+            $city         = $host_hint['city'];
+            $country      = $host_hint['country_name'];
+            $country_code = $host_hint['country_code'];
+            $lat          = $host_hint['lat'];
+            $lon          = $host_hint['lon'];
+            $confidence   = 'high';
+            $overridden_by_host = true;
         }
 
         return array(
@@ -1615,6 +1720,187 @@ final class RestApi {
             'isp'          => $isp,
             'confidence'   => $confidence,
             'flag'         => self::country_flag( $country_code ?: $country ),
+            // Phase 30a: meta flag for the frontend so it can label the
+            // hop as "facility-verified" vs "ip-registered".
+            'host_override' => $overridden_by_host,
+        );
+    }
+
+    /**
+     * Extract an authoritative {city, country} from a router hostname.
+     *
+     * Recognises the common IATA / facility codes used by the major
+     * anycast / peering networks (Hurricane Electric, Linode, DigitalOcean,
+     * Vultr, Cloudflare, AWS, GCP, OVH, Hetzner, etc.). Returns null
+     * when the hostname doesn't carry a recognised code — callers then
+     * fall back to whatever the IP-intel provider returned.
+     *
+     * @return array{city:string, country_name:string, country_code:string, lat:float, lon:float}|null
+     */
+    private static function parse_host_location( string $hostname ): ?array {
+        if ( '' === $hostname ) {
+            return null;
+        }
+        $host = strtolower( $hostname );
+
+        // Hurricane Electric convention: <role>.<coreN>.<iata>N.he.net
+        //   be7.core3.par2.he.net  → Paris, FR
+        //   be4.core2.mrs1.he.net  → Marseille, FR
+        //   core1.lhr1.he.net      → London, GB
+        // The IATA code sits in the last label before `he.net`.
+        if ( str_ends_with( $host, '.he.net' ) ) {
+            $parts = explode( '.', $host );
+            // last = he.net, second-to-last is iata + digit suffix.
+            $iata_label = $parts[ count( $parts ) - 2 ] ?? '';
+            $iata       = preg_replace( '/[^a-z]/', '', $iata_label );
+            if ( isset( self::IATA_TO_LOCATION()[ $iata ] ) ) {
+                return self::IATA_TO_LOCATION()[ $iata ];
+            }
+        }
+
+        // Linode convention: lo<role>-<n>.<dc>.<region>.<country>.linode.com
+        //   lo0-0.gw1.cjj1.us.linode.com → Newark, US (cjj = Chicago + jitter)
+        //   liXXXX.members.linode.com    → fallback
+        // Linode's three-letter codes are mostly facility IDs, not IATA;
+        // we keep a curated map of the most-common ones and return null
+        // otherwise (so MaxMind wins).
+        if ( str_ends_with( $host, '.linode.com' ) ) {
+            $country = strtolower( $parts[ count( explode( '.', $host ) ) - 2 ] ?? '' );
+            // Map TLD-style country to a capital city if known — but
+            // since the IP-registered city is usually already correct
+            // for Linode, we mostly skip these and only override the
+            // well-known ambiguous cases.
+            $linode_map = self::LINODE_DC_MAP();
+            foreach ( $linode_map as $marker => $loc ) {
+                if ( str_contains( $host, $marker ) ) {
+                    return $loc;
+                }
+            }
+            // For non-mapped Linode hostnames, the .us / .jp / .de suffix
+            // is generally accurate enough — return null and let the
+            // IP-intel result stand.
+            unset( $country );
+        }
+
+        // Generic: try matching any 3-letter label against the IATA
+        // table. Many networks embed the IATA in a subdomain.
+        if ( preg_match_all( '/(?:^|\.)([a-z]{3})(?:\d|$|-)/', $host, $matches ) ) {
+            $iata_map = self::IATA_TO_LOCATION();
+            foreach ( $matches[1] as $code ) {
+                if ( isset( $iata_map[ $code ] ) ) {
+                    return $iata_map[ $code ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * IATA airport / metro code → canonical location. Used as the
+     * authoritative source for anycast routers whose hostname embeds
+     * the code (e.g. Hurricane Electric's `par2` / `mrs1` convention).
+     *
+     * Coordinates are city centroids, accurate enough for hop
+     * visualisation. The map renderer never draws a polyline to a
+     * coordinate more precise than this anyway.
+     *
+     * @return array<string,array{city:string, country_name:string, country_code:string, lat:float, lon:float}>
+     */
+    private static function IATA_TO_LOCATION(): array {
+        return array(
+            // North America
+            'ewr' => array( 'city' => 'Newark',  'country_name' => 'United States', 'country_code' => 'US', 'lat' => 40.7357, 'lon' => -74.1724 ),
+            'jfk' => array( 'city' => 'New York', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 40.6413, 'lon' => -73.7781 ),
+            'lga' => array( 'city' => 'New York', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 40.7769, 'lon' => -73.8740 ),
+            'ord' => array( 'city' => 'Chicago', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 41.9742, 'lon' => -87.9073 ),
+            'sjc' => array( 'city' => 'San Jose', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 37.3382, 'lon' => -121.8863 ),
+            'sfo' => array( 'city' => 'San Francisco', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 37.6213, 'lon' => -122.3790 ),
+            'lax' => array( 'city' => 'Los Angeles', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 33.9416, 'lon' => -118.4085 ),
+            'sea' => array( 'city' => 'Seattle', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 47.4502, 'lon' => -122.3088 ),
+            'den' => array( 'city' => 'Denver',  'country_name' => 'United States', 'country_code' => 'US', 'lat' => 39.8561, 'lon' => -104.6737 ),
+            'atl' => array( 'city' => 'Atlanta', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 33.6407, 'lon' => -84.4277 ),
+            'mia' => array( 'city' => 'Miami',   'country_name' => 'United States', 'country_code' => 'US', 'lat' => 25.7959, 'lon' => -80.2870 ),
+            'iad' => array( 'city' => 'Ashburn', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 39.0438, 'lon' => -77.4874 ),
+            'dca' => array( 'city' => 'Washington', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 38.8512, 'lon' => -77.0402 ),
+            'bos' => array( 'city' => 'Boston',  'country_name' => 'United States', 'country_code' => 'US', 'lat' => 42.3656, 'lon' => -71.0096 ),
+            'yyz' => array( 'city' => 'Toronto', 'country_name' => 'Canada',        'country_code' => 'CA', 'lat' => 43.6777, 'lon' => -79.6248 ),
+            'yul' => array( 'city' => 'Montreal','country_name' => 'Canada',        'country_code' => 'CA', 'lat' => 45.4577, 'lon' => -73.7497 ),
+            'mex' => array( 'city' => 'Mexico City','country_name' => 'Mexico',     'country_code' => 'MX', 'lat' => 19.4361, 'lon' => -99.0719 ),
+            // Europe
+            'lhr' => array( 'city' => 'London',  'country_name' => 'United Kingdom', 'country_code' => 'GB', 'lat' => 51.4700, 'lon' => -0.4543 ),
+            'lgw' => array( 'city' => 'London',  'country_name' => 'United Kingdom', 'country_code' => 'GB', 'lat' => 51.1537, 'lon' => -0.1821 ),
+            'par' => array( 'city' => 'Paris',   'country_name' => 'France',         'country_code' => 'FR', 'lat' => 49.0097, 'lon' =>  2.5479 ),
+            'cdg' => array( 'city' => 'Paris',   'country_name' => 'France',         'country_code' => 'FR', 'lat' => 49.0097, 'lon' =>  2.5479 ),
+            'mrs' => array( 'city' => 'Marseille','country_name' => 'France',        'country_code' => 'FR', 'lat' => 43.4393, 'lon' =>  5.2214 ),
+            'fra' => array( 'city' => 'Frankfurt','country_name' => 'Germany',       'country_code' => 'DE', 'lat' => 50.0379, 'lon' =>  8.5622 ),
+            'ams' => array( 'city' => 'Amsterdam','country_name' => 'Netherlands',   'country_code' => 'NL', 'lat' => 52.3105, 'lon' =>  4.7683 ),
+            'bru' => array( 'city' => 'Brussels','country_name' => 'Belgium',        'country_code' => 'BE', 'lat' => 50.9014, 'lon' =>  4.4844 ),
+            'mad' => array( 'city' => 'Madrid',  'country_name' => 'Spain',          'country_code' => 'ES', 'lat' => 40.4936, 'lon' => -3.5668 ),
+            'bcn' => array( 'city' => 'Barcelona','country_name' => 'Spain',         'country_code' => 'ES', 'lat' => 41.2974, 'lon' =>  2.0833 ),
+            'mil' => array( 'city' => 'Milan',   'country_name' => 'Italy',          'country_code' => 'IT', 'lat' => 45.6306, 'lon' =>  8.7281 ),
+            'rom' => array( 'city' => 'Rome',    'country_name' => 'Italy',          'country_code' => 'IT', 'lat' => 41.8003, 'lon' => 12.2389 ),
+            'vie' => array( 'city' => 'Vienna',  'country_name' => 'Austria',        'country_code' => 'AT', 'lat' => 48.1103, 'lon' => 16.5697 ),
+            'zur' => array( 'city' => 'Zurich',  'country_name' => 'Switzerland',    'country_code' => 'CH', 'lat' => 47.4647, 'lon' =>  8.5492 ),
+            'cph' => array( 'city' => 'Copenhagen','country_name' => 'Denmark',      'country_code' => 'DK', 'lat' => 55.6181, 'lon' => 12.6561 ),
+            'sto' => array( 'city' => 'Stockholm','country_name' => 'Sweden',        'country_code' => 'SE', 'lat' => 59.6519, 'lon' => 17.9186 ),
+            'osl' => array( 'city' => 'Oslo',    'country_name' => 'Norway',         'country_code' => 'NO', 'lat' => 60.1976, 'lon' => 11.1004 ),
+            'hel' => array( 'city' => 'Helsinki','country_name' => 'Finland',        'country_code' => 'FI', 'lat' => 60.3172, 'lon' => 24.9633 ),
+            'dub' => array( 'city' => 'Dublin',  'country_name' => 'Ireland',        'country_code' => 'IE', 'lat' => 53.4264, 'lon' => -6.2499 ),
+            'waw' => array( 'city' => 'Warsaw',  'country_name' => 'Poland',         'country_code' => 'PL', 'lat' => 52.1657, 'lon' => 20.9671 ),
+            'prg' => array( 'city' => 'Prague',  'country_name' => 'Czechia',        'country_code' => 'CZ', 'lat' => 50.1008, 'lon' => 14.2632 ),
+            'lis' => array( 'city' => 'Lisbon',  'country_name' => 'Portugal',       'country_code' => 'PT', 'lat' => 38.7813, 'lon' => -9.1359 ),
+            'ath' => array( 'city' => 'Athens',  'country_name' => 'Greece',         'country_code' => 'GR', 'lat' => 37.9364, 'lon' => 23.9445 ),
+            // Asia / Pacific
+            'nrt' => array( 'city' => 'Tokyo',   'country_name' => 'Japan',          'country_code' => 'JP', 'lat' => 35.7720, 'lon' => 140.3929 ),
+            'kix' => array( 'city' => 'Osaka',   'country_name' => 'Japan',          'country_code' => 'JP', 'lat' => 34.4348, 'lon' => 135.2440 ),
+            'icn' => array( 'city' => 'Seoul',   'country_name' => 'South Korea',    'country_code' => 'KR', 'lat' => 37.4602, 'lon' => 126.4407 ),
+            'hkg' => array( 'city' => 'Hong Kong','country_name' => 'Hong Kong',     'country_code' => 'HK', 'lat' => 22.3080, 'lon' => 113.9185 ),
+            'sin' => array( 'city' => 'Singapore','country_name' => 'Singapore',     'country_code' => 'SG', 'lat' => 1.3644,  'lon' => 103.9915 ),
+            'syd' => array( 'city' => 'Sydney',  'country_name' => 'Australia',      'country_code' => 'AU', 'lat' => -33.9399, 'lon' => 151.1753 ),
+            'mel' => array( 'city' => 'Melbourne','country_name' => 'Australia',     'country_code' => 'AU', 'lat' => -37.6733, 'lon' => 144.8430 ),
+            'bom' => array( 'city' => 'Mumbai',  'country_name' => 'India',          'country_code' => 'IN', 'lat' => 19.0896, 'lon' => 72.8656 ),
+            'del' => array( 'city' => 'Delhi',   'country_name' => 'India',          'country_code' => 'IN', 'lat' => 28.5562, 'lon' => 77.1000 ),
+            'blr' => array( 'city' => 'Bangalore','country_name' => 'India',         'country_code' => 'IN', 'lat' => 13.1986, 'lon' => 77.7066 ),
+            'pek' => array( 'city' => 'Beijing', 'country_name' => 'China',          'country_code' => 'CN', 'lat' => 40.0799, 'lon' => 116.6031 ),
+            'pvg' => array( 'city' => 'Shanghai','country_name' => 'China',          'country_code' => 'CN', 'lat' => 31.1443, 'lon' => 121.8083 ),
+            'tpe' => array( 'city' => 'Taipei',  'country_name' => 'Taiwan',         'country_code' => 'TW', 'lat' => 25.0797, 'lon' => 121.2342 ),
+            'bkk' => array( 'city' => 'Bangkok', 'country_name' => 'Thailand',       'country_code' => 'TH', 'lat' => 13.6900, 'lon' => 100.7501 ),
+            'kul' => array( 'city' => 'Kuala Lumpur','country_name' => 'Malaysia',   'country_code' => 'MY', 'lat' => 2.7456,  'lon' => 101.7099 ),
+            'cgk' => array( 'city' => 'Jakarta', 'country_name' => 'Indonesia',      'country_code' => 'ID', 'lat' => -6.1256, 'lon' => 106.6559 ),
+            'man' => array( 'city' => 'Manila',  'country_name' => 'Philippines',    'country_code' => 'PH', 'lat' => 14.5086, 'lon' => 121.0194 ),
+            'dxb' => array( 'city' => 'Dubai',   'country_name' => 'United Arab Emirates','country_code' => 'AE', 'lat' => 25.2532, 'lon' => 55.3657 ),
+            'tlv' => array( 'city' => 'Tel Aviv','country_name' => 'Israel',         'country_code' => 'IL', 'lat' => 32.0114, 'lon' => 34.8867 ),
+            'ist' => array( 'city' => 'Istanbul','country_name' => 'Turkey',         'country_code' => 'TR', 'lat' => 41.2606, 'lon' => 28.7406 ),
+            // South America / Africa / Oceania
+            'gru' => array( 'city' => 'Sao Paulo','country_name' => 'Brazil',        'country_code' => 'BR', 'lat' => -23.4356, 'lon' => -46.4731 ),
+            'eze' => array( 'city' => 'Buenos Aires','country_name' => 'Argentina',  'country_code' => 'AR', 'lat' => -34.8222, 'lon' => -58.5358 ),
+            'scl' => array( 'city' => 'Santiago', 'country_name' => 'Chile',         'country_code' => 'CL', 'lat' => -33.3930, 'lon' => -70.7858 ),
+            'lim' => array( 'city' => 'Lima',    'country_name' => 'Peru',           'country_code' => 'PE', 'lat' => -12.0219, 'lon' => -77.1143 ),
+            'bog' => array( 'city' => 'Bogota',  'country_name' => 'Colombia',       'country_code' => 'CO', 'lat' => 4.7016,  'lon' => -74.1469 ),
+            'jnb' => array( 'city' => 'Johannesburg','country_name' => 'South Africa','country_code' => 'ZA', 'lat' => -26.1392, 'lon' => 28.2460 ),
+            'cpt' => array( 'city' => 'Cape Town','country_name' => 'South Africa',  'country_code' => 'ZA', 'lat' => -33.9648, 'lon' => 18.6017 ),
+            'cai' => array( 'city' => 'Cairo',   'country_name' => 'Egypt',          'country_code' => 'EG', 'lat' => 30.1219, 'lon' => 31.4056 ),
+            'los' => array( 'city' => 'Lagos',   'country_name' => 'Nigeria',        'country_code' => 'NG', 'lat' =>  6.5774, 'lon' =>  3.3211 ),
+            'nbo' => array( 'city' => 'Nairobi', 'country_name' => 'Kenya',          'country_code' => 'KE', 'lat' => -1.3192, 'lon' => 36.9277 ),
+            'akl' => array( 'city' => 'Auckland','country_name' => 'New Zealand',    'country_code' => 'NZ', 'lat' => -37.0082, 'lon' => 174.7850 ),
+        );
+    }
+
+    /**
+     * Linode's three-letter datacenter codes → canonical location.
+     * Only includes the codes that conflict with their IP-registered
+     * country (most are accurate and don't need overriding).
+     *
+     * @return array<string,array{city:string, country_name:string, country_code:string, lat:float, lon:float}>
+     */
+    private static function LINODE_DC_MAP(): array {
+        return array(
+            // 'cjj' → Newark, NJ (not Chicago; Linode's "cjj" stands for
+            // "Chicago jitter" but the actual egress is Newark).
+            'cjj' => array( 'city' => 'Newark', 'country_name' => 'United States', 'country_code' => 'US', 'lat' => 40.7357, 'lon' => -74.1724 ),
+            // Add more curated overrides here if the user reports other
+            // Linode mismatches.
         );
     }
 

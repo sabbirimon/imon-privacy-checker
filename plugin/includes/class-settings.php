@@ -277,6 +277,24 @@ final class Settings {
             $output['secret_salt'] = wp_generate_password( 32, false );
         }
 
+        // Phase 28: per-category event-log toggles + retention policy.
+        // Each checkbox defaults to true (mirroring the activation default)
+        // so an admin who never opened the Settings page still gets the
+        // full audit trail. Retention caps at 3650 days (~10y) and the
+        // row cap at 1M to keep `purge()` bounded.
+        $logs_in = is_array( $input['logs'] ?? null ) ? (array) $input['logs'] : array();
+        $logs_current = is_array( $current['logs'] ?? null ) ? (array) $current['logs'] : array();
+        $output['logs'] = array(
+            'scan_enabled'    => ! empty( $logs_in['scan_enabled'] ),
+            'share_enabled'   => ! empty( $logs_in['share_enabled'] ),
+            'export_enabled'  => ! empty( $logs_in['export_enabled'] ),
+            'restore_enabled' => ! empty( $logs_in['restore_enabled'] ),
+            'error_enabled'   => ! empty( $logs_in['error_enabled'] ),
+            'admin_enabled'   => ! empty( $logs_in['admin_enabled'] ),
+            'retention_days'  => max( 1, min( 3650, (int) ( $logs_in['retention_days'] ?? ( $logs_current['retention_days'] ?? 90 ) ) ) ),
+            'max_rows'        => max( 1000, min( 1000000, (int) ( $logs_in['max_rows'] ?? ( $logs_current['max_rows'] ?? 50000 ) ) ) ),
+        );
+
         return $output;
     }
 

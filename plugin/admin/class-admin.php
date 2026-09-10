@@ -216,6 +216,100 @@ final class Admin {
             echo '<p class="description">' . esc_html__( '0 disables the log table. Logs are deleted daily.', 'privacy-checker' ) . '</p>';
         }, self::MENU_SLUG, 'pc_privacy' );
 
+        // Phase 28: Event Log master switch + per-category toggles.
+        // Lives under "Privacy & Logging" so admins see one coherent
+        // surface for everything that touches the log table.
+        add_settings_field( 'event_log_enabled', __( 'Master event log switch', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'event_log_enabled', false );
+            printf(
+                '<label><input type="checkbox" name="%1$s[event_log_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'Record admin + scan + share + export + restore + error events to an append-only event log table.', 'privacy-checker' )
+            );
+            echo '<p class="description">' . esc_html__( 'View + export + restore events from the new Logs submenu. Retention is enforced daily.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_scan_enabled', __( 'Record scan events', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.scan_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][scan_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'One row per scan (score + grade + duration, no report payload).', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_share_enabled', __( 'Record share events', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.share_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][share_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'One row per shareable link created.', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_export_enabled', __( 'Record export events', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.export_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][export_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'Rows created when an admin exports a JSON / CSV snapshot.', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_restore_enabled', __( 'Record restore events', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.restore_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][restore_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'Rows created when a backup is restored, or a GeoIP database is uploaded.', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_error_enabled', __( 'Record error events', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.error_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][error_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'Rows created from uncaught PHP fatals inside the plugin namespace.', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_admin_enabled', __( 'Record admin actions', 'privacy-checker' ), function () {
+            $value = (bool) Plugin::instance()->setting( 'logs.admin_enabled', true );
+            printf(
+                '<label><input type="checkbox" name="%1$s[logs][admin_enabled]" value="1" %2$s /> %3$s</label>',
+                esc_attr( Settings::OPTION_KEY ),
+                checked( $value, true, false ),
+                esc_html__( 'Rows created when an admin reorders the provider chain, flushes cache, clears the log, etc.', 'privacy-checker' )
+            );
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_retention_days', __( 'Event log retention (days)', 'privacy-checker' ), function () {
+            $value = (int) Plugin::instance()->setting( 'logs.retention_days', 90 );
+            printf(
+                '<input type="number" min="1" max="3650" name="%1$s[logs][retention_days]" value="%2$d" />',
+                esc_attr( Settings::OPTION_KEY ),
+                $value
+            );
+            echo '<p class="description">' . esc_html__( 'Rows older than this are deleted by the daily purge cron.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_privacy' );
+
+        add_settings_field( 'logs_max_rows', __( 'Event log row cap', 'privacy-checker' ), function () {
+            $value = (int) Plugin::instance()->setting( 'logs.max_rows', 50000 );
+            printf(
+                '<input type="number" min="1000" max="1000000" name="%1$s[logs][max_rows]" value="%2$d" />',
+                esc_attr( Settings::OPTION_KEY ),
+                $value
+            );
+            echo '<p class="description">' . esc_html__( 'Hard cap on total rows. Oldest rows are trimmed first when the cap is reached.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_privacy' );
+
         add_settings_section( 'pc_dns_test', __( 'DNS Leak Test', 'privacy-checker' ), function () {
             echo '<p>' . esc_html__( 'Real DNS leak testing via DNS-over-HTTPS fan-out. Configure the resolvers, hostname base, and rate limit. The plugin itself ships with no live DNS infrastructure; this enables the in-plugin probe when paired with resolvers you trust.', 'privacy-checker' ) . '</p>';
         }, self::MENU_SLUG );

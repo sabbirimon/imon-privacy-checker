@@ -18,6 +18,7 @@ declare( strict_types=1 );
 
 namespace PrivacyChecker\Admin;
 
+use PrivacyChecker\EventLog;
 use PrivacyChecker\GeoIpDatabase;
 use PrivacyChecker\Plugin;
 use PrivacyChecker\ServicesCatalog;
@@ -74,9 +75,28 @@ final class AdminDatabases {
 
 		$result = GeoIpDatabase::store_upload( $file, $category );
 		if ( is_wp_error( $result ) ) {
+			EventLog::record_if_enabled(
+				'admin',
+				'warning',
+				'db-upload',
+				sprintf( 'GeoIP upload failed: %s (%s)', $result->get_error_code(), $result->get_error_message() ),
+				array(
+					'category' => $category,
+					'error'    => $result->get_error_code(),
+					'message'  => $result->get_error_message(),
+				)
+			);
 			$this->redirect_err( $result->get_error_code() );
 		}
-		$this->redirect_ok( 'db_uploaded', array( 'name' => basename( (string) $result ) ) );
+		$name = basename( (string) $result );
+		EventLog::record_if_enabled(
+			'restore',
+			'info',
+			'db-upload',
+			sprintf( 'GeoIP upload ok: %s (%s)', $name, $category ),
+			array( 'category' => $category, 'name' => $name )
+		);
+		$this->redirect_ok( 'db_uploaded', array( 'name' => $name ) );
 	}
 
 	public function handle_db_delete(): void {
@@ -86,6 +106,13 @@ final class AdminDatabases {
 		check_admin_referer( 'pc_db_delete' );
 		$name = sanitize_file_name( wp_unslash( $_POST['name'] ?? '' ) );
 		$ok   = GeoIpDatabase::delete( $name );
+		EventLog::record_if_enabled(
+			'admin',
+			$ok ? 'info' : 'warning',
+			'db-delete',
+			$ok ? sprintf( 'GeoIP deleted: %s', $name ) : sprintf( 'GeoIP delete skipped (missing): %s', $name ),
+			array( 'name' => $name, 'ok' => $ok )
+		);
 		$this->redirect_ok( $ok ? 'db_deleted' : 'db_missing' );
 	}
 
@@ -94,12 +121,20 @@ final class AdminDatabases {
 			wp_die( esc_html__( 'You do not have permission to do this.', 'privacy-checker' ) );
 		}
 		check_admin_referer( 'pc_service_add' );
+		$vendor  = (string) ( $_POST['vendor'] ?? '' );
 		$id = ServicesCatalog::add(
-			(string) ( $_POST['vendor'] ?? '' ),
+			$vendor,
 			(string) ( $_POST['label'] ?? '' ),
 			(string) ( $_POST['endpoint'] ?? '' ),
 			(string) ( $_POST['api_key'] ?? '' ),
 			(bool)   ! empty( $_POST['enabled'] )
+		);
+		EventLog::record_if_enabled(
+			'admin',
+			'info',
+			'service-add',
+			sprintf( 'service added: vendor=%s id=%d', $vendor, $id ),
+			array( 'vendor' => $vendor, 'id' => $id )
 		);
 		$this->redirect_ok( 'service_added', array( 'id' => $id ) );
 	}
@@ -120,6 +155,13 @@ final class AdminDatabases {
 			'' !== (string) ( $_POST['api_key'] ?? '' ) ? (string) $_POST['api_key'] : null,
 			(bool)   ! empty( $_POST['enabled'] )
 		);
+		EventLog::record_if_enabled(
+			'admin',
+			'info',
+			'service-save',
+			sprintf( 'service saved: id=%d', $id ),
+			array( 'id' => $id )
+		);
 		$this->redirect_ok( 'service_saved' );
 	}
 
@@ -130,6 +172,13 @@ final class AdminDatabases {
 		check_admin_referer( 'pc_service_delete' );
 		$id = (int) ( $_POST['id'] ?? 0 );
 		ServicesCatalog::delete( $id );
+		EventLog::record_if_enabled(
+			'admin',
+			'info',
+			'service-delete',
+			sprintf( 'service deleted: id=%d', $id ),
+			array( 'id' => $id )
+		);
 		$this->redirect_ok( 'service_deleted' );
 	}
 

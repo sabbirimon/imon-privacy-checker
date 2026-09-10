@@ -118,6 +118,17 @@ final class AdminDashboard {
 		check_admin_referer( 'pc_maxmind_download' );
 		$result = MaxmindManager::download_now();
 		$status = $result['ok'] ? 'mm_ok' : 'mm_err';
+		EventLog::record_if_enabled(
+			'admin',
+			$result['ok'] ? 'info' : 'error',
+			'maxmind-download',
+			sprintf( 'MaxMind download %s (%d files)', $result['ok'] ? 'ok' : 'failed', (int) ( $result['downloaded'] ?? 0 ) ),
+			array(
+				'ok'         => (bool) $result['ok'],
+				'downloaded' => (int) ( $result['downloaded'] ?? 0 ),
+				'errors'     => $result['errors'] ?? array(),
+			)
+		);
 		wp_safe_redirect( add_query_arg(
 			array(
 				'page' => self::DASHBOARD_SLUG,
@@ -135,6 +146,13 @@ final class AdminDashboard {
 		}
 		check_admin_referer( 'pc_log_clear' );
 		EventLog::clear();
+		EventLog::record_if_enabled(
+			'admin',
+			'info',
+			'log-clear',
+			'event log cleared by admin',
+			array()
+		);
 		wp_safe_redirect( add_query_arg( array( 'page' => self::DASHBOARD_SLUG, 'pc_msg' => 'log_cleared' ), admin_url( 'admin.php' ) ) );
 		exit;
 	}
@@ -145,10 +163,17 @@ final class AdminDashboard {
 		}
 		check_admin_referer( 'pc_flush_all_cache' );
 		global $wpdb;
-		$wpdb->query(
+		$deleted = (int) $wpdb->query(
 			"DELETE FROM {$wpdb->options}
 			 WHERE option_name LIKE '_transient_pc\\_%'
 			    OR option_name LIKE '_transient_timeout_pc\\_%'"
+		);
+		EventLog::record_if_enabled(
+			'admin',
+			'info',
+			'cache-flush',
+			sprintf( 'purged %d pc_* transients', $deleted ),
+			array( 'deleted' => $deleted )
 		);
 		wp_safe_redirect( add_query_arg( array( 'page' => self::DASHBOARD_SLUG, 'pc_msg' => 'cache_flushed' ), admin_url( 'admin.php' ) ) );
 		exit;

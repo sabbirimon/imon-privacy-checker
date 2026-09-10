@@ -241,6 +241,147 @@ final class GeoTracePipelineTest extends TestCase {
 		$this->assertContains( $rec['confidence'], array( 'low', 'medium', 'unknown' ) );
 	}
 
+	// ----------------------------------------------------------------
+	// Phase 30a — hostname-driven location override
+	// ----------------------------------------------------------------
+
+	public function test_geo_record_hurricane_electric_par2_overrides_to_paris(): void {
+		// User-reported bug: be7.core3.par2.he.net was rendered as
+		// "Santiago, CL · AS6939" because the IP block is registered
+		// to Chile via anycast. The hostname's `par2` IATA code is
+		// authoritative — it must override MaxMind.
+		$rec = GeoTracePipelineHarness::geoRecord( '184.104.194.213', 'be7.core3.par2.he.net', array(
+			'country'      => 'Chile',
+			'country_code' => 'CL',
+			'city'         => 'Santiago',
+			'region'       => 'Santiago Metropolitan',
+			'latitude'     => -33.45,
+			'longitude'    => -70.66,
+			'asn'          => 'AS6939',
+			'isp'          => 'Hurricane Electric',
+		) );
+
+		$this->assertSame( 'Paris',         $rec['city'],         'par2 → Paris' );
+		$this->assertSame( 'FR',            $rec['country_code'], 'par2 → France' );
+		$this->assertSame( 'France',        $rec['country'],      'par2 → France' );
+		$this->assertSame( 'high',          $rec['confidence'],   'known facility → high' );
+		$this->assertSame( true,            $rec['host_override'], 'host_override flag set' );
+		$this->assertNotNull( $rec['lat'],  'coordinates populated from IATA centroid' );
+		$this->assertNotNull( $rec['lon'] );
+	}
+
+	public function test_geo_record_hurricane_electric_mrs1_overrides_to_marseille(): void {
+		// Second user-reported bug: be4.core2.mrs1.he.net was rendered as
+		// "Fremont, US · AS6939" — must become Marseille, FR.
+		$rec = GeoTracePipelineHarness::geoRecord( '184.104.193.4', 'be4.core2.mrs1.he.net', array(
+			'country'      => 'United States',
+			'country_code' => 'US',
+			'city'         => 'Fremont',
+			'latitude'     => 37.55,
+			'longitude'    => -122.0,
+			'asn'          => 'AS6939',
+			'isp'          => 'Hurricane Electric',
+		) );
+
+		$this->assertSame( 'Marseille', $rec['city'] );
+		$this->assertSame( 'FR',        $rec['country_code'] );
+		$this->assertSame( 'France',    $rec['country'] );
+		$this->assertSame( 'high',      $rec['confidence'] );
+		$this->assertSame( true,        $rec['host_override'] );
+	}
+
+	public function test_geo_record_hurricane_electric_lhr1_overrides_to_london(): void {
+		// Symmetric test for a UK HE core.
+		$rec = GeoTracePipelineHarness::geoRecord( '184.105.213.127', 'be47.core1.lhr1.he.net', array(
+			'country'      => 'United States',
+			'country_code' => 'US',
+			'city'         => 'Los Angeles',
+			'latitude'     => 34.05,
+			'longitude'    => -118.25,
+			'asn'          => 'AS6939',
+		) );
+
+		$this->assertSame( 'London',          $rec['city'] );
+		$this->assertSame( 'GB',              $rec['country_code'] );
+		$this->assertSame( 'United Kingdom',  $rec['country'] );
+		$this->assertSame( 'high',            $rec['confidence'] );
+	}
+
+	public function test_geo_record_linode_cjj_overrides_to_newark(): void {
+		// lo0-0.gw1.cjj1.us.linode.com is the Chicago-jitter egress that
+		// actually serves Newark, NJ. The .us TLD is correct but the
+		// city would be misread as Chicago from MaxMind's block registry.
+		$rec = GeoTracePipelineHarness::geoRecord( '173.255.239.101', 'lo0-0.gw1.cjj1.us.linode.com', array(
+			'country'      => 'United States',
+			'country_code' => 'US',
+			'city'         => 'Chicago',
+			'latitude'     => 41.85,
+			'longitude'    => -87.65,
+			'asn'          => 'AS63949',
+			'isp'          => 'Akamai Connected Cloud',
+		) );
+
+		$this->assertSame( 'Newark', $rec['city'], 'cjj → Newark (not Chicago)' );
+		$this->assertSame( 'US',     $rec['country_code'] );
+		$this->assertSame( 'high',   $rec['confidence'] );
+		$this->assertSame( true,     $rec['host_override'] );
+	}
+
+	public function test_geo_record_unknown_hostname_falls_back_to_maxmind(): void {
+		// An unrecognised hostname must NOT trigger the override — the
+		// MaxMind result stands as-is.
+		$rec = GeoTracePipelineHarness::geoRecord( '8.8.8.8', 'unknown-host.example', array(
+			'country'      => 'US',
+			'country_code' => 'US',
+			'city'         => 'Mountain View',
+			'latitude'     => 37.4,
+			'longitude'    => -122.1,
+			'asn'          => 'AS15169',
+		) );
+
+		$this->assertSame( 'Mountain View',  $rec['city'] );
+		$this->assertSame( 'US',             $rec['country_code'] );
+		$this->assertSame( 'medium',         $rec['confidence'], 'no host override → medium from raw MaxMind' );
+		$this->assertSame( false,            $rec['host_override'] );
+		$this->assertArrayNotHasKey( 'host_override', array_filter( array( 'missing-key-test' => true ) ) );
+	}
+
+	public function test_geo_record_empty_hostname_falls_back_to_maxmind(): void {
+		// Defensive: empty hostname must NOT crash and must NOT trigger
+		// the override.
+		$rec = GeoTracePipelineHarness::geoRecord( '1.1.1.1', '', array(
+			'country'      => 'AU',
+			'country_code' => 'AU',
+			'city'         => 'Sydney',
+			'latitude'     => -33.87,
+			'longitude'    => 151.21,
+			'asn'          => 'AS13335',
+		) );
+
+		$this->assertSame( 'Sydney',  $rec['city'] );
+		$this->assertSame( 'AU',      $rec['country_code'] );
+		$this->assertSame( 'medium',  $rec['confidence'] );
+		$this->assertSame( false,     $rec['host_override'] );
+	}
+
+	public function test_geo_record_host_override_keeps_asn_and_isp(): void {
+		// The hostname override must not blank out ASN / ISP — those
+		// are derived from the IP, not the location.
+		$rec = GeoTracePipelineHarness::geoRecord( '184.104.194.213', 'be7.core3.par2.he.net', array(
+			'country'      => 'Chile',
+			'country_code' => 'CL',
+			'city'         => 'Santiago',
+			'latitude'     => -33.45,
+			'longitude'    => -70.66,
+			'asn'          => 'AS6939',
+			'isp'          => 'Hurricane Electric',
+		) );
+
+		$this->assertSame( 'AS6939',                $rec['asn'], 'ASN preserved' );
+		$this->assertSame( 'Hurricane Electric',    $rec['isp'], 'ISP preserved' );
+		$this->assertSame( 'France',                $rec['country'] );
+	}
+
 	public function test_route_object_has_canonical_shape_consumed_by_2d_and_3d(): void {
 		// Build a representative route payload and assert the keys
 		// downstream 2D + 3D renderers depend on. The point of this test

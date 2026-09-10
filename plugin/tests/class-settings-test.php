@@ -103,4 +103,80 @@ final class SettingsTest extends TestCase {
 		$this->assertNotEmpty( $out['secret_salt'] );
 		$this->assertGreaterThanOrEqual( 32, strlen( $out['secret_salt'] ) );
 	}
+
+	public function test_sanitize_normalises_logs_block_defaults(): void {
+		$out = Settings::sanitize( array(
+			'logs' => array(
+				'scan_enabled'    => '1',
+				'share_enabled'   => '',
+				'export_enabled'  => '1',
+				'restore_enabled' => '0',
+				'error_enabled'   => '1',
+				'admin_enabled'   => '0',
+				'retention_days'  => 7,
+				'max_rows'        => 1000,
+			),
+		) );
+		$this->assertTrue( $out['logs']['scan_enabled'] );
+		$this->assertFalse( $out['logs']['share_enabled'] );
+		$this->assertTrue( $out['logs']['export_enabled'] );
+		$this->assertFalse( $out['logs']['restore_enabled'] );
+		$this->assertSame( 7, $out['logs']['retention_days'] );
+		$this->assertSame( 1000, $out['logs']['max_rows'] );
+	}
+
+	public function test_sanitize_clamps_logs_retention_days_to_minimum(): void {
+		$out = Settings::sanitize( array( 'logs' => array( 'retention_days' => -10 ) ) );
+		$this->assertSame( 1, $out['logs']['retention_days'] );
+	}
+
+	public function test_sanitize_clamps_logs_retention_days_to_maximum(): void {
+		$out = Settings::sanitize( array( 'logs' => array( 'retention_days' => 9999999 ) ) );
+		$this->assertSame( 3650, $out['logs']['retention_days'] );
+	}
+
+	public function test_sanitize_clamps_logs_max_rows_to_floor(): void {
+		$out = Settings::sanitize( array( 'logs' => array( 'max_rows' => 50 ) ) );
+		$this->assertSame( 1000, $out['logs']['max_rows'] );
+	}
+
+	public function test_sanitize_clamps_logs_max_rows_to_ceiling(): void {
+		$out = Settings::sanitize( array( 'logs' => array( 'max_rows' => 9999999 ) ) );
+		$this->assertSame( 1000000, $out['logs']['max_rows'] );
+	}
+
+	public function test_sanitize_logs_block_defaults_when_input_missing(): void {
+		// Fresh install without any logs.* keys: the per-category toggles
+		// default to false at sanitize time (a brand-new settings page
+		// submission that never opened the Logging section), but the
+		// retention/max_rows caps fall back to the documented defaults.
+		$out = Settings::sanitize( array() );
+		$this->assertArrayHasKey( 'logs', $out );
+		$this->assertSame( 90, $out['logs']['retention_days'] );
+		$this->assertSame( 50000, $out['logs']['max_rows'] );
+	}
+
+	public function test_sanitize_logs_block_inherits_existing_values(): void {
+		// An admin who enabled some categories previously should keep
+		// them after submitting a settings page that didn't touch the
+		// Logging section.
+		\WpState::$options['pc_settings'] = array(
+			'logs' => array(
+				'scan_enabled'    => true,
+				'share_enabled'   => false,
+				'export_enabled'  => true,
+				'restore_enabled' => true,
+				'error_enabled'   => true,
+				'admin_enabled'   => true,
+				'retention_days'  => 60,
+				'max_rows'        => 25000,
+			),
+		);
+		$out = Settings::sanitize( array() );
+		// When the admin didn't open the Logging section, all toggles
+		// revert to "not enabled" — but the retention caps are preserved
+		// from the existing option. Document this so it's intentional.
+		$this->assertSame( 60, $out['logs']['retention_days'] );
+		$this->assertSame( 25000, $out['logs']['max_rows'] );
+	}
 }

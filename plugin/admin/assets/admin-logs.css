@@ -1,0 +1,123 @@
+/* Privacy Checker — Logs & Backup admin styles (Phase 28) */
+
+.pc-logs {
+	max-width: 1200px;
+}
+
+.pc-logs__kpis {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 12px;
+	margin: 16px 0 24px;
+}
+
+.pc-logs__kpi {
+	background: var(--pc-surface, #fff);
+	border: 1px solid var(--pc-border, #c3c4c7);
+	border-left: 4px solid var(--pc-accent, #2271b1);
+	border-radius: 6px;
+	padding: 14px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.pc-logs__kpi[data-pcv2-tone="danger"] { border-left-color: #d63638; }
+.pc-logs__kpi[data-pcv2-tone="neutral"] { border-left-color: #8c8f94; }
+
+.pc-logs__kpi-label {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #50575e;
+	font-weight: 600;
+}
+.pc-logs__kpi-value {
+	font-size: 28px;
+	font-weight: 700;
+	color: #1d2327;
+}
+.pc-logs__kpi-sub {
+	font-size: 11px;
+	color: #8c8f94;
+}
+
+.pc-logs__filters {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	margin: 0 0 16px;
+	padding: 14px 16px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+}
+.pc-logs__filters label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #50575e;
+}
+.pc-logs__filters input,
+.pc-logs__filters select {
+	font-size: 13px;
+}
+
+.pc-logs__actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin: 0 0 16px;
+	padding: 12px 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+}
+
+.pc-logs__restore {
+	margin: 16px 0;
+	padding: 16px;
+	background: #f0f6fc;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+}
+.pc-logs__restore h2 { margin: 0 0 8px; font-size: 16px; }
+.pc-logs__restore form { display: flex; gap: 8px; align-items: center; }
+
+.pc-logs__table-wrap {
+	margin: 16px 0;
+}
+.pc-logs__table-wrap h2 { font-size: 16px; margin: 0 0 12px; }
+
+.pc-logs__table {
+	margin-top: 0;
+}
+.pc-logs__table .pc-col-time {
+	white-space: nowrap;
+	width: 170px;
+}
+
+.pc-cat-badge,
+.pc-level {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.pc-cat-badge { background: #e5e7eb; color: #1f2937; }
+.pc-cat-scan    { background: #dbeafe; color: #1e40af; }
+.pc-cat-share   { background: #fce7f3; color: #9d174d; }
+.pc-cat-export  { background: #d1fae5; color: #065f46; }
+.pc-cat-restore { background: #fef3c7; color: #92400e; }
+.pc-cat-admin   { background: #ede9fe; color: #5b21b6; }
+.pc-cat-error   { background: #fee2e2; color: #991b1b; }
+
+.pc-level-info    { background: #ecfeff; color: #155e75; }
+.pc-level-warning { background: #fef3c7; color: #92400e; }
+.pc-level-error   { background: #fee2e2; color: #991b1b; }

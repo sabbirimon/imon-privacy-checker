@@ -63,4 +63,85 @@ final class EventLogTest extends TestCase {
 		$series = EventLog::counts_by_day( 7 );
 		$this->assertIsArray( $series );
 	}
+
+	// ---------------------------------------------------------------
+	// Phase 28 — extended schema (event, context) + record_if_enabled
+	// ---------------------------------------------------------------
+
+	public function test_record_if_enabled_respects_per_category_toggle(): void {
+		\WpState::$options['pc_settings']['logs'] = array(
+			'scan_enabled'    => true,
+			'share_enabled'   => false,
+			'export_enabled'  => true,
+			'restore_enabled' => true,
+			'error_enabled'   => true,
+			'admin_enabled'   => true,
+		);
+
+		// The stub WpState doesn't actually write rows; the gate is the
+		// observable side-effect (no error) + the fact that the call
+		// returns boolean.
+		$scan_ok = EventLog::record_if_enabled( 'scan', 'info', 'scan', 'v2 scan', array( 'score' => 74 ) );
+		$share_blocked = EventLog::record_if_enabled( 'share', 'info', 'share', 'share-link', array() );
+		$export_ok = EventLog::record_if_enabled( 'export', 'info', 'export', 'download-json', array() );
+
+		$this->assertTrue( $scan_ok, 'scan category is on → recorded' );
+		$this->assertFalse( $share_blocked, 'share category is off → blocked' );
+		$this->assertTrue( $export_ok, 'export category is on → recorded' );
+	}
+
+	public function test_record_if_enabled_defaults_to_true_when_setting_missing(): void {
+		// Admin who never opened the settings page still gets a full
+		// audit trail. Default for every category is true.
+		\WpState::$options['pc_settings']['logs'] = array();
+		$scan_ok = EventLog::record_if_enabled( 'scan', 'info', 'scan', 'first scan', array() );
+		$this->assertTrue( $scan_ok, 'missing toggle key defaults to true' );
+	}
+
+	public function test_record_if_enabled_respects_master_switch(): void {
+		\WpState::$options['pc_settings']['event_log_enabled'] = false;
+		$ok = EventLog::record_if_enabled( 'scan', 'info', 'scan', 'should be dropped', array() );
+		$this->assertFalse( $ok, 'master switch off → all categories gated' );
+	}
+
+	public function test_purge_returns_zero_when_no_table(): void {
+		$result = EventLog::purge( 90, 50000 );
+		$this->assertIsArray( $result );
+		$this->assertArrayHasKey( 'deleted_by_age', $result );
+		$this->assertArrayHasKey( 'deleted_by_cap', $result );
+		$this->assertSame( 0, $result['deleted_by_age'] );
+		$this->assertSame( 0, $result['deleted_by_cap'] );
+	}
+
+	public function test_counts_by_event_returns_zeroed_baseline_when_no_table(): void {
+		$counts = EventLog::counts_by_event( 30 );
+		$this->assertIsArray( $counts );
+		// Every known category must be present (zero) so the KPI tiles
+		// never have to deal with a missing key.
+		foreach ( EventLog::CATEGORIES as $cat ) {
+			$this->assertArrayHasKey( $cat, $counts );
+			$this->assertSame( 0, $counts[ $cat ] );
+		}
+	}
+
+	public function test_recent_accepts_filter_array_without_throwing(): void {
+		$rows = EventLog::recent( 10, array(
+			'event'  => 'scan',
+			'level'  => 'error',
+			'days'   => 7,
+			'search' => 'something',
+		) );
+		$this->assertIsArray( $rows );
+	}
+
+	public function test_record_backcompat_signature_still_works(): void {
+		// The original 3-arg signature must keep working.
+		EventLog::record( 'info', 'scan', 'legacy caller' );
+		$this->assertSame( array(), \WpState::$errors );
+	}
+
+	public function test_record_new_signature_accepts_event_and_context(): void {
+		EventLog::record( 'warning', 'scan', 'v2 scan', 'scan', array( 'score' => 74, 'grade' => 'C' ) );
+		$this->assertSame( array(), \WpState::$errors );
+	}
 }
