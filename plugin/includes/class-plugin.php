@@ -309,10 +309,10 @@ final class Plugin {
         if ( is_admin() ) {
             ( new Admin() )->register();
             ( new AdminDashboard() )->register();
-            ( new Admin\AdminApiTokens() )->register();
-            ( new Admin\AdminDatabases() )->register();
-            ( new Admin\AdminLogs() )->register();
-            ( new Admin\AdminPrivacyReport() )->register();
+            ( new \PrivacyChecker\Admin\AdminApiTokens() )->register();
+            ( new \PrivacyChecker\Admin\AdminDatabases() )->register();
+            ( new \PrivacyChecker\Admin\AdminLogs() )->register();
+            ( new \PrivacyChecker\Admin\AdminPrivacyReport() )->register();
         }
 
         // Public-facing assets and shortcodes.
