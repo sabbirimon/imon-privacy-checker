@@ -412,7 +412,11 @@ final class PublicAssetsV2 {
     public function toggle_shortcode( $atts = array() ): string {
         $this->enqueue_v2_assets();
         $on_v2 = $this->user_wants_v2();
-        $url   = $on_v2 ? esc_url( remove_query_arg( 'v' ) ) : esc_url( add_query_arg( 'v', '2' ) );
+        // When switching back, set ?v=1 (not strip ?v=2) so the
+        // `init`-time set_cookie_from_query() runs and clears the
+        // pc_ui_v2 cookie on the very next request — otherwise the
+        // sticky cookie keeps forcing v2 forever.
+        $url   = $on_v2 ? esc_url( add_query_arg( 'v', '1' ) ) : esc_url( add_query_arg( 'v', '2' ) );
         $label = $on_v2 ? __( 'Switch back to classic UI', 'privacy-checker' ) : __( 'Try the new UI (Beta)', 'privacy-checker' );
         ob_start();
         ?>
