@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IMON — Privacy &amp; Anonymity Diagnostic</title>
+    <meta name="description" content="See what your browser and network reveal about you. Open-source WordPress plugin + free static demo.">
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%2306B6D4%22/></svg>">
+
+    <!-- Leaflet for the GeoTrace map (BSD-2-Clause, vendored) -->
+    <link rel="stylesheet" href="assets/css/leaflet.css">
+
+    <!-- IMON v1 + v2 styles -->
+    <link rel="stylesheet" href="assets/css/scanner.css">
+    <link rel="stylesheet" href="assets/css/scanner-v2.css">
+
+    <!-- Lightweight demo styling -->
+    <style>
+        /* Reset + base */
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0A0E14;
+            color: #E5E7EB;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            min-height: 100vh;
+        }
+        a { color: #22D3EE; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Top nav */
+        .demo-nav {
+            position: sticky; top: 0; z-index: 1000;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 32px;
+            background: rgba(10, 14, 20, 0.92);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #1F2937;
+        }
+        .demo-nav__brand {
+            display: flex; align-items: center; gap: 10px;
+            font-weight: 700; font-size: 18px; letter-spacing: 0.02em;
+        }
+        .demo-nav__brand-mark {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; border-radius: 8px;
+            background: linear-gradient(135deg, #06B6D4, #5B21B6);
+            color: white; font-size: 13px; font-weight: 800;
+        }
+        .demo-nav__brand-tag {
+            color: #94A3B8; font-weight: 400; font-size: 12px;
+            border-left: 1px solid #374151; padding-left: 10px; margin-left: 4px;
+        }
+        .demo-nav__links { display: flex; gap: 22px; font-size: 14px; }
+        .demo-nav__links a { color: #E5E7EB; }
+        .demo-nav__cta {
+            background: linear-gradient(135deg, #06B6D4 0%, #5B21B6 60%, #C026D3 100%);
+            color: #fff;
+            padding: 8px 18px;
+            border-radius: 999px;
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(91, 33, 182, 0.4);
+        }
+        .demo-nav__cta:hover { text-decoration: none; transform: translateY(-1px); }
+
+        /* Demo hero */
+        .demo-hero {
+            text-align: center;
+            padding: 64px 24px 40px;
+            max-width: 760px;
+            margin: 0 auto;
+        }
+        .demo-hero__eyebrow {
+            font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+            font-size: 13px;
+            color: #22D3EE;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            margin: 0 0 16px;
+        }
+        .demo-hero__title {
+            font-size: clamp(36px, 5vw, 52px);
+            font-weight: 800;
+            margin: 0 0 18px;
+            background: linear-gradient(135deg, #FFFFFF 0%, #94A3B8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .demo-hero__subtitle {
+            font-size: 18px;
+            color: #94A3B8;
+            margin: 0 0 28px;
+        }
+        .demo-hero__cta {
+            display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+        }
+        .demo-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 12px 24px; border-radius: 10px;
+            font-size: 15px; font-weight: 600;
+            border: 1px solid transparent;
+            transition: transform 0.15s, box-shadow 0.15s;
+            cursor: pointer;
+        }
+        .demo-btn--primary {
+            background: linear-gradient(135deg, #06B6D4 0%, #5B21B6 60%, #C026D3 100%);
+            color: white;
+            box-shadow: 0 6px 24px rgba(91, 33, 182, 0.35);
+        }
+        .demo-btn--primary:hover { transform: translateY(-2px); text-decoration: none; }
+        .demo-btn--ghost {
+            background: transparent;
+            border-color: #374151;
+            color: #E5E7EB;
+        }
+        .demo-btn--ghost:hover { border-color: #22D3EE; text-decoration: none; }
+
+        /* Demo notice banner */
+        .demo-notice {
+            max-width: 760px;
+            margin: 0 auto 24px;
+            padding: 14px 18px;
+            background: rgba(34, 211, 238, 0.08);
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            border-radius: 10px;
+            color: #94A3B8;
+            font-size: 14px;
+        }
+        .demo-notice strong { color: #22D3EE; }
+        .demo-notice code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        /* Demo wrapper around scanner */
+        .demo-scanner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px 64px;
+        }
+
+        /* Demo footer / install section */
+        .demo-install {
+            max-width: 1100px;
+            margin: 80px auto 40px;
+            padding: 0 24px;
+        }
+        .demo-install__grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .demo-install__card {
+            padding: 24px;
+            background: #0F1419;
+            border: 1px solid #1F2937;
+            border-radius: 12px;
+        }
+        .demo-install__card h3 {
+            margin: 0 0 8px;
+            color: #E5E7EB;
+            font-size: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .demo-install__card p {
+            margin: 0 0 12px;
+            color: #94A3B8;
+            font-size: 14px;
+        }
+        .demo-install__icon {
+            width: 28px; height: 28px;
+            background: rgba(34, 211, 238, 0.12);
+            color: #22D3EE;
+            border-radius: 6px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 16px;
+        }
+
+        /* Code block */
+        .demo-code {
+            background: #0A0E14;
+            border: 1px solid #1F2937;
+            border-radius: 8px;
+            padding: 14px 18px;
+            font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+            font-size: 13px;
+            color: #E5E7EB;
+            overflow-x: auto;
+            line-height: 1.6;
+        }
+        .demo-code .cmd { color: #22D3EE; }
+
+        /* Demo footer */
+        .demo-footer {
+            text-align: center;
+            padding: 32px 24px 48px;
+            color: #64748B;
+            font-size: 13px;
+            border-top: 1px solid #1F2937;
+            margin-top: 64px;
+        }
+        .demo-footer a { color: #94A3B8; }
+        .demo-footer__links { display: flex; gap: 24px; justify-content: center; margin-top: 10px; }
+
+        /* Responsive nav */
+        @media (max-width: 640px) {
+            .demo-nav { padding: 12px 16px; }
+            .demo-nav__brand-tag { display: none; }
+            .demo-nav__links { display: none; }
+            .demo-hero { padding: 40px 16px 24px; }
+            .demo-scanner { padding: 0 12px 40px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ============================================== -->
+<!-- Top nav (static — not rendered by v2 scanner)   -->
+<!-- ============================================== -->
+<nav class="demo-nav">
+    <div class="demo-nav__brand">
+        <span class="demo-nav__brand-mark">IM</span>
+        <span>Privacy Checker</span>
+        <span class="demo-nav__brand-tag">I AM ON</span>
+    </div>
+    <div class="demo-nav__links">
+        <a href="#demo-scan">Try it</a>
+        <a href="#demo-install">Install</a>
+        <a href="https://github.com/sabbirimon/imon-privacy-checker" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+    <a class="demo-nav__cta" href="https://github.com/sabbirimon/imon-privacy-checker/releases" target="_blank" rel="noopener">Download</a>
+</nav>
+
+<!-- ============================================== -->
+<!-- Hero                                             -->
+<!-- ============================================== -->
+<section class="demo-hero">
+    <p class="demo-hero__eyebrow">Privacy &amp; anonymity diagnostic</p>
+    <h1 class="demo-hero__title">See what your browser leaks.</h1>
+    <p class="demo-hero__subtitle">
+        Six-stage browser + network scan that tells you exactly which privacy
+        signals are exposed — and what to fix.
+    </p>
+    <div class="demo-hero__cta">
+        <a class="demo-btn demo-btn--primary" href="#demo-scan">Run Live Scan →</a>
+        <a class="demo-btn demo-btn--ghost" href="https://github.com/sabbirimon/imon-privacy-checker" target="_blank" rel="noopener">View on GitHub</a>
+    </div>
+</section>
+
+<!-- ============================================== -->
+<!-- Mock-mode notice                                 -->
+<!-- ============================================== -->
+<div class="demo-notice">
+    <strong>Demo mode.</strong>
+    This static page ships without a WordPress backend, so the scan shows
+    <em>browser-only</em> results (your real IP &amp; geo are not exposed to
+    us). For the full six-stage scan with IP intel, reputation, and
+    traceroute, install the plugin at <code>/wp-admin → Plugins → Add New</code>
+    and use the <code>[privacy_checker]</code> shortcode.
+</div>
+
+<!-- ============================================== -->
+<!-- Live scanner                                     -->
+<!-- The v2 markup below is identical to the WordPress -->
+<!-- shortcode output (class-public-assets-v2.php).  -->
+<!-- On load, scanner-v2.js auto-runs runScan().     -->
+<!-- ============================================== -->
+<section id="demo-scan" class="demo-scanner">
+    <section class="pcv2" data-pcv2-component="dashboard" data-pcv2-theme="dark" data-pcv2-resolved-theme="dark" data-pcv2-autostart="1">
+        <span class="pcv2__orb pcv2__orb--bottom" aria-hidden="true"></span>
+        <a class="pcv2__skip-link" href="#pcv2-main">Skip to main content</a>
+
+        <header class="pcv2__header">
+            <div class="pcv2__brand">
+                <span class="pcv2__brand-mark" aria-hidden="true">IMON</span>
+                <span class="pcv2__brand-tag">I AM ON</span>
+            </div>
+            <nav class="pcv2__nav" aria-label="Primary">
+                <a href="#pcv2-main">Home</a>
+                <a href="#pcv2-main">IP Check</a>
+                <a href="#pcv2-main">DNS Leak</a>
+                <a href="#pcv2-main">Browser</a>
+                <a href="#pcv2-geotrace" data-pcv2-action="open-geotrace">GeoTrace</a>
+                <a href="#demo-install">About</a>
+            </nav>
+            <div class="pcv2__header-actions">
+                <button type="button" class="pcv2__eli5-toggle" data-pcv2-action="eli5-cycle" aria-pressed="false" title="Explain simply">
+                    <span class="pcv2__eli5-toggle-label">ELI5</span>
+                </button>
+                <button type="button" class="pcv2__theme-toggle" data-pcv2-action="theme-cycle" aria-label="Theme: System">
+                    <span class="pcv2__theme-toggle-icon" data-pcv2-region="theme-icon" aria-hidden="true"></span>
+                </button>
+                <a class="pcv2__btn pcv2__btn--primary" href="#pcv2-main">Run Check</a>
+            </div>
+        </header>
+
+        <main id="pcv2-main" class="pcv2__main">
+            <section class="pcv2__hero" aria-labelledby="pcv2-hero-title">
+                <p class="pcv2__eyebrow">Privacy &amp; anonymity diagnostic</p>
+                <h1 class="pcv2__hero-title" id="pcv2-hero-title">How Private Are You Online?</h1>
+                <p class="pcv2__hero-subtitle">
+                    See what your browser and network reveal about you. We analyze your IP, connection,
+                    proxy/VPN status, DNS exposure, browser signals, and privacy risks — entirely from
+                    your browser. No analytics, no profiles.
+                </p>
+                <div class="pcv2__hero-cta">
+                    <button type="button" class="pcv2__btn pcv2__btn--primary pcv2__btn--lg" data-pcv2-action="start-scan">
+                        <span data-pcv2-region="cta-label">Run Privacy Check</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="pcv2__progress" data-pcv2-region="progress" aria-label="Scan progress" hidden>
+                <ol class="pcv2__progress-list">
+                    <li data-pcv2-step="ip">Detecting IP</li>
+                    <li data-pcv2-step="intel">Resolving geolocation</li>
+                    <li data-pcv2-step="reputation">Checking IP reputation</li>
+                    <li data-pcv2-step="fingerprint">Estimating browser fingerprint<span class="pcv2__chip">Browser-only</span></li>
+                    <li data-pcv2-step="webrtc">Testing WebRTC exposure<span class="pcv2__chip">Browser-only</span></li>
+                    <li data-pcv2-step="score">Calculating privacy score</li>
+                </ol>
+            </section>
+
+            <section class="pcv2__dashboard" data-pcv2-region="report" hidden>
+                <div class="pcv2__score-hero-host" data-pcv2-region="summary"></div>
+                <div class="pcv2__grid">
+                    <article class="pcv2__card" data-pcv2-card="overview"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                    <article class="pcv2__card" data-pcv2-card="connection"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                    <article class="pcv2__card" data-pcv2-card="anonymity"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                    <article class="pcv2__card" data-pcv2-card="dns"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                    <article class="pcv2__card" data-pcv2-card="browser"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                    <article class="pcv2__card" data-pcv2-card="security"><header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
+                </div>
+                <article class="pcv2__card pcv2__card--wide" data-pcv2-card="network-path" hidden>
+                    <header class="pcv2__card-header">
+                        <h2 data-pcv2-region="card-title">Network Path</h2>
+                        <div class="pcv2__card-actions">
+                            <button type="button" class="pcv2__btn pcv2__btn--ghost" data-pcv2-action="network-mode-toggle" aria-pressed="false" title="Switch to 3D globe view">
+                                <span class="pcv2__network-mode-dot">2D</span>
+                                <span class="pcv2__network-mode-suffix"> / 3D</span>
+                            </button>
+                        </div>
+                    </header>
+                    <div class="pcv2__card-body" data-pcv2-region="card-body">
+                        <div class="pcv2__network-2d" data-pcv2-region="network-2d"></div>
+                        <div class="pcv2__network-3d" data-pcv2-region="network-3d" hidden></div>
+                        <p class="pcv2__network-note">Hops are estimates based on a typical route. Switch to 3D to visualise the path on a globe.</p>
+                    </div>
+                </article>
+                <div class="pcv2__findings" data-pcv2-region="findings"></div>
+                <div class="pcv2__actions-host"></div>
+            </section>
+
+            <!-- Inline GeoTrace stub (the scanner reads pcv2-geotrace region if present) -->
+            <section id="pcv2-geotrace" class="pcv2__geotrace" data-pcv2-region="geotrace">
+                <header class="pcv2__card-header">
+                    <h2>GeoTrace</h2>
+                    <button type="button" class="pcv2__btn pcv2__btn--ghost" data-pcv2-action="geo-3d" title="Toggle 3D globe">
+                        <span>2D / 3D</span>
+                    </button>
+                </header>
+                <div class="pcv2__geotrace-body" data-pcv2-region="geotrace-body">
+                    <p class="pcv2__network-note">
+                        Traceroute is not available on this static demo because the
+                        Netlify CDN cannot probe outbound network paths. Install the
+                        WordPress plugin to get a full server-side traceroute with
+                        numbered hops, RTTs, and ASN lookup.
+                    </p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="pcv2__footer">
+            <p>
+                Privacy scores are estimates based on observable signals. We do not
+                store personal data and we never share scan results with third parties.
+            </p>
+        </footer>
+    </section>
+</section>
+
+<!-- ============================================== -->
+<!-- Install section                                  -->
+<!-- ============================================== -->
+<section id="demo-install" class="demo-install">
+    <h2 style="text-align: center; font-size: 28px; margin: 0 0 12px;">Install the WordPress plugin</h2>
+    <p style="text-align: center; color: #94A3B8; max-width: 600px; margin: 0 auto 36px;">
+        Drop the plugin into <code style="background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">/wp-content/plugins/</code>
+        and add <code style="background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">[privacy_checker]</code>
+        to any page. Six-stage scan with real IP intel, MaxMind geo, reputation,
+        traceroute, WebRTC, and an admin dashboard with logs.
+    </p>
+    <div class="demo-install__grid">
+        <div class="demo-install__card">
+            <h3><span class="demo-install__icon">1</span> Download</h3>
+            <p>Grab the latest release from GitHub:</p>
+            <div class="demo-code"><span class="cmd">$</span> git clone https://github.com/sabbirimon/imon-privacy-checker.git</div>
+        </div>
+        <div class="demo-install__card">
+            <h3><span class="demo-install__icon">2</span> Upload</h3>
+            <p>Zip the <code style="background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">plugin/</code> folder and upload via <code style="background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;">wp-admin → Plugins → Add New</code>.</p>
+            <div class="demo-code"><span class="cmd">$</span> cd plugin &amp;&amp; zip -r ../imon.zip .</div>
+        </div>
+        <div class="demo-install__card">
+            <h3><span class="demo-install__icon">3</span> Activate</h3>
+            <p>Activate, then add the shortcode to any page:</p>
+            <div class="demo-code">[privacy_checker]</div>
+            <p style="margin-top: 12px;">Or try the v2 (beta) UI:</p>
+            <div class="demo-code">[privacy_checker_v2]</div>
+        </div>
+    </div>
+</section>
+
+<footer class="demo-footer">
+    <p>Open-source under MIT · No analytics · No tracking</p>
+    <div class="demo-footer__links">
+        <a href="https://github.com/sabbirimon/imon-privacy-checker" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/sabbirimon/imon-privacy-checker/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/sabbirimon/imon-privacy-checker/blob/main/DEPLOY.md" target="_blank" rel="noopener">Deploy guide</a>
+    </div>
+</footer>
+
+<!-- ============================================== -->
+<!-- Mock REST backend                                -->
+<!-- The static demo can't talk to WordPress, so we  -->
+<!-- intercept fetch() and return canned responses   -->
+<!-- that drive the scanner through the partial-     -->
+<!-- data path with believable browser signals.      -->
+<!-- ============================================== -->
+<script>
+(function () {
+    'use strict';
+
+    // Seeded pseudo-random for stable demo data across reloads.
+    var seed = (Date.now() & 0xFFFFFF) ^ 0x12345;
+    function rand() {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+    }
+    function pick(arr) { return arr[Math.floor(rand() * arr.length)]; }
+
+    // Canned intel (varies a little per reload so it feels live).
+    var cities = [
+        { city: 'Frankfurt', country: 'Germany', cc: 'DE', isp: 'Deutsche Telekom', asn: 3320, tz: 'Europe/Berlin' },
+        { city: 'Amsterdam', country: 'Netherlands', cc: 'NL', isp: 'KPN', asn: 1136, tz: 'Europe/Amsterdam' },
+        { city: 'Singapore', country: 'Singapore', cc: 'SG', isp: 'Singtel', asn: 7473, tz: 'Asia/Singapore' },
+        { city: 'San Francisco', country: 'United States', cc: 'US', isp: 'Comcast', asn: 7922, tz: 'America/Los_Angeles' }
+    ];
+    var intel = pick(cities);
+    var proxyChance = rand();
+    var isProxied = proxyChance < 0.45;
+
+    var mock = {
+        'scan/ip': {
+            ok: true,
+            ipv4: '203.0.113.' + (10 + Math.floor(rand() * 200)),
+            ipv6: null,
+            is_proxy: isProxied,
+            proxy_type: isProxied ? pick(['vpn', 'datacenter', 'residential']) : null,
+            proxy_confidence: isProxied ? pick(['medium', 'high']) : 'unknown',
+            country: intel.cc,
+            country_name: intel.country,
+            city: intel.city,
+            isp: intel.isp,
+            org: intel.isp,
+            asn: 'AS' + intel.asn,
+            timezone: intel.tz
+        },
+        'scan/connection': {
+            ok: true,
+            ip: '203.0.113.' + (10 + Math.floor(rand() * 200)),
+            country: intel.cc,
+            country_name: intel.country,
+            city: intel.city,
+            isp: intel.isp,
+            org: intel.isp,
+            asn: 'AS' + intel.asn,
+            hostname: 'demo-' + intel.cc.toLowerCase() + '.example.net',
+            timezone: intel.tz,
+            connection_type: isProxied ? 'relay' : 'direct'
+        },
+        'scan/reputation': {
+            ok: true,
+            score: isProxied ? 85 : 60,
+            is_listed: !isProxied && rand() < 0.2,
+            lists: isProxied ? [] : ['spamhaus-css'],
+            confidence: 'medium'
+        },
+        'scan/geo/lookup': {
+            ok: true,
+            probe: { city: intel.city, country: intel.country, cc: intel.cc, lat: 50.11, lng: 8.68 },
+            target: { city: 'London', country: 'United Kingdom', cc: 'GB', lat: 51.51, lng: -0.13 },
+            hops: [
+                { ttl: 1, host: '192.0.2.1', rtt_ms: 1.2, loss_pct: 0, city: intel.city, country: intel.country, cc: intel.cc, lat: 50.11, lng: 8.68 },
+                { ttl: 2, host: '198.51.100.1', rtt_ms: 12.4, loss_pct: 0, city: 'Paris', country: 'France', cc: 'FR', lat: 48.85, lng: 2.35 },
+                { ttl: 3, host: 'demo-edge.example.net', rtt_ms: 22.0, loss_pct: 0, city: 'London', country: 'United Kingdom', cc: 'GB', lat: 51.51, lng: -0.13 }
+            ],
+            estimated_route: true,
+            source_kind: 'estimated-route'
+        },
+        'share': { ok: true, slug: 'demo-' + Math.floor(rand() * 100000).toString(36) },
+        'scan/security-headers': {
+            ok: true,
+            url: 'https://example.com',
+            headers: {},
+            missing: ['content-security-policy', 'strict-transport-security'],
+            score: 60
+        },
+        'scan/dns-test/run': {
+            ok: true,
+            servers: [
+                { ip: '1.1.1.1', org: 'Cloudflare', is_local: false },
+                { ip: '8.8.8.8', org: 'Google', is_local: false }
+            ],
+            leak_detected: rand() < 0.3
+        },
+        'scan/ping': { ok: true, rtt_ms: 20 + Math.floor(rand() * 60), loss_pct: 0 },
+        'scan/port': { ok: true, open: rand() < 0.5 },
+        'lookup/ip': {
+            ok: true,
+            ip: '203.0.113.' + (10 + Math.floor(rand() * 200)),
+            country: intel.cc,
+            country_name: intel.country,
+            city: intel.city,
+            isp: intel.isp,
+            org: intel.isp,
+            asn: 'AS' + intel.asn,
+            hostname: 'demo-' + intel.cc.toLowerCase() + '.example.net'
+        },
+        'lookup/whois': {
+            ok: true,
+            domain: 'example.com',
+            registrar: 'Demo Registrar, Inc.',
+            created: '1995-08-13',
+            expires: '2026-08-12',
+            status: ['clientTransferProhibited'],
+            nameservers: ['ns1.example.net', 'ns2.example.net']
+        },
+        'scan/geo/paste': {
+            ok: true,
+            // Mock: pretend the paste was 3 hops from origin to a target.
+            hops: [
+                { ttl: 1, host: '192.0.2.1', rtt_ms: 1.2, loss_pct: 0, city: intel.city, country: intel.country, cc: intel.cc },
+                { ttl: 2, host: '198.51.100.1', rtt_ms: 8.4, loss_pct: 0, city: 'Frankfurt', country: 'Germany', cc: 'DE' },
+                { ttl: 3, host: 'demo-edge.example.net', rtt_ms: 22.0, loss_pct: 0, city: 'London', country: 'United Kingdom', cc: 'GB' }
+            ],
+            source_kind: 'pasted',
+            parse_error: null
+        }
+    };
+
+    // Map bare /scan → mock full scan result.
+    // Canonical shape (per class-rest-api.php /scan):
+    //   { ok, request_ip: { ipv4, ipv6 }, intel: {...}, proxy: {...},
+    //     privacy_report: { overall, grade, subscores: {...} }, ... }
+    mock['scan'] = {
+        ok: true,
+        request_ip: {
+            ipv4: '203.0.113.' + (10 + Math.floor(rand() * 200)),
+            ipv6: null,
+            is_proxy: isProxied,
+            proxy_type: isProxied ? pick(['vpn', 'datacenter', 'residential']) : null,
+            proxy_confidence: isProxied ? pick(['medium', 'high']) : 'unknown',
+            country: intel.cc,
+            country_name: intel.country,
+            city: intel.city,
+            isp: intel.isp,
+            org: intel.isp,
+            asn: 'AS' + intel.asn,
+            timezone: intel.tz
+        },
+        intel: {
+            ip: '203.0.113.' + (10 + Math.floor(rand() * 200)),
+            country: intel.cc,
+            country_name: intel.country,
+            city: intel.city,
+            region: 'Demo Region',
+            isp: intel.isp,
+            org: intel.isp,
+            asn: 'AS' + intel.asn,
+            hostname: 'demo-' + intel.cc.toLowerCase() + '.example.net',
+            timezone: intel.tz,
+            latitude: 50.11,
+            longitude: 8.68,
+            connection_type: isProxied ? 'relay' : 'direct'
+        },
+        proxy: isProxied
+            ? { category: 'vpn', confidence: 'medium', label: 'VPN detected', asn: 'AS' + intel.asn, country: intel.cc }
+            : { category: 'none', confidence: 'unknown', label: 'No proxy detected' },
+        anonymity: {
+            proxy: isProxied
+                ? { category: 'vpn', confidence: 'medium', label: 'VPN detected' }
+                : { category: 'none', confidence: 'unknown', label: 'No proxy detected' }
+        },
+        privacy_report: {
+            overall: isProxied ? 72 : 55,
+            grade: isProxied ? 'C' : 'F',
+            confidence: 'medium',
+            subscores: {
+                ip:        { score: 70, grade: 'C' },
+                anonymity: { score: isProxied ? 75 : 30, grade: isProxied ? 'C' : 'F' },
+                dns:       { score: 80, grade: 'B' },
+                browser:   { score: 60, grade: 'D' },
+                security:  { score: 65, grade: 'C' }
+            }
+        }
+    };
+
+    // Wrap each handler in a deferred Promise so the UI behaves like real fetch.
+    function makeResponse(body) {
+        return Promise.resolve({
+            status: 200,
+            ok: true,
+            json: function () { return Promise.resolve(body); },
+            text: function () { return Promise.resolve(JSON.stringify(body)); }
+        });
+    }
+
+    var realFetch = window.fetch.bind(window);
+    window.fetch = function (url, options) {
+        var u = (typeof url === 'string') ? url : (url && url.url) || '';
+        // Strip query string.
+        var path = u.replace(/^https?:\/\/[^/]+/, '').replace(/\?.*$/, '');
+        // Try to find the request path (after the WP REST namespace prefix)
+        // even if the scanner used a relative URL like 'scan/ip' (because
+        // PC_SCAN.restUrl === '').
+        var REST_PREFIX = '/wp-json/privacy-checker/v1/';
+        var matched = null;
+        Object.keys(mock).forEach(function (k) {
+            // Match against absolute WP path OR relative path that ends in
+            // the mock key with or without a leading slash.
+            if (
+                path === REST_PREFIX + k ||
+                path === '/' + k ||
+                path === k ||
+                path.endsWith('/' + k)
+            ) {
+                if (!matched || k.length > matched.length) matched = k;
+            }
+        });
+        if (matched) {
+            return Promise.resolve(makeResponse(mock[matched]));
+        }
+        // For anything else, return a friendly empty response so the scanner
+        // falls into its "partial data" path.
+        return Promise.resolve(makeResponse({ ok: true, data: {} }));
+    };
+
+    // Tell the scanner we're in mock mode (so it skips WP nonce checks).
+    window.PC_SCAN = {
+        restUrl: '',
+        restNonce: '',
+        isMock: true,
+        assetUrl: 'assets/',
+        i18n: {
+            scanning: 'Scanning…',
+            runCheck: 'Run Privacy Check',
+            rescan: 'Re-run scan',
+            dashboardSearchPlaceholder: 'Search the report…',
+            geoProbeUnavailable: 'Traceroute is not available on this server. Paste your own traceroute below to visualise it.'
+        }
+    };
+
+    // Default the v2 theme to dark so the static demo matches the rest of
+    // the page (the page background is already dark). The visitor can still
+    // cycle to light/system via the theme toggle.
+    try { localStorage.setItem('pcv2_theme', 'dark'); } catch (_e) { /* localStorage blocked */ }
+
+    // Also expose for v2 scanner.
+    window.PCV2 = window.PCV2 || {};
+    window.PCV2.i18n = window.PC_SCAN.i18n;
+})();
+</script>
+
+<!-- Leaflet (BSD-2-Clause, vendored) -->
+<script src="assets/js/leaflet.js"></script>
+
+<!-- IMON scanners -->
+<script src="assets/js/scanner.js"></script>
+<script src="assets/js/scanner-v2.js"></script>
+
+<!-- Three.js + three-globe (lazy: only loaded if visitor hits 3D toggle).
+     Loaded synchronously here to keep the demo single-file; the plugin
+     itself uses wp_register_script (async) to keep first-paint small. -->
+<script src="assets/js/three.min.js"></script>
+<script src="assets/js/three-globe.min.js"></script>
+
+</body>
+</html>

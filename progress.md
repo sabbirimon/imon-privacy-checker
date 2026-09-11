@@ -1396,3 +1396,64 @@ from many cities. Fixed by hostname parsing:
 `vendor/bin/phpunit --testsuite="Privacy Checker"`: **237 tests,
 973 assertions, all green** (was 215 tests / 916 assertions before
 this phase; +22 tests added).
+
+---
+
+## Phase 45 — Netlify demo landing page (2026-09-11)
+
+### Why
+
+The repo's Netlify deploy (`netlify.toml`) had `publish = "."` but
+there was no `index.html` at the repo root. The published build
+succeeded (212 files uploaded) and the Netlify Edge Access login was
+working — but anyone who got past auth hit a 404 because the
+publish directory was empty.
+
+The plugin folder is for WordPress; the demo had to be a separate
+single-page HTML that ships the IMON scanner markup, vendored assets,
+and a mocked REST backend so visitors without a WordPress host can
+still see the live scan UI render with believable data.
+
+### What shipped
+
+- `demo/index.html` (single-page demo, ~30 KB) — marketing hero,
+  mocked REST backend (catches `fetch` calls to the WP namespace and
+  returns canned intel / connection / reputation / traceroute data),
+  full v2 dashboard markup (identical to `[privacy_checker_v2]`
+  shortcode output), and a 3-step install section.
+- `demo/assets/` — vendored scanner.js, scanner-v2.js, leaflet.js,
+  three.min.js, three-globe.min.js, scanner.css, scanner-v2.css,
+  leaflet.css (copies of `plugin/public/assets/*`).
+- `netlify.toml` — `publish = "demo"`, CSP updated to allow
+  `'unsafe-inline'` script (the inline mock backend), and the
+  asset-cache header duplicated for `/demo/assets/*`.
+- `puku.md` — version bump from 1.8.52 → 1.8.54.
+
+### Mock backend
+
+A `<script>` in the demo overrides `window.fetch` and matches the
+URL path against a small lookup table of canned responses
+(`/scan`, `/scan/ip`, `/scan/connection`, `/scan/reputation`,
+`/scan/dns-test/run`, `/scan/geo/lookup`, `/scan/geo/paste`,
+`/share`, `/lookup/ip`, `/lookup/whois`, etc.). The match is
+intentionally permissive: it works whether the scanner uses
+`window.location.origin + PC_REST_PATH + path` (v1) or
+`window.PC_SCAN.restUrl + path` (v2). Unmatched paths return
+`{ok:true, data:{}}` so the scanner gracefully falls into its
+"partial data" path instead of throwing.
+
+The mock seeds with `Date.now()` so reloads get different cities
+(Frankfurt / Amsterdam / Singapore / San Francisco) and a 45 %
+chance of being "proxied" (VPN / datacenter / residential).
+Anonymous scan data is randomised but stable per session.
+
+### Verification
+
+- `python3 -m http.server` from `demo/` → 200 on every asset
+  + `index.html`.
+- Headless Chromium: `pcv2` container found, 6 dashboard cards
+  rendered with titles, score 55/100 Grade F rendered with full
+  subscores (IP 70 %, Anonymity 30 %, DNS 80 %, Browser 60 %,
+  Security 65 %), Connection card shows real IPv4 + flag + city +
+  ISP + ASN, 3 install cards present, footer present, **0
+  console errors / page errors**.

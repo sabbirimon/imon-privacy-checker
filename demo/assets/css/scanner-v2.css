@@ -1,0 +1,3239 @@
+/*
+ * Privacy Checker v2 — experimental UI stylesheet.
+ *
+ * Token source of truth: design-system/privacy-checker/MASTER.md
+ * Page composition: design-system/privacy-checker/pages/home.md
+ *
+ * This file is intentionally self-contained — no imports from
+ * scanner.css. The v1 build stays untouched; deleting this file (and
+ * scanner-v2.js) removes v2 entirely.
+ *
+ * Design language: dark-by-default glass dashboard with decorative
+ * gradient orbs, circular ring gauges, and tone-aware status badges
+ * (color + label + icon — never color alone).
+ *
+ * Status palette: SAFE / WARNING / DANGER / INFO / NEUTRAL — each
+ * has --bg / --fg / --border variants.
+ */
+
+:root,
+[data-pcv2-theme="light"] {
+  /* Surface palette — light theme (soft purple wash) */
+  --pcv2-page-grad: linear-gradient(135deg, #f0eafc 0%, #f8f6fb 35%, #f3eef9 65%, #ebe6f7 100%);
+  --pcv2-page: #f4f1fa;
+  --pcv2-surface: rgba(255, 255, 255, 0.62);
+  --pcv2-surface-strong: rgba(255, 255, 255, 0.82);
+  --pcv2-surface-sunken: rgba(255, 255, 255, 0.42);
+  --pcv2-border: rgba(60, 40, 120, 0.10);
+  --pcv2-border-strong: rgba(60, 40, 120, 0.18);
+  --pcv2-text: #1a1530;
+  --pcv2-text-muted: #524b6e;
+  --pcv2-text-faint: #7d7693;
+  --pcv2-text-inverse: #ffffff;
+  --pcv2-text-link: #6b3ce0;
+
+  /* Accent gradients (the design language's signature) */
+  --pcv2-grad-purple: linear-gradient(135deg, #8b5cf6 0%, #6b3ce0 100%);
+  --pcv2-grad-pink:   linear-gradient(135deg, #ec4899 0%, #d946ef 100%);
+  --pcv2-grad-orange: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  --pcv2-grad-cyan:   linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%);
+  --pcv2-grad-green:  linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  --pcv2-grad-mixed:  linear-gradient(135deg, #8b5cf6 0%, #ec4899 50%, #fb923c 100%);
+
+  --pcv2-action: #5b21b6;
+  --pcv2-action-hover: #4c1d95;
+  --pcv2-action-active: #3b1380;
+  --pcv2-action-fg: #ffffff;
+  --pcv2-action-grad: linear-gradient(135deg, #06B6D4 0%, #5B21B6 60%, #C026D3 100%);
+  /* Phase 44: stronger glow + thicker outline so the Run Check
+   * button is unmistakable against the glassy v2 header. */
+  --pcv2-shadow-glow-purple: 0 8px 24px -8px rgba(91, 33, 182, 0.55), 0 0 0 1px rgba(255,255,255,0.18);
+
+  /* Status tokens — bg (soft wash), fg (saturated), border (1px line) */
+  --pcv2-safe-bg:     rgba(16, 185, 129, 0.14);
+  --pcv2-safe-fg:     #047857;
+  --pcv2-safe-border: rgba(16, 185, 129, 0.32);
+
+  --pcv2-warning-bg:     rgba(245, 158, 11, 0.14);
+  --pcv2-warning-fg:     #b45309;
+  --pcv2-warning-border: rgba(245, 158, 11, 0.32);
+
+  --pcv2-danger-bg:     rgba(239, 68, 68, 0.14);
+  --pcv2-danger-fg:     #b91c1c;
+  --pcv2-danger-border: rgba(239, 68, 68, 0.32);
+
+  --pcv2-info-bg:     rgba(14, 165, 233, 0.14);
+  --pcv2-info-fg:     #0369a1;
+  --pcv2-info-border: rgba(14, 165, 233, 0.32);
+
+  --pcv2-neutral-bg:     rgba(60, 40, 120, 0.08);
+  --pcv2-neutral-fg:     #524b6e;
+  --pcv2-neutral-border: rgba(60, 40, 120, 0.16);
+
+  /* Decorative orbs (background ambient color) */
+  --pcv2-orb-1: radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.55), transparent 65%);
+  --pcv2-orb-2: radial-gradient(circle at 70% 60%, rgba(236, 72, 153, 0.45), transparent 60%);
+  --pcv2-orb-3: radial-gradient(circle at 50% 80%, rgba(251, 146, 60, 0.40), transparent 60%);
+
+  --pcv2-shadow-1: 0 2px 8px rgba(60, 40, 120, 0.06), 0 1px 2px rgba(60, 40, 120, 0.04);
+  --pcv2-shadow-2: 0 12px 32px rgba(60, 40, 120, 0.10), 0 4px 8px rgba(60, 40, 120, 0.06);
+  --pcv2-shadow-glow-purple: 0 0 28px rgba(139, 92, 246, 0.35);
+  --pcv2-shadow-glow-pink:   0 0 28px rgba(236, 72, 153, 0.35);
+  --pcv2-shadow-glow-orange: 0 0 28px rgba(251, 146, 60, 0.35);
+  --pcv2-focus-ring: #8b5cf6;
+}
+
+[data-pcv2-theme="dark"] {
+  /* Surface palette — dark theme (deep navy with purple wash) */
+  --pcv2-page-grad: linear-gradient(135deg, #14102b 0%, #1a1438 35%, #1f1847 65%, #161028 100%);
+  --pcv2-page: #161028;
+  --pcv2-surface: rgba(36, 28, 64, 0.55);
+  --pcv2-surface-strong: rgba(42, 32, 76, 0.72);
+  --pcv2-surface-sunken: rgba(20, 14, 42, 0.55);
+  --pcv2-border: rgba(255, 255, 255, 0.08);
+  --pcv2-border-strong: rgba(255, 255, 255, 0.16);
+  --pcv2-text: #f1eefb;
+  --pcv2-text-muted: #b4acce;
+  --pcv2-text-faint: #8579a8;
+  --pcv2-text-inverse: #14102b;
+  --pcv2-text-link: #a78bfa;
+
+  --pcv2-action: #22D3EE;
+  --pcv2-action-hover: #67E8F9;
+  --pcv2-action-active: #06B6D4;
+  --pcv2-action-fg: #0A0E14;
+  --pcv2-action-grad: linear-gradient(135deg, #22D3EE 0%, #8B5CF6 60%, #EC4899 100%);
+
+  --pcv2-safe-bg:     rgba(52, 211, 153, 0.16);
+  --pcv2-safe-fg:     #6ee7b7;
+  --pcv2-safe-border: rgba(52, 211, 153, 0.32);
+
+  --pcv2-warning-bg:     rgba(251, 191, 36, 0.16);
+  --pcv2-warning-fg:     #fcd34d;
+  --pcv2-warning-border: rgba(251, 191, 36, 0.32);
+
+  --pcv2-danger-bg:     rgba(248, 113, 113, 0.18);
+  --pcv2-danger-fg:     #fca5a5;
+  --pcv2-danger-border: rgba(248, 113, 113, 0.36);
+
+  --pcv2-info-bg:     rgba(56, 189, 248, 0.16);
+  --pcv2-info-fg:     #7dd3fc;
+  --pcv2-info-border: rgba(56, 189, 248, 0.32);
+
+  --pcv2-neutral-bg:     rgba(255, 255, 255, 0.08);
+  --pcv2-neutral-fg:     #b4acce;
+  --pcv2-neutral-border: rgba(255, 255, 255, 0.16);
+
+  --pcv2-orb-1: radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.55), transparent 65%);
+  --pcv2-orb-2: radial-gradient(circle at 70% 60%, rgba(236, 72, 153, 0.50), transparent 60%);
+  --pcv2-orb-3: radial-gradient(circle at 50% 80%, rgba(56, 189, 248, 0.45), transparent 60%);
+
+  --pcv2-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pcv2-shadow-2: 0 14px 36px rgba(0, 0, 0, 0.50), 0 4px 12px rgba(0, 0, 0, 0.30);
+  --pcv2-shadow-glow-purple: 0 0 24px rgba(139, 92, 246, 0.45), 0 0 36px rgba(34, 211, 238, 0.35);
+  --pcv2-shadow-glow-pink:   0 0 36px rgba(236, 72, 153, 0.50);
+  --pcv2-shadow-glow-orange: 0 0 36px rgba(251, 146, 60, 0.45);
+  --pcv2-focus-ring: #a78bfa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-pcv2-theme]) {
+    /* Inherit dark theme values when system preference is dark. */
+    --pcv2-page-grad: linear-gradient(135deg, #14102b 0%, #1a1438 35%, #1f1847 65%, #161028 100%);
+    --pcv2-page: #161028;
+    --pcv2-surface: rgba(36, 28, 64, 0.55);
+    --pcv2-surface-strong: rgba(42, 32, 76, 0.72);
+    --pcv2-surface-sunken: rgba(20, 14, 42, 0.55);
+    --pcv2-border: rgba(255, 255, 255, 0.08);
+    --pcv2-border-strong: rgba(255, 255, 255, 0.16);
+    --pcv2-text: #f1eefb;
+    --pcv2-text-muted: #b4acce;
+    --pcv2-text-faint: #8579a8;
+    --pcv2-text-inverse: #14102b;
+    --pcv2-text-link: #a78bfa;
+
+    --pcv2-action: #8b5cf6;
+    --pcv2-action-hover: #a78bfa;
+    --pcv2-action-active: #c4b5fd;
+    --pcv2-action-fg: #ffffff;
+    --pcv2-action-grad: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+
+    --pcv2-safe-bg:     rgba(52, 211, 153, 0.16);
+    --pcv2-safe-fg:     #6ee7b7;
+    --pcv2-safe-border: rgba(52, 211, 153, 0.32);
+    --pcv2-warning-bg:     rgba(251, 191, 36, 0.16);
+    --pcv2-warning-fg:     #fcd34d;
+    --pcv2-warning-border: rgba(251, 191, 36, 0.32);
+    --pcv2-danger-bg:     rgba(248, 113, 113, 0.18);
+    --pcv2-danger-fg:     #fca5a5;
+    --pcv2-danger-border: rgba(248, 113, 113, 0.36);
+    --pcv2-info-bg:     rgba(56, 189, 248, 0.16);
+    --pcv2-info-fg:     #7dd3fc;
+    --pcv2-info-border: rgba(56, 189, 248, 0.32);
+    --pcv2-neutral-bg:     rgba(255, 255, 255, 0.08);
+    --pcv2-neutral-fg:     #b4acce;
+    --pcv2-neutral-border: rgba(255, 255, 255, 0.16);
+
+    --pcv2-orb-1: radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.55), transparent 65%);
+    --pcv2-orb-2: radial-gradient(circle at 70% 60%, rgba(236, 72, 153, 0.50), transparent 60%);
+    --pcv2-orb-3: radial-gradient(circle at 50% 80%, rgba(56, 189, 248, 0.45), transparent 60%);
+
+    --pcv2-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --pcv2-shadow-2: 0 14px 36px rgba(0, 0, 0, 0.50), 0 4px 12px rgba(0, 0, 0, 0.30);
+    --pcv2-shadow-glow-purple: 0 0 24px rgba(139, 92, 246, 0.45), 0 0 36px rgba(34, 211, 238, 0.35);
+    --pcv2-shadow-glow-pink:   0 0 36px rgba(236, 72, 153, 0.50);
+    --pcv2-shadow-glow-orange: 0 0 36px rgba(251, 146, 60, 0.45);
+    --pcv2-focus-ring: #a78bfa;
+  }
+}
+
+/* ============================================================== */
+/* Reset & root                                                   */
+/* ============================================================== */
+
+.pcv2 {
+  all: initial;
+  display: block;
+  position: relative;
+  background: var(--pcv2-page-grad);
+  color: var(--pcv2-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  /* When the user scrolls back up to use the hero CTA / "Re-run scan"
+     button, the sticky header (z-index 50) sits above the button on the
+     way back into view. Reserve enough scroll-padding so anchor scrolls
+     land below the header. */
+  scroll-padding-top: 5.5rem;
+}
+
+.pcv2 *, .pcv2 *::before, .pcv2 *::after { box-sizing: inherit; }
+
+/* Decorative ambient orbs — fixed behind content */
+.pcv2::before,
+.pcv2::after,
+.pcv2 .pcv2__orb {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(60px);
+  will-change: transform;
+}
+.pcv2::before {
+  top: -10%; left: -8%;
+  width: 60vw; height: 60vw;
+  max-width: 700px; max-height: 700px;
+  background: var(--pcv2-orb-1);
+  border-radius: 50%;
+}
+.pcv2::after {
+  top: 30%; right: -15%;
+  width: 55vw; height: 55vw;
+  max-width: 640px; max-height: 640px;
+  background: var(--pcv2-orb-2);
+  border-radius: 50%;
+}
+.pcv2 .pcv2__orb--bottom {
+  top: auto;
+  bottom: -20%;
+  left: 25%;
+  width: 55vw; height: 55vw;
+  max-width: 640px; max-height: 640px;
+  background: var(--pcv2-orb-3);
+  border-radius: 50%;
+}
+
+.pcv2 > * { position: relative; z-index: 1; }
+
+.pcv2 a { color: var(--pcv2-text-link); text-decoration: none; }
+.pcv2 a:hover { text-decoration: underline; }
+
+.pcv2__skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.pcv2__skip-link:focus {
+  position: fixed;
+  left: 1rem; top: 1rem;
+  width: auto; height: auto;
+  padding: 0.5rem 1rem;
+  background: var(--pcv2-action);
+  color: var(--pcv2-action-fg);
+  border-radius: 8px;
+  z-index: 9999;
+}
+
+:focus-visible {
+  outline: 3px solid var(--pcv2-focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================================== */
+/* Header                                                         */
+/* ============================================================== */
+
+.pcv2__header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.5rem;
+  background: var(--pcv2-surface-strong);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid var(--pcv2-border);
+}
+
+.pcv2__brand {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  background: var(--pcv2-action-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.pcv2__brand-mark {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-size: 1.05rem;
+}
+.pcv2__brand-tag {
+  font-size: 0.7rem;
+  color: var(--pcv2-text-faint);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  background: none;
+  -webkit-text-fill-color: var(--pcv2-text-faint);
+}
+
+.pcv2__nav {
+  display: none;
+  margin-left: 1.5rem;
+  gap: 1rem;
+}
+.pcv2__nav a {
+  color: var(--pcv2-text-muted);
+  font-size: 0.9rem;
+}
+.pcv2__nav a:hover { color: var(--pcv2-text); text-decoration: none; }
+
+.pcv2__header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+.pcv2__header-actions .pcv2__btn--primary {
+  padding: 0.55rem 1.4rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+@media (min-width: 768px) {
+  .pcv2__nav { display: flex; }
+}
+
+.pcv2__theme-toggle {
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface);
+  color: var(--pcv2-text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.95rem;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.pcv2__theme-toggle:hover {
+  background: var(--pcv2-surface-strong);
+  transform: translateY(-1px);
+}
+
+/* ELI5 (Explain Like I'm Five) toggle — sibling of the theme toggle,
+   pill-shaped with a text label so it's discoverable. */
+.pcv2__eli5-toggle {
+  height: 38px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface);
+  color: var(--pcv2-text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.pcv2__eli5-toggle:hover {
+  background: var(--pcv2-surface-strong);
+  transform: translateY(-1px);
+}
+.pcv2__eli5-toggle[aria-pressed="true"] {
+  background: var(--pcv2-action);
+  border-color: var(--pcv2-action);
+  color: var(--pcv2-action-fg);
+}
+.pcv2__eli5-toggle-label {
+  display: inline-block;
+  line-height: 1;
+}
+
+/* ============================================================== */
+/* Buttons                                                        */
+/* ============================================================== */
+
+.pcv2__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 38px;
+  padding: 0.55rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+.pcv2__btn--primary {
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  box-shadow: var(--pcv2-shadow-glow-purple);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+.pcv2__btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.60), 0 0 48px rgba(34, 211, 238, 0.40);
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+.pcv2__btn--primary:active { transform: translateY(0); filter: brightness(0.95); }
+.pcv2__btn--ghost {
+  background: var(--pcv2-surface);
+  color: var(--pcv2-text);
+  border-color: var(--pcv2-border-strong);
+  backdrop-filter: blur(8px);
+}
+.pcv2__btn--ghost:hover {
+  background: var(--pcv2-surface-strong);
+  text-decoration: none;
+}
+.pcv2__btn--lg {
+  min-height: 52px;
+  padding: 0.85rem 1.75rem;
+  font-size: 1.05rem;
+  border-radius: 12px;
+}
+
+/* ============================================================== */
+/* Hero                                                           */
+/* ============================================================== */
+
+.pcv2__main {
+  padding: 1.5rem 1.5rem 4rem;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.pcv2__hero {
+  text-align: center;
+  padding: 3.5rem 0 2.5rem;
+  position: relative;
+  /* Account for the sticky header (≈4rem) plus breathing room when the
+     hero scrolls into view — keeps the CTA visible after the user has
+     scrolled past the report. */
+  scroll-margin-top: 5rem;
+}
+
+.pcv2__eyebrow {
+  display: inline-block;
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  margin: 0 0 1.25rem;
+  backdrop-filter: blur(8px);
+}
+
+.pcv2__hero-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  margin: 0 0 1.25rem;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+  background: var(--pcv2-grad-mixed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+.pcv2__hero-subtitle {
+  max-width: 60ch;
+  margin: 0 auto 2rem;
+  color: var(--pcv2-text-muted);
+  font-size: 1.05rem;
+}
+
+.pcv2__hero-cta { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+/* ============================================================== */
+/* Progress                                                       */
+/* ============================================================== */
+
+.pcv2__progress {
+  max-width: 720px;
+  margin: 1rem auto;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--pcv2-shadow-1);
+  backdrop-filter: blur(12px);
+}
+.pcv2__progress-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.pcv2__progress-list li {
+  display: flex; align-items: center; gap: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: var(--pcv2-surface-sunken);
+  color: var(--pcv2-text-faint);
+  border: 1px solid transparent;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.pcv2__progress-list li[data-pcv2-active="true"] {
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-text);
+  border-color: var(--pcv2-action);
+  box-shadow: 0 0 0 1px var(--pcv2-action), 0 0 16px rgba(139, 92, 246, 0.25);
+}
+.pcv2__progress-list li[data-pcv2-done="true"] {
+  color: var(--pcv2-text);
+  background: var(--pcv2-surface);
+}
+.pcv2__progress-list li[data-pcv2-done="true"]::before {
+  content: "✓";
+  font-weight: 800;
+  color: var(--pcv2-safe-fg);
+}
+.pcv2__chip {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-neutral-fg);
+  margin-left: auto;
+  border: 1px solid var(--pcv2-neutral-border);
+}
+
+/* ============================================================== */
+/* Score hero (replaces old summary card)                         */
+/* ============================================================== */
+
+.pcv2__score-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  margin: 0 0 1.75rem;
+  padding: 1.75rem;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 20px;
+  box-shadow: var(--pcv2-shadow-2);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  /* Subtle animated gradient backdrop so the card feels alive. The
+     orb layer sits behind everything else; it slowly drifts via a
+     long, low-amplitude keyframe that respects prefers-reduced-motion
+     (the keyframe is suppressed at the bottom of this file). */
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__score-hero::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.14), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(56, 189, 248, 0.12), transparent 50%);
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(20px);
+  animation: pcv2-hero-drift 24s ease-in-out infinite alternate;
+}
+.pcv2__score-hero > * { position: relative; z-index: 1; }
+@keyframes pcv2-hero-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, -1.5%, 0) scale(1.04); }
+  100% { transform: translate3d(-1%, 1.5%, 0) scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-hero::before { animation: none; }
+}
+@media (min-width: 900px) {
+  .pcv2__score-hero {
+    grid-template-columns: 280px 1fr;
+    gap: 2rem;
+    align-items: stretch;
+  }
+}
+
+/* Large central ring */
+.pcv2__score-hero-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1rem;
+  border-radius: 16px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__score-hero-main::before {
+  /* Inner ambient backdrop so the central card breathes on its own. */
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--pcv2-ring-glow, var(--pcv2-info)) 22%, transparent), transparent 55%),
+    radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--pcv2-info-fg) 16%, transparent), transparent 60%);
+  filter: blur(18px);
+  z-index: 0;
+  pointer-events: none;
+  animation: pcv2-main-card-pulse 6s ease-in-out infinite alternate;
+}
+.pcv2__score-hero-main > * { position: relative; z-index: 1; }
+@keyframes pcv2-main-card-pulse {
+  0%   { transform: scale(1)    rotate(0deg);   opacity: 0.85; }
+  100% { transform: scale(1.08) rotate(2deg);   opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-hero-main::before { animation: none; }
+}
+
+.pcv2__score-ring {
+  width: var(--pcv2-ring-size, 220px);
+  height: var(--pcv2-ring-size, 220px);
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.pcv2__score-ring--animated { /* SVG-mode ring — track div is unused */ }
+
+/* SVG ring layers. The fill arc is the actual score percentage;
+   the halo is a thicker blurred stroke that pulses to give the
+   "dynamic color" feel. */
+.pcv2__score-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pcv2__score-ring-bg {
+  opacity: 0.65;
+}
+.pcv2__score-ring-halo {
+  filter: blur(8px);
+  opacity: 0.55;
+  animation: pcv2-ring-halo-pulse 2.4s ease-in-out infinite alternate;
+}
+@keyframes pcv2-ring-halo-pulse {
+  0%   { opacity: 0.30; }
+  100% { opacity: 0.85; }
+}
+.pcv2__score-ring-fill {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pcv2-ring-tone-color, var(--pcv2-info-fg)) 60%, transparent));
+  transition: filter 200ms ease;
+}
+.pcv2__score-ring-sparkle {
+  opacity: 0;
+  animation: pcv2-ring-sparkle 1.8s ease-out infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+@keyframes pcv2-ring-sparkle {
+  0%   { opacity: 0;    transform: scale(0.4); }
+  35%  { opacity: 0.95; transform: scale(1.2); }
+  70%  { opacity: 0.40; transform: scale(0.9); }
+  100% { opacity: 0;    transform: scale(0.4); }
+}
+
+/* Fallback for browsers / contexts that still get the conic-gradient
+   track (e.g. when JS fails — the static HTML template uses it). */
+.pcv2__score-ring-track {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from -90deg, var(--pcv2-ring-fill, var(--pcv2-info)) var(--pcv2-ring-pct, 0%), var(--pcv2-surface-sunken) var(--pcv2-ring-pct, 0%));
+  -webkit-mask: radial-gradient(circle, transparent 60%, black 60.5%, black 100%);
+  mask: radial-gradient(circle, transparent 60%, black 60.5%, black 100%);
+}
+
+.pcv2__score-ring-inner {
+  position: relative;
+  width: 78%;
+  height: 78%;
+  border-radius: 50%;
+  background: var(--pcv2-surface-strong);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  box-shadow:
+    inset 0 0 0 1px var(--pcv2-border),
+    0 0 0 4px color-mix(in srgb, var(--pcv2-ring-tone-color, var(--pcv2-info-fg)) 8%, transparent);
+}
+
+.pcv2__score-ring-value {
+  font-size: 3.1rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--pcv2-text);
+  /* Subtle hue tint via the halo colour — keep the gradient valid
+     even when --pcv2-ring-tone-color is a CSS keyword like "warning"
+     (used as a stroke value). The fallback is the safe-fg so the
+     gradient always resolves. */
+  background-image: linear-gradient(180deg,
+    var(--pcv2-text) 0%,
+    var(--pcv2-ring-glow, var(--pcv2-info-fg)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.05);
+}
+.pcv2__score-ring-value-suffix {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--pcv2-text-faint);
+  margin-top: 0.15rem;
+  -webkit-text-fill-color: var(--pcv2-text-faint);
+}
+.pcv2__score-ring-value-pending {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  margin-top: 0.35rem;
+  -webkit-text-fill-color: var(--pcv2-text-faint);
+}
+.pcv2__score-ring-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  margin-top: 0.35rem;
+}
+
+/* Holographic grade badge — large letter + small descriptor.
+   The background is an animated rotating gradient; the border is
+   severity-mapped. */
+.pcv2__score-grade {
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border);
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__score-grade--animated::before {
+  /* Rotating conic-gradient sheen */
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(from 0deg,
+    color-mix(in srgb, var(--pcv2-safe-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-info-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-warning-fg) 40%, transparent),
+    color-mix(in srgb, var(--pcv2-danger-fg)  35%, transparent),
+    color-mix(in srgb, var(--pcv2-info-fg)   40%, transparent),
+    color-mix(in srgb, var(--pcv2-safe-fg)   40%, transparent));
+  animation: pcv2-grade-spin 8s linear infinite;
+  opacity: 0.55;
+  z-index: 0;
+  pointer-events: none;
+}
+.pcv2__score-grade--animated::after {
+  /* Inner cutout so the sheen only shows on the border edge */
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 999px;
+  background: var(--pcv2-surface-strong);
+  z-index: 0;
+}
+.pcv2__score-grade--animated > * { position: relative; z-index: 1; }
+.pcv2__score-grade--animated {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pcv2-ring-glow, var(--pcv2-info-fg)) 45%, transparent);
+}
+@keyframes pcv2-grade-spin {
+  0%   { transform: rotate(0deg);   }
+  100% { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__score-grade--animated::before { animation: none; }
+}
+.pcv2__score-grade-letter {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-text);
+  background-image: linear-gradient(135deg, var(--pcv2-text) 0%, var(--pcv2-ring-glow, var(--pcv2-info-fg)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.pcv2__score-grade-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  font-weight: 600;
+}
+.pcv2__score-grade[data-pcv2-tone="safe"]    .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-safe-fg) 0%, var(--pcv2-info-fg) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.pcv2__score-grade[data-pcv2-tone="warning"] .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-warning-fg) 0%, #fb923c 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.pcv2__score-grade[data-pcv2-tone="danger"]  .pcv2__score-grade-letter { background-image: linear-gradient(135deg, var(--pcv2-danger-fg) 0%, #fb7185 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+
+/* Sub-scores row (4 mini rings) */
+.pcv2__score-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+@media (min-width: 600px) {
+  .pcv2__score-hero-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.pcv2__mini-card {
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 14px;
+  padding: 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.pcv2__mini-card:hover {
+  background: var(--pcv2-surface-strong);
+  transform: translateY(-1px);
+}
+.pcv2__mini-ring {
+  width: 72px;
+  height: 72px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.pcv2__mini-ring-track {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from -90deg, var(--pcv2-ring-fill, var(--pcv2-info)) var(--pcv2-ring-pct, 0%), var(--pcv2-surface-sunken) var(--pcv2-ring-pct, 0%));
+  -webkit-mask: radial-gradient(circle, transparent 65%, black 65.5%, black 100%);
+  mask: radial-gradient(circle, transparent 65%, black 65.5%, black 100%);
+}
+.pcv2__mini-ring-inner {
+  position: relative;
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  background: var(--pcv2-surface-strong);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  box-shadow: inset 0 0 0 1px var(--pcv2-border);
+}
+.pcv2__mini-card-label {
+  font-size: 0.78rem;
+  color: var(--pcv2-text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+}
+.pcv2__mini-card-tone {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: var(--pcv2-ring-fill, var(--pcv2-info));
+  box-shadow: 0 0 8px var(--pcv2-ring-fill, var(--pcv2-info));
+}
+
+/* ============================================================== */
+/* Score hero — radial sub-score chart                             */
+/* ============================================================== */
+
+.pcv2__score-hero-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+}
+
+.pcv2__radial-chart {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  display: block;
+}
+.pcv2__radial-chart-bg { opacity: 0.7; }
+.pcv2__radial-wedge {
+  transition: stroke-width 200ms ease, filter 200ms ease, opacity 200ms ease;
+  cursor: pointer;
+  filter: drop-shadow(0 0 0 transparent);
+}
+.pcv2__radial-wedge:hover,
+.pcv2__radial-wedge:focus-visible {
+  stroke-width: 14;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+.pcv2__radial-wedge:focus { outline: none; }
+
+.pcv2__radial-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  fill: var(--pcv2-text-muted);
+  pointer-events: none;
+}
+
+.pcv2__score-hero-empty {
+  color: var(--pcv2-text-faint);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pcv2__radial-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  width: 100%;
+  max-width: 100%;
+}
+@media (min-width: 480px) {
+  .pcv2__radial-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.pcv2__radial-legend-row {
+  display: flex; align-items: center; gap: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--pcv2-text-muted);
+  line-height: 1.2;
+}
+.pcv2__radial-legend-swatch {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+}
+.pcv2__radial-legend-row[data-pcv2-tone="safe"]    .pcv2__radial-legend-swatch { background: var(--pcv2-safe-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="warning"] .pcv2__radial-legend-swatch { background: var(--pcv2-warning-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="danger"]  .pcv2__radial-legend-swatch { background: var(--pcv2-danger-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="info"]    .pcv2__radial-legend-swatch { background: var(--pcv2-info-fg); }
+.pcv2__radial-legend-row[data-pcv2-tone="neutral"] .pcv2__radial-legend-swatch { background: var(--pcv2-text-faint); }
+
+.pcv2__radial-legend-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcv2__radial-legend-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--pcv2-text);
+}
+
+/* Hover a wedge — highlight matching legend row + dim the others. */
+.pcv2__radial-chart:hover .pcv2__radial-wedge { opacity: 0.45; }
+.pcv2__radial-chart:hover .pcv2__radial-wedge:hover,
+.pcv2__radial-chart:hover .pcv2__radial-wedge:focus-visible { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__radial-wedge { transition: none; }
+}
+
+/* ============================================================== */
+/* Detail cards grid                                              */
+/* ============================================================== */
+
+.pcv2__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+@media (min-width: 768px) {
+  .pcv2__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+}
+@media (min-width: 1100px) {
+  .pcv2__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* The "Connection" card spans wider on wide layouts */
+.pcv2__card[data-pcv2-card="connection"] {
+  grid-column: span 1;
+}
+@media (min-width: 1100px) {
+  .pcv2__card[data-pcv2-card="connection"] {
+    grid-column: span 2;
+  }
+}
+
+/* Phase 42: Network Path card spans the full grid width on every
+ * breakpoint — the user wants the network-path diagram to feel like
+ * a hero, not a sidecar. */
+.pcv2__card--wide,
+.pcv2__card[data-pcv2-card="network-path"] {
+  grid-column: 1 / -1;
+}
+
+.pcv2__card {
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 16px;
+  padding: 1.35rem 1.4rem;
+  box-shadow: var(--pcv2-shadow-1);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  transition: box-shadow 200ms ease, transform 200ms ease, background-color 200ms ease, border-color 200ms ease;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.pcv2__card:hover {
+  box-shadow: var(--pcv2-shadow-2);
+  transform: translateY(-2px);
+  background: var(--pcv2-surface-strong);
+  border-color: var(--pcv2-border-strong);
+}
+
+.pcv2__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pcv2__card-header h2 {
+  font-size: 0.78rem;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+}
+.pcv2__card-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: inline-grid; place-items: center;
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  font-size: 1rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+}
+
+.pcv2__card-body {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Key/value rows */
+.pcv2__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  font-size: 0.9rem;
+  min-width: 0;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--pcv2-border);
+}
+.pcv2__row:last-child { border-bottom: none; }
+.pcv2__row dt {
+  color: var(--pcv2-text-muted);
+  margin: 0;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.pcv2__row dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 18rem;
+  color: var(--pcv2-text);
+}
+.pcv2__row dd code, .pcv2__row dd.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+.pcv2__row dd.pcv2__row-missing {
+  color: var(--pcv2-text-faint);
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* ============================================================== */
+/* Status badges (color + label + icon — never color alone)       */
+/* ============================================================== */
+
+.pcv2__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid currentColor;
+  background: var(--pcv2-status-bg, transparent);
+  color: var(--pcv2-status-fg, var(--pcv2-text));
+  border-color: var(--pcv2-status-border, currentColor);
+  box-shadow: 0 0 12px var(--pcv2-status-glow, transparent);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.pcv2__status::before {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.pcv2__status[data-pcv2-status="safe"] {
+  --pcv2-status-bg: var(--pcv2-safe-bg);
+  --pcv2-status-fg: var(--pcv2-safe-fg);
+  --pcv2-status-border: var(--pcv2-safe-border);
+  --pcv2-status-glow: rgba(52, 211, 153, 0.25);
+}
+.pcv2__status[data-pcv2-status="safe"]::before { content: "✓"; }
+
+.pcv2__status[data-pcv2-status="warning"] {
+  --pcv2-status-bg: var(--pcv2-warning-bg);
+  --pcv2-status-fg: var(--pcv2-warning-fg);
+  --pcv2-status-border: var(--pcv2-warning-border);
+  --pcv2-status-glow: rgba(251, 191, 36, 0.25);
+}
+.pcv2__status[data-pcv2-status="warning"]::before { content: "!"; }
+
+.pcv2__status[data-pcv2-status="danger"] {
+  --pcv2-status-bg: var(--pcv2-danger-bg);
+  --pcv2-status-fg: var(--pcv2-danger-fg);
+  --pcv2-status-border: var(--pcv2-danger-border);
+  --pcv2-status-glow: rgba(248, 113, 113, 0.30);
+}
+.pcv2__status[data-pcv2-status="danger"]::before { content: "✕"; }
+
+.pcv2__status[data-pcv2-status="info"] {
+  --pcv2-status-bg: var(--pcv2-info-bg);
+  --pcv2-status-fg: var(--pcv2-info-fg);
+  --pcv2-status-border: var(--pcv2-info-border);
+  --pcv2-status-glow: rgba(56, 189, 248, 0.25);
+}
+.pcv2__status[data-pcv2-status="info"]::before { content: "ⓘ"; }
+
+.pcv2__status[data-pcv2-status="neutral"] {
+  --pcv2-status-bg: var(--pcv2-neutral-bg);
+  --pcv2-status-fg: var(--pcv2-neutral-fg);
+  --pcv2-status-border: var(--pcv2-neutral-border);
+  --pcv2-status-glow: transparent;
+}
+.pcv2__status[data-pcv2-status="neutral"]::before { content: "·"; }
+
+/* Legacy alias kept so old JS still renders — maps to neutral */
+.pcv2__chip--status {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-neutral-fg);
+  border: 1px solid var(--pcv2-neutral-border);
+}
+
+.pcv2__chip--neutral {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-neutral-fg);
+  border: 1px solid var(--pcv2-neutral-border);
+}
+
+/* ============================================================== */
+/* Findings list (expandable rows with scoring rubric + evidence) */
+/* ============================================================== */
+
+.pcv2__findings {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.85rem;
+}
+.pcv2__findings-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+.pcv2__findings h3 {
+  font-size: 0.78rem;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+}
+.pcv2__findings-hint {
+  font-size: 0.78rem;
+  color: var(--pcv2-text-faint);
+}
+
+/* Native <details> wrapper — gives keyboard + a11y for free. */
+.pcv2__finding {
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  position: relative;
+  overflow: hidden;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.pcv2__finding::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--pcv2-finding-tone, var(--pcv2-info-fg));
+  box-shadow: 0 0 12px var(--pcv2-finding-tone, var(--pcv2-info-fg));
+}
+.pcv2__finding[data-pcv2-severity="safe"]    { --pcv2-finding-tone: var(--pcv2-safe-fg); }
+.pcv2__finding[data-pcv2-severity="warning"] { --pcv2-finding-tone: var(--pcv2-warning-fg); }
+.pcv2__finding[data-pcv2-severity="danger"]  { --pcv2-finding-tone: var(--pcv2-danger-fg); }
+.pcv2__finding[data-pcv2-severity="info"]    { --pcv2-finding-tone: var(--pcv2-info-fg); }
+.pcv2__finding[data-pcv2-severity="neutral"] { --pcv2-finding-tone: var(--pcv2-neutral-fg); }
+.pcv2__finding[open] {
+  background: var(--pcv2-surface-strong);
+  border-color: var(--pcv2-border-strong);
+}
+
+/* Summary row — visible always, clickable. */
+.pcv2__finding > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem 1rem;
+  padding: 1rem 1.15rem;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+}
+.pcv2__finding > summary::-webkit-details-marker { display: none; }
+.pcv2__finding > summary::marker { display: none; content: ''; }
+.pcv2__finding > summary:hover { background: var(--pcv2-surface-sunken); }
+.pcv2__finding > summary:focus-visible {
+  outline: 3px solid var(--pcv2-focus-ring);
+  outline-offset: -3px;
+  border-radius: 14px;
+}
+
+.pcv2__finding-icon {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-finding-tone, var(--pcv2-text-muted));
+  border: 1px solid var(--pcv2-neutral-border);
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.pcv2__finding-head { min-width: 0; }
+.pcv2__finding-title { font-weight: 600; margin: 0 0 0.2rem; font-size: 0.95rem; }
+.pcv2__finding-body { color: var(--pcv2-text-muted); font-size: 0.85rem; margin: 0; line-height: 1.4; }
+
+.pcv2__finding-score-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+.pcv2__finding-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--pcv2-finding-tone, var(--pcv2-text));
+  white-space: nowrap;
+}
+.pcv2__finding-chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 24px; height: 24px;
+  border-radius: 999px;
+  background: var(--pcv2-neutral-bg);
+  border: 1px solid var(--pcv2-neutral-border);
+  color: var(--pcv2-text-muted);
+  font-size: 0.8rem;
+  transition: transform 200ms ease, background-color 160ms ease;
+}
+.pcv2__finding[open] > summary .pcv2__finding-chevron {
+  transform: rotate(180deg);
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  border-color: transparent;
+}
+
+/* Expandable body — sub-blocks (rubric / evidence / source / rec). */
+.pcv2__finding-details {
+  padding: 0 1.15rem 1.15rem 1.15rem;
+  display: grid;
+  gap: 1.25rem;
+  border-top: 1px solid var(--pcv2-border);
+  margin-top: -1px;
+  padding-top: 1.15rem;
+}
+.pcv2__finding-block {
+  display: grid;
+  gap: 0.55rem;
+}
+.pcv2__finding-block-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+}
+
+/* Rubric — the verdict chip + the full band list. */
+.pcv2__finding-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.pcv2__finding-verdict-text {
+  font-size: 0.92rem;
+  color: var(--pcv2-text);
+  line-height: 1.45;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pcv2__finding-rubric {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.pcv2__finding-band {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 0.85rem;
+  align-items: baseline;
+  padding: 0.5rem 0.75rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__finding-band::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--pcv2-band-tone, var(--pcv2-text-faint));
+  opacity: 0.7;
+}
+.pcv2__finding-band[data-pcv2-tone="safe"]    { --pcv2-band-tone: var(--pcv2-safe-fg); }
+.pcv2__finding-band[data-pcv2-tone="warning"] { --pcv2-band-tone: var(--pcv2-warning-fg); }
+.pcv2__finding-band[data-pcv2-tone="danger"]  { --pcv2-band-tone: var(--pcv2-danger-fg); }
+.pcv2__finding-band-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-band-tone, var(--pcv2-text));
+  text-align: right;
+}
+.pcv2__finding-band-condition { color: var(--pcv2-text-muted); line-height: 1.4; }
+.pcv2__finding-band--hit {
+  background: var(--pcv2-neutral-bg);
+  border-color: var(--pcv2-finding-tone, var(--pcv2-info-fg));
+  box-shadow: 0 0 0 1px var(--pcv2-finding-tone, var(--pcv2-info-fg)),
+              0 0 16px color-mix(in srgb, var(--pcv2-finding-tone, var(--pcv2-info-fg)) 30%, transparent);
+}
+.pcv2__finding-band--hit .pcv2__finding-band-condition {
+  color: var(--pcv2-text);
+  font-weight: 500;
+}
+
+/* Evidence block. */
+.pcv2__finding-evidence {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 1fr;
+  gap: 0.4rem 1rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.pcv2__finding-evidence dt { color: var(--pcv2-text-muted); margin: 0; }
+.pcv2__finding-evidence dd {
+  margin: 0;
+  color: var(--pcv2-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+/* Source / data-quality block. */
+.pcv2__finding-source-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  line-height: 1.45;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--pcv2-info-fg);
+  background: var(--pcv2-info-bg);
+  border-radius: 0 8px 8px 0;
+}
+
+/* Recommendation block — gradient-tinted, the "what to do" payoff. */
+.pcv2__finding-block--rec {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--pcv2-action-grad);
+  color: var(--pcv2-action-fg);
+  box-shadow: var(--pcv2-shadow-glow-purple);
+}
+.pcv2__finding-block--rec .pcv2__finding-block-title {
+  color: rgba(255, 255, 255, 0.78);
+}
+.pcv2__finding-block--rec .pcv2__finding-rec {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--pcv2-action-fg);
+  font-weight: 500;
+}
+
+/* ============================================================== */
+/* Post-scan share / export action bar                            */
+/* ============================================================== */
+
+.pcv2__post-scan {
+  display: flex; flex-wrap: wrap; gap: 0.65rem;
+  align-items: center;
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.15rem;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 14px;
+  box-shadow: var(--pcv2-shadow-1);
+  backdrop-filter: blur(12px);
+}
+.pcv2__post-scan-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  margin-right: 0.5rem;
+}
+
+.pcv2__post-scan-feedback {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: var(--pcv2-neutral-bg);
+  color: var(--pcv2-neutral-fg);
+  border: 1px solid var(--pcv2-neutral-border);
+  margin-left: auto;
+}
+.pcv2__post-scan-feedback[data-pcv2-tone="ok"]  {
+  background: var(--pcv2-safe-bg);
+  color: var(--pcv2-safe-fg);
+  border-color: var(--pcv2-safe-border);
+}
+.pcv2__post-scan-feedback[data-pcv2-tone="err"] {
+  background: var(--pcv2-warning-bg);
+  color: var(--pcv2-warning-fg);
+  border-color: var(--pcv2-warning-border);
+}
+
+/* ============================================================== */
+/* Footer                                                         */
+/* ============================================================== */
+
+.pcv2__footer {
+  text-align: center;
+  padding: 2.5rem 1.5rem 3rem;
+  color: var(--pcv2-text-faint);
+  font-size: 0.85rem;
+}
+
+/* ============================================================== */
+/* Toggle pill                                                    */
+/* ============================================================== */
+
+.pcv2__toggle {
+  position: fixed;
+  right: 1.25rem; bottom: 1.25rem;
+  z-index: 100;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 1.05rem;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border-strong);
+  border-radius: 999px;
+  color: var(--pcv2-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--pcv2-shadow-2);
+  backdrop-filter: blur(12px);
+  transition: transform 160ms ease;
+}
+.pcv2__toggle:hover { transform: translateY(-1px); text-decoration: none; }
+.pcv2__toggle-dot {
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--pcv2-action-grad);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.30);
+}
+
+.pcv2--geo { all: revert; padding: 1.5rem; background: var(--pcv2-surface); border: 1px solid var(--pcv2-border); border-radius: 16px; box-shadow: var(--pcv2-shadow-1); backdrop-filter: blur(12px); }
+.pcv2--geo *, .pcv2--geo *::before, .pcv2--geo *::after { box-sizing: border-box; }
+.pcv2__sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================== */
+/* GeoTrace v2 — same canonical route shape as the backend       */
+/* ============================================================== */
+
+.pcv2__geo {
+  margin-top: 2rem;
+  padding: 1.5rem 1.5rem;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 16px;
+  box-shadow: var(--pcv2-shadow-1);
+  backdrop-filter: blur(14px);
+}
+.pcv2__geo-header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin-bottom: 1rem; }
+.pcv2__geo-header h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  font-weight: 700;
+  flex: 1 1 auto;
+}
+.pcv2__geo-input { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.pcv2__geo-input input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface-sunken);
+  color: var(--pcv2-text);
+  font: inherit;
+}
+.pcv2__geo-disclaimer {
+  font-size: 0.8rem;
+  color: var(--pcv2-text-muted);
+  padding: 0.5rem 0.75rem;
+  background: var(--pcv2-info-bg);
+  border-radius: 8px;
+  border: 1px solid var(--pcv2-info-border);
+  margin: 0.75rem 0;
+}
+.pcv2__geo-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.pcv2__geo-meta dt { color: var(--pcv2-text-muted); }
+.pcv2__geo-meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.pcv2__geo-map {
+  height: 320px;
+  border-radius: 12px;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  overflow: hidden;
+  position: relative;
+}
+.pcv2__geo-map-msg {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; padding: 1rem;
+  color: var(--pcv2-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.pcv2__geo-hops { display: grid; gap: 0.5rem; margin-top: 1rem; }
+.pcv2__geo-hops-empty {
+  padding: 0.75rem 1rem;
+  color: var(--pcv2-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  border: 1px dashed var(--pcv2-border-soft);
+  border-radius: 10px;
+  background: var(--pcv2-surface-sunken);
+}
+.pcv2__geo-hop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem 0.75rem;
+  align-items: baseline;
+  padding: 0.6rem 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.pcv2__geo-hop[data-pcv2-jump="true"] { border-left: 3px solid var(--pcv2-warning-fg); }
+.pcv2__geo-hop-idx { font-weight: 700; color: var(--pcv2-text-muted); font-variant-numeric: tabular-nums; }
+.pcv2__geo-hop-name { min-width: 0; }
+.pcv2__geo-hop-name strong { font-weight: 600; display: block; }
+.pcv2__geo-hop-name span { color: var(--pcv2-text-muted); font-size: 0.85rem; font-family: ui-monospace, SFMono-Regular, monospace; }
+.pcv2__geo-hop-rtt { font-variant-numeric: tabular-nums; color: var(--pcv2-text-muted); }
+
+.pcv2__geo-paste { margin-top: 1rem; }
+.pcv2__geo-paste summary { cursor: pointer; color: var(--pcv2-text-muted); font-size: 0.9rem; }
+.pcv2__geo-paste textarea {
+  width: 100%; min-height: 100px; margin-top: 0.5rem; padding: 0.5rem;
+  font-family: ui-monospace, monospace; font-size: 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface-sunken);
+  color: var(--pcv2-text);
+}
+
+.pcv2__leaflet-pin { width: 18px; height: 18px; border-radius: 999px; background: var(--pcv2-action); border: 2px solid var(--pcv2-surface-strong); box-shadow: 0 0 0 1px var(--pcv2-border-strong); }
+.pcv2__leaflet-pin--origin { background: var(--pcv2-text); }
+.pcv2__leaflet-pin--dest { background: var(--pcv2-safe-fg); }
+.pcv2__leaflet-pin--private { background: var(--pcv2-text-faint); }
+
+/* ============================================================== */
+/* Inline GeoTrace section on the home page (Phase 19)            */
+/* ============================================================== */
+
+.pcv2__geotrace {
+  margin-top: 2.5rem;
+  padding: 1.5rem 1.5rem 1.75rem;
+  background: var(--pcv2-surface-strong);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 20px;
+  box-shadow: var(--pcv2-shadow-2);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__geotrace::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(circle, var(--pcv2-orb-2) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0.4;
+}
+.pcv2__geotrace > * { position: relative; z-index: 1; }
+
+.pcv2__geotrace .pcv2__geo-header { align-items: center; }
+.pcv2__geo-header-text { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-width: 0; }
+.pcv2__geo-header h2 {
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pcv2-text);
+  font-weight: 700;
+}
+.pcv2__geo-tagline {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__geo-input input {
+  min-width: 200px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================== */
+/* Richer card design (Phase 19) — card icons + always-on content */
+/* ============================================================== */
+
+.pcv2__card-header { position: relative; }
+.pcv2__card[data-pcv2-card] .pcv2__card-header::after {
+  content: "";
+  position: absolute;
+  right: 0; top: 0.15rem;
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: var(--pcv2-action-grad);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  opacity: 0.85;
+}
+.pcv2__card[data-pcv2-card="overview"]     .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-overview);     mask-image: var(--pcv2-icon-overview); }
+.pcv2__card[data-pcv2-card="connection"]   .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-connection);   mask-image: var(--pcv2-icon-connection); }
+.pcv2__card[data-pcv2-card="anonymity"]    .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-anonymity);    mask-image: var(--pcv2-icon-anonymity); }
+.pcv2__card[data-pcv2-card="dns"]          .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-dns);          mask-image: var(--pcv2-icon-dns); }
+.pcv2__card[data-pcv2-card="browser"]      .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-browser);      mask-image: var(--pcv2-icon-browser); }
+.pcv2__card[data-pcv2-card="security"]     .pcv2__card-header::after { -webkit-mask-image: var(--pcv2-icon-security);     mask-image: var(--pcv2-icon-security); }
+
+:root, [data-pcv2-theme="light"] {
+  /* Mask images for card icons — embedded SVGs sized 18×18, recolored
+     via background. Using the gradient as the background so each card
+     header gets the same purple→pink treatment as the buttons. */
+  --pcv2-icon-overview:   url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M3 12l9-9 9 9-2 2-7-7-7 7z'/><path fill='black' d='M5 12v8a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-8l-7-7z'/></svg>");
+  --pcv2-icon-connection: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='9' fill='none' stroke='black' stroke-width='2'/><path fill='none' stroke='black' stroke-width='2' d='M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18'/></svg>");
+  --pcv2-icon-anonymity:  url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z'/></svg>");
+  --pcv2-icon-dns:        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='3' fill='black'/><circle cx='4' cy='6' r='2' fill='black'/><circle cx='4' cy='18' r='2' fill='black'/><circle cx='20' cy='6' r='2' fill='black'/><circle cx='20' cy='18' r='2' fill='black'/><path fill='none' stroke='black' stroke-width='1.5' d='M6 7l4 4M18 7l-4 4M6 17l4-4M18 17l-4-4'/></svg>");
+  --pcv2-icon-browser:    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='4' width='18' height='16' rx='2' fill='none' stroke='black' stroke-width='2'/><circle cx='12' cy='12' r='3' fill='black'/><path fill='black' d='M3 8h18'/></svg>");
+  --pcv2-icon-security:   url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z'/><path fill='white' d='M10 12l-2 2 4 4 6-6-2-2-4 4z'/></svg>");
+}
+
+/* Browser card gets "always available" content from the client itself,
+   so it never shows "Not available" for UA / screen / timezone. The JS
+   already pulls from navigator.userAgent, screen.width, etc. — these
+   rules just style that block of "always-on" rows. */
+.pcv2__card[data-pcv2-card="browser"] .pcv2__row--always-on dd {
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+/* Anonymity card gets a "detection pill" — a single tone-coded chip
+   that summarizes the verdict so the card always has a clear status
+   even when the underlying signal is "No signal". */
+.pcv2__detection-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 10px;
+  margin-bottom: 0.25rem;
+}
+.pcv2__detection-pill-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+
+/* Security card gets a verdict strip across the top — green/amber/red
+   depending on TLS + outdated-broswer combined rule. */
+.pcv2__security-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 10px;
+  margin-bottom: 0.25rem;
+  font-size: 0.92rem;
+}
+.pcv2__security-verdict-label { font-weight: 600; }
+
+/* DNS card gets a one-line provider pill. */
+.pcv2__dns-provider-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.pcv2__dns-provider-pill-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+
+/* Connection card gets a hero strip with country + ASN at the top,
+   even when the rest of the detail fields are empty. */
+.pcv2__connection-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+  padding: 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  margin-bottom: 0.25rem;
+}
+.pcv2__connection-hero-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+.pcv2__connection-hero-row dt {
+  flex: 0 0 auto;
+  color: var(--pcv2-text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pcv2__connection-hero-row dd {
+  margin: 0;
+  color: var(--pcv2-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* ============================================================== */
+/* Connection card — redesigned Phase 23                          */
+/* ============================================================== */
+
+.pcv2__connection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* IP badge — big, monospaced, copy-on-click. */
+.pcv2__connection-ip {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.95rem 1.1rem;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--pcv2-safe-fg)  18%, var(--pcv2-surface-strong)),
+    color-mix(in srgb, var(--pcv2-info-fg)  12%, var(--pcv2-surface-strong)));
+  border: 1px solid color-mix(in srgb, var(--pcv2-safe-fg) 38%, var(--pcv2-border));
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  animation: pcv2-connection-ip-enter 600ms ease-out both;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.pcv2__connection-ip::before {
+  /* animated sheen on hover */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg,
+    transparent 30%,
+    color-mix(in srgb, var(--pcv2-safe-fg) 18%, transparent) 50%,
+    transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 600ms ease;
+  pointer-events: none;
+}
+.pcv2__connection-ip:hover::before { transform: translateX(100%); }
+.pcv2__connection-ip:hover { transform: translateY(-1px); box-shadow: var(--pcv2-shadow-2); }
+@keyframes pcv2-connection-ip-enter {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.pcv2__connection-ip-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  flex: 0 0 auto;
+}
+.pcv2__connection-ip-value {
+  flex: 1 1 auto;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--pcv2-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcv2__connection-ip-copy {
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--pcv2-border-strong);
+  background: var(--pcv2-surface);
+  color: var(--pcv2-text);
+  font-size: 1.05rem;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.pcv2__connection-ip-copy:hover { background: var(--pcv2-surface-strong); color: var(--pcv2-action); }
+.pcv2__connection-ip-copy--ok  { background: var(--pcv2-safe-fg);  color: white; border-color: var(--pcv2-safe-fg); }
+.pcv2__connection-ip-copy--err { background: var(--pcv2-danger-fg);color: white; border-color: var(--pcv2-danger-fg); }
+
+/* Signal panel — a row of animated bars + location + ISP + pulsing globe. */
+.pcv2__connection-signal {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.85rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 14px;
+  animation: pcv2-signal-enter 700ms ease-out 100ms both;
+}
+@keyframes pcv2-signal-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.pcv2__signal-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.18rem;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.pcv2__signal-bar {
+  display: inline-block;
+  width: 6px;
+  background: var(--pcv2-info-fg);
+  border-radius: 2px;
+  height: calc(20% + (var(--pcv2-bar-idx, 0) * 16%));
+  opacity: 0.25;
+  animation: pcv2-signal-bar 700ms ease-out forwards;
+  animation-delay: var(--pcv2-bar-delay, 0ms);
+}
+.pcv2__signal-bar[data-pcv2-idx="0"] { height: 8px;  --pcv2-bar-idx: 1; }
+.pcv2__signal-bar[data-pcv2-idx="1"] { height: 14px; --pcv2-bar-idx: 2; }
+.pcv2__signal-bar[data-pcv2-idx="2"] { height: 20px; --pcv2-bar-idx: 3; }
+.pcv2__signal-bar[data-pcv2-idx="3"] { height: 26px; --pcv2-bar-idx: 4; }
+.pcv2__signal-bar[data-pcv2-idx="4"] { height: 32px; --pcv2-bar-idx: 5; }
+@keyframes pcv2-signal-bar {
+  from { opacity: 0; transform: scaleY(0.2); transform-origin: bottom; }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+.pcv2__signal-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.pcv2__signal-flag {
+  display: none; /* shown via CSS only when valid */
+}
+.pcv2__signal-flag:not(:empty) {
+  display: inline-block;
+  font-size: 1.4rem;
+  margin-right: 0.35rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+.pcv2__signal-location {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--pcv2-text);
+}
+.pcv2__signal-isp {
+  font-size: 0.78rem;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__signal-globe {
+  position: relative;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--pcv2-border-strong);
+  background: radial-gradient(circle at 30% 30%,
+    color-mix(in srgb, var(--pcv2-info-fg) 28%, transparent),
+    transparent 60%),
+    var(--pcv2-surface);
+  flex: 0 0 auto;
+}
+.pcv2__signal-pin {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--pcv2-danger-fg);
+  top: 50%; left: 50%;
+  margin: -4px 0 0 -4px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pcv2-danger-fg) 18%, transparent);
+  animation: pcv2-signal-pin-pulse 2.4s ease-in-out infinite;
+}
+@keyframes pcv2-signal-pin-pulse {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 4px color-mix(in srgb, var(--pcv2-danger-fg) 18%, transparent); }
+  70%  { transform: scale(1.4); box-shadow: 0 0 0 12px color-mix(in srgb, var(--pcv2-danger-fg) 0%,  transparent); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 4px color-mix(in srgb, var(--pcv2-danger-fg) 18%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__connection-ip,
+  .pcv2__connection-signal,
+  .pcv2__signal-pin { animation: none; }
+  .pcv2__connection-ip { opacity: 1; transform: none; }
+}
+
+/* Fact tile grid — staggered entrance, tone-mapped borders.
+ *
+ * Use auto-fit with a 130 px minimum so the grid collapses to fewer
+ * columns when the card itself is narrow (e.g. Anonymity / Security
+ * share a single-column slot in the page grid at 1100 px+ viewports).
+ * Without this, 4-col × 70 px tiles clip every value. */
+.pcv2__connection-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.6rem;
+}
+.pcv2__connection-tile {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-left: 3px solid var(--pcv2-tone-color, var(--pcv2-info-fg));
+  border-radius: 10px;
+  position: relative;
+  animation: pcv2-tile-enter 500ms ease-out both;
+  animation-delay: var(--pcv2-tile-delay, 0ms);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.pcv2__connection-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pcv2-shadow-1);
+}
+@keyframes pcv2-tile-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.pcv2__connection-tile[data-pcv2-tone="safe"]    { --pcv2-tone-color: var(--pcv2-safe-fg); }
+.pcv2__connection-tile[data-pcv2-tone="warning"] { --pcv2-tone-color: var(--pcv2-warning-fg); }
+.pcv2__connection-tile[data-pcv2-tone="danger"]  { --pcv2-tone-color: var(--pcv2-danger-fg); }
+.pcv2__connection-tile[data-pcv2-tone="info"]    { --pcv2-tone-color: var(--pcv2-info-fg); }
+.pcv2__connection-tile[data-pcv2-tone="neutral"] { --pcv2-tone-color: var(--pcv2-text-faint); }
+.pcv2__connection-tile-icon {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--pcv2-tone-color, var(--pcv2-info-fg));
+  opacity: 0.85;
+  width: 1.6rem; height: 1.6rem;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-info-fg)) 12%, transparent);
+}
+.pcv2__connection-tile-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  line-height: 1.15;
+  /* Allow long labels like "Confidence", "Timezone" to wrap to
+     two lines instead of overflowing the tile width. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.pcv2__connection-tile-value {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--pcv2-text);
+  /* Allow long values to wrap on narrow tiles (e.g. Anonymity card
+   * in a single-column layout) instead of being clipped by
+   * overflow: hidden + white-space: nowrap. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+.pcv2__connection-tile-value.mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ----- Expandable tile (Phase 25) ----------------------------- */
+/*
+ * Tiles are now native <details> elements — the <summary> holds the
+ * icon + label + value, and the <div class="pcv2__connection-tile-detail">
+ * block (sibling of <summary>) is shown when [open] is set.
+ *
+ * The grid behaviour (stagger animation, tone border) lives on the
+ * base .pcv2__connection-tile class above. Here we only add the
+ * expand-specific styling.
+ */
+.pcv2__connection-tile--expandable > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0;
+  cursor: pointer;
+  border-radius: inherit;
+  outline: none;
+}
+.pcv2__connection-tile--expandable > summary::-webkit-details-marker { display: none; }
+.pcv2__connection-tile--expandable > summary::marker { content: ''; }
+
+.pcv2__connection-tile--expandable > summary:focus-visible {
+  box-shadow: 0 0 0 3px var(--pcv2-focus-ring, rgba(99, 102, 241, 0.55));
+}
+
+.pcv2__connection-tile-summary--no-detail { cursor: default; }
+
+.pcv2__connection-tile-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pcv2__connection-tile-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--pcv2-tone-color, var(--pcv2-text-faint));
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pcv2__connection-tile--expandable[open] > summary .pcv2__connection-tile-chevron {
+  transform: rotate(180deg);
+}
+
+.pcv2__connection-tile-detail {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-text-faint)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-text-faint)) 28%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  /* Slide-down reveal — matches the rest of the card's motion language. */
+  animation: pcv2-tile-detail-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pcv2__connection-tile-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  flex-wrap: wrap;
+}
+
+.pcv2__connection-tile-detail-label {
+  color: var(--pcv2-text-faint);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pcv2__connection-tile-detail-value {
+  color: var(--pcv2-text);
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 65%;
+}
+.pcv2__connection-tile-detail-value.mono {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@keyframes pcv2-tile-detail-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ----- Dynamic RGB text-color animation (Phase 25+) ----------- */
+/*
+ * "Always changing color" effect — applied to the primary "Run check"
+ * button (data-pcv2-action="start-scan") so the CTA pulses through
+ * the RGB spectrum and draws the user's eye. NOT applied to result
+ * tiles — those keep tone-mapped, stable colours so they stay
+ * legible.
+ */
+@property --pcv2-btn-hue {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.pcv2__btn--primary[data-pcv2-action="start-scan"] {
+  animation: pcv2-btn-rainbow 6s linear infinite;
+  color: hsl(var(--pcv2-btn-hue), 92%, 62%);
+}
+
+@keyframes pcv2-btn-rainbow {
+  0%   { --pcv2-btn-hue:   0; }
+  16%  { --pcv2-btn-hue:  60; }
+  33%  { --pcv2-btn-hue: 120; }
+  50%  { --pcv2-btn-hue: 180; }
+  66%  { --pcv2-btn-hue: 240; }
+  83%  { --pcv2-btn-hue: 300; }
+  100% { --pcv2-btn-hue: 360; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__connection-tile { animation: none; opacity: 1; transform: none; }
+  .pcv2__btn--primary[data-pcv2-action="start-scan"] { animation: none; color: var(--pcv2-action-fg); }
+}
+
+/* ============================================================== */
+/* Anonymity / Security verdict pill                              */
+/* ============================================================== */
+
+.pcv2__anonymity-body,
+.pcv2__browser-body,
+.pcv2__security-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pcv2__anonymity-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1.05rem 1.25rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--pcv2-tone-bg, var(--pcv2-info-bg))     85%, var(--pcv2-surface-strong)),
+    color-mix(in srgb, var(--pcv2-tone-bg, var(--pcv2-info-bg))     45%, var(--pcv2-surface-strong)));
+  border: 1px solid color-mix(in srgb, var(--pcv2-tone-fg, var(--pcv2-info-fg)) 40%, var(--pcv2-border));
+  position: relative;
+  overflow: hidden;
+  animation: pcv2-verdict-enter 600ms ease-out both;
+}
+.pcv2__anonymity-verdict::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--pcv2-tone-fg, var(--pcv2-info-fg)) 60%, transparent),
+    transparent 60%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.pcv2__anonymity-verdict[data-pcv2-tone="safe"]    { --pcv2-tone-bg: var(--pcv2-safe-bg);    --pcv2-tone-fg: var(--pcv2-safe-fg);    }
+.pcv2__anonymity-verdict[data-pcv2-tone="warning"] { --pcv2-tone-bg: var(--pcv2-warning-bg); --pcv2-tone-fg: var(--pcv2-warning-fg); }
+.pcv2__anonymity-verdict[data-pcv2-tone="danger"]  { --pcv2-tone-bg: var(--pcv2-danger-bg);  --pcv2-tone-fg: var(--pcv2-danger-fg);  }
+.pcv2__anonymity-verdict[data-pcv2-tone="info"]    { --pcv2-tone-bg: var(--pcv2-info-bg);    --pcv2-tone-fg: var(--pcv2-info-fg);    }
+.pcv2__anonymity-verdict[data-pcv2-tone="neutral"] { --pcv2-tone-bg: var(--pcv2-neutral-bg); --pcv2-tone-fg: var(--pcv2-text-faint);  }
+.pcv2__anonymity-verdict-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pcv2-tone-fg, var(--pcv2-info-fg));
+}
+.pcv2__anonymity-verdict-name {
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  color: var(--pcv2-text);
+}
+@keyframes pcv2-verdict-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ============================================================== */
+/* Confidence / threat meters                                     */
+/* ============================================================== */
+
+.pcv2__anonymity-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  animation: pcv2-meter-enter 500ms ease-out 80ms both;
+}
+@keyframes pcv2-meter-enter {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pcv2__anonymity-meter-track {
+  position: relative;
+  height: 8px;
+  background: var(--pcv2-surface-strong);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--pcv2-border);
+}
+.pcv2__anonymity-meter-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--pcv2-tone-bg, var(--pcv2-info-fg)) 30%, var(--pcv2-tone-fg, var(--pcv2-info-fg))),
+    var(--pcv2-tone-fg, var(--pcv2-info-fg)));
+  transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--pcv2-tone-fg, var(--pcv2-info-fg)) 50%, transparent);
+}
+.pcv2__anonymity-meter-fill[data-pcv2-tone="safe"]    { --pcv2-tone-bg: var(--pcv2-info-fg);    --pcv2-tone-fg: var(--pcv2-safe-fg);    }
+.pcv2__anonymity-meter-fill[data-pcv2-tone="warning"] { --pcv2-tone-bg: var(--pcv2-info-fg);    --pcv2-tone-fg: var(--pcv2-warning-fg); }
+.pcv2__anonymity-meter-fill[data-pcv2-tone="danger"]  { --pcv2-tone-bg: var(--pcv2-warning-fg); --pcv2-tone-fg: var(--pcv2-danger-fg);  }
+.pcv2__anonymity-meter-fill[data-pcv2-tone="info"]    { --pcv2-tone-bg: var(--pcv2-safe-fg);    --pcv2-tone-fg: var(--pcv2-info-fg);    }
+.pcv2__anonymity-meter-fill[data-pcv2-tone="neutral"] { --pcv2-tone-bg: var(--pcv2-text-faint); --pcv2-tone-fg: var(--pcv2-text-faint);  }
+.pcv2__anonymity-meter-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.78rem;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__anonymity-meter-value {
+  font-weight: 700;
+  color: var(--pcv2-text);
+  font-variant-numeric: tabular-nums;
+  text-transform: capitalize;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__anonymity-meter-fill { transition: none; }
+  .pcv2__anonymity-meter { animation: none; opacity: 1; transform: none; }
+}
+
+/* Security meters — same fill bar but with a richer header row. */
+.pcv2__security-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.pcv2__security-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  animation: pcv2-meter-enter 500ms ease-out 80ms both;
+}
+.pcv2__security-meter-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.pcv2__security-meter-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__security-meter-value {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pcv2-text-faint);
+}
+.pcv2__security-meter-value[data-pcv2-tone="safe"]    { color: var(--pcv2-safe-fg); }
+.pcv2__security-meter-value[data-pcv2-tone="warning"] { color: var(--pcv2-warning-fg); }
+.pcv2__security-meter-value[data-pcv2-tone="danger"]  { color: var(--pcv2-danger-fg); }
+
+/* ============================================================== */
+/* Browser card — UA badge + feature chips                        */
+/* ============================================================== */
+
+.pcv2__browser-ua {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--pcv2-safe-fg) 16%, var(--pcv2-surface-strong)),
+    color-mix(in srgb, var(--pcv2-info-fg) 12%, var(--pcv2-surface-strong)));
+  border: 1px solid color-mix(in srgb, var(--pcv2-safe-fg) 32%, var(--pcv2-border));
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  animation: pcv2-verdict-enter 600ms ease-out both;
+}
+.pcv2__browser-ua-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-faint);
+  flex: 0 0 auto;
+}
+.pcv2__browser-ua-value {
+  flex: 1 1 auto;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--pcv2-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcv2__browser-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.pcv2__browser-chip {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.32rem 0.65rem;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--pcv2-text-muted);
+  animation: pcv2-chip-enter 400ms ease-out both;
+  animation-delay: var(--pcv2-chip-delay, 0ms);
+}
+.pcv2__browser-chip[data-pcv2-on="1"] {
+  background: color-mix(in srgb, var(--pcv2-safe-fg) 18%, var(--pcv2-surface));
+  border-color: color-mix(in srgb, var(--pcv2-safe-fg) 42%, var(--pcv2-border));
+  color: var(--pcv2-text);
+}
+.pcv2__browser-chip-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--pcv2-text-faint);
+  font-size: 0.9em;
+  line-height: 1;
+}
+.pcv2__browser-chip[data-pcv2-on="1"] .pcv2__browser-chip-dot { color: var(--pcv2-safe-fg); }
+.pcv2__browser-chip[data-pcv2-on="0"] .pcv2__browser-chip-dot { color: var(--pcv2-text-faint); }
+@keyframes pcv2-chip-enter {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcv2__anonymity-verdict,
+  .pcv2__browser-ua { animation: none; opacity: 1; transform: none; }
+  .pcv2__browser-chip { animation: none; opacity: 1; transform: none; }
+}
+
+/* Overview card gets a "score summary" with grade + confidence inline. */
+.pcv2__overview-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 0.85rem;
+  background: var(--pcv2-surface-sunken);
+  border: 1px solid var(--pcv2-border);
+  border-radius: 12px;
+  margin-bottom: 0.25rem;
+  text-align: center;
+}
+.pcv2__overview-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem 0.5rem;
+}
+.pcv2__overview-summary-cell-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--pcv2-text-muted);
+}
+.pcv2__overview-summary-cell-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  color: var(--pcv2-text);
+}
+.pcv2__overview-summary-cell-value--grade { font-size: 1.4rem; }
+
+/* Horizontal bar chart used in the Overview card. Each row is a
+   label + animated-fill track + numeric value on the right; tone is
+   driven by data-pcv2-tone on the row, which the JS sets per category
+   score (safe / warning / danger / neutral). */
+.pcv2__bar-chart {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.pcv2__bar-chart-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 30%) 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+}
+.pcv2__bar-chart-row[data-pcv2-tone="safe"]    { border-color: var(--pcv2-safe-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="warning"] { border-color: var(--pcv2-warning-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="danger"]  { border-color: var(--pcv2-danger-border); }
+.pcv2__bar-chart-row[data-pcv2-tone="neutral"] { border-color: var(--pcv2-border-soft); }
+.pcv2__bar-chart-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pcv2-text);
+  letter-spacing: 0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pcv2__bar-chart-track {
+  position: relative;
+  display: block;
+  height: 0.55rem;
+  background: var(--pcv2-surface-sunken);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 4rem;
+}
+.pcv2__bar-chart-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pcv2-info-fg);
+  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pcv2__bar-chart-row[data-pcv2-tone="safe"]    .pcv2__bar-chart-fill { background: var(--pcv2-safe-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="warning"] .pcv2__bar-chart-fill { background: var(--pcv2-warning-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="danger"]  .pcv2__bar-chart-fill { background: var(--pcv2-danger-fg); }
+.pcv2__bar-chart-row[data-pcv2-tone="neutral"] .pcv2__bar-chart-fill { background: var(--pcv2-text-faint); }
+.pcv2__bar-chart-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pcv2-text);
+  min-width: 3rem;
+  text-align: right;
+}
+
+/* DNS Resolver card — resolvers list + verdict row. */
+.pcv2__dns-card {
+  display: grid;
+  gap: 0.75rem;
+}
+.pcv2__dns-verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.pcv2__dns-verdict-host {
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  letter-spacing: 0.02em;
+}
+.pcv2__dns-note {
+  font-size: 0.85rem;
+  color: var(--pcv2-text-muted);
+  margin: 0;
+}
+.pcv2__dns-resolvers {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.pcv2__dns-resolver-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 22%) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--pcv2-surface);
+  border: 1px solid var(--pcv2-border);
+  font-size: 0.85rem;
+}
+.pcv2__dns-resolver-row[data-pcv2-tone="safe"]    { border-color: var(--pcv2-safe-border); }
+.pcv2__dns-resolver-row[data-pcv2-tone="warning"] { border-color: var(--pcv2-warning-border); }
+.pcv2__dns-resolver-row[data-pcv2-tone="danger"]  { border-color: var(--pcv2-danger-border); }
+.pcv2__dns-resolver-name {
+  font-weight: 600;
+  color: var(--pcv2-text);
+  text-transform: capitalize;
+}
+.pcv2__dns-resolver-answer {
+  color: var(--pcv2-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pcv2__dns-resolver-row[data-pcv2-tone="danger"] .pcv2__dns-resolver-answer {
+  color: var(--pcv2-danger-fg);
+  font-style: italic;
+}
+.pcv2__dns-resolver-latency {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--pcv2-text-faint);
+  min-width: 4rem;
+  text-align: right;
+}
+@media (max-width: 480px) {
+  .pcv2__bar-chart-row {
+    grid-template-columns: minmax(5.5rem, 35%) 1fr auto;
+    gap: 0.5rem;
+  }
+}
+
+/* ============================================================== */
+/* A+ suggestion box (Phase 27)                                  */
+/* ============================================================== */
+
+.pcv2__suggestions {
+  margin-top: 1.75rem;
+  position: relative;
+  border-radius: 1rem;
+  padding: 1.5rem 1.5rem 1.25rem;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(99, 102, 241, 0.10), transparent 55%),
+    radial-gradient(140% 90% at 100% 100%, rgba(236, 72, 153, 0.08), transparent 60%),
+    var(--pcv2-surface);
+  border: 1px solid color-mix(in srgb, var(--pcv2-accent) 35%, var(--pcv2-border));
+  box-shadow: var(--pcv2-shadow-card);
+  overflow: hidden;
+}
+
+.pcv2__suggestions::before {
+  /* Animated sheen along the top edge to set this card apart from
+   * the findings list above it. */
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--pcv2-accent),
+    var(--pcv2-accent-warm, #ec4899),
+    transparent
+  );
+  opacity: 0.85;
+}
+
+.pcv2__suggestions-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pcv2__suggestions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pcv2__suggestions-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--pcv2-text);
+}
+
+.pcv2__suggestions-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-accent)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-accent)) 32%, transparent);
+  font-size: 0.82rem;
+  color: var(--pcv2-text);
+}
+.pcv2__suggestions-status[data-pcv2-tone="safe"]    { --pcv2-tone-color: var(--pcv2-safe-fg); }
+.pcv2__suggestions-status[data-pcv2-tone="warning"] { --pcv2-tone-color: var(--pcv2-warning-fg); }
+.pcv2__suggestions-status[data-pcv2-tone="danger"]  { --pcv2-tone-color: var(--pcv2-danger-fg); }
+
+.pcv2__suggestions-status-grade {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--pcv2-tone-color, var(--pcv2-accent));
+  letter-spacing: 0.02em;
+}
+
+.pcv2__suggestions-status-text {
+  color: var(--pcv2-text);
+}
+
+.pcv2__suggestions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  counter-reset: pcv2-suggestions-counter;
+}
+
+.pcv2__suggestions-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem 1rem;
+  align-items: start;
+  padding: 0.85rem 1rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-accent)) 8%, var(--pcv2-surface-strong, rgba(255, 255, 255, 0.04)));
+  border: 1px solid color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-accent)) 22%, transparent);
+  border-left-width: 4px;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 200ms ease;
+}
+.pcv2__suggestions-item[data-pcv2-tone="safe"]    { --pcv2-tone-color: var(--pcv2-safe-fg); }
+.pcv2__suggestions-item[data-pcv2-tone="warning"] { --pcv2-tone-color: var(--pcv2-warning-fg); }
+.pcv2__suggestions-item[data-pcv2-tone="danger"]  { --pcv2-tone-color: var(--pcv2-danger-fg); }
+.pcv2__suggestions-item:hover {
+  transform: translateY(-1px);
+}
+
+.pcv2__suggestions-item-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.pcv2__suggestions-item-rank {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--pcv2-tone-color, var(--pcv2-accent));
+  background: color-mix(in srgb, var(--pcv2-tone-color, var(--pcv2-accent)) 18%, transparent);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.45rem;
+}
+
+.pcv2__suggestions-item-label {
+  font-weight: 600;
+  color: var(--pcv2-text);
+  font-size: 0.95rem;
+  flex: 1 1 auto;
+}
+
+.pcv2__suggestions-item-score {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--pcv2-tone-color, var(--pcv2-text));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pcv2__suggestions-item-rec {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--pcv2-text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pcv2__suggestions-empty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  color: var(--pcv2-text-faint);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+  .pcv2__suggestions-item { grid-template-columns: 1fr; }
+  .pcv2__suggestions-item-score { justify-self: start; }
+}
+
+/* ============================================================== */
+/* Reduced motion                                                 */
+/* ============================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  .pcv2::before, .pcv2::after, .pcv2 .pcv2__orb--bottom { transform: none !important; }
+}
+
+/* ============================================================== */
+/* Phase 30 — Dedicated GeoTrace page (traceroute-online.com look) */
+/* ============================================================== */
+
+/* Scoped tokens — only apply when the route marker is set. */
+body[data-pcv2-route="geotrace"] {
+  --pc-geo-bg:           #0A0E14;
+  --pc-geo-surface:      #0F1419;
+  --pc-geo-surface-2:    #161B22;
+  --pc-geo-accent:       #22D3EE;
+  --pc-geo-accent-warm:  #F472B6;
+  --pc-geo-text:         #E5E7EB;
+  --pc-geo-text-faint:   #94A3B8;
+  --pc-geo-border:       #1F2937;
+  --pc-geo-font-sans:    'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --pc-geo-font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, Menlo, Consolas, monospace;
+  background: var(--pc-geo-bg);
+  color: var(--pc-geo-text);
+  font-family: var(--pc-geo-font-sans);
+}
+
+.pcv2--geotrace {
+  background: var(--pc-geo-bg, #0A0E14);
+  color: var(--pc-geo-text, #E5E7EB);
+  font-family: var(--pc-geo-font-sans, system-ui);
+  min-height: 60vh;
+  padding: 0 0 64px;
+}
+
+/* Slim top nav */
+.pcv2__geotrace-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--pc-geo-border, #1F2937);
+  background: rgba(15, 20, 25, 0.7);
+  backdrop-filter: blur(8px);
+}
+.pcv2__geotrace-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.pcv2__geotrace-brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--pc-geo-accent, #22D3EE), var(--pc-geo-accent-warm, #F472B6));
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.4);
+}
+.pcv2__geotrace-brand-text {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.pcv2__geotrace-brand-text strong { font-size: 13px; font-weight: 700; }
+.pcv2__geotrace-brand-text em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  text-transform: uppercase;
+}
+.pcv2__geotrace-back {
+  color: var(--pc-geo-text-faint, #94A3B8);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 120ms;
+}
+.pcv2__geotrace-back:hover { color: var(--pc-geo-accent, #22D3EE); }
+
+/* Hero */
+.pcv2__geotrace-hero {
+  padding: 56px 28px 32px;
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+}
+.pcv2__geotrace-eyebrow {
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--pc-geo-accent, #22D3EE);
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+.pcv2__geotrace-title {
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.1;
+  margin: 0 0 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.pcv2__geotrace-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  margin: 0 auto 28px;
+  max-width: 640px;
+}
+
+.pcv2__geotrace-vp {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px;
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 999px;
+  background: rgba(15, 20, 25, 0.6);
+  margin-bottom: 28px;
+}
+.pcv2__geotrace-vp-label {
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  text-transform: uppercase;
+}
+.pcv2__geotrace-vp-value {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pcv2__geotrace-form {
+  display: flex;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 auto 18px;
+  padding: 6px;
+  background: var(--pc-geo-surface-2, #161B22);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 10px;
+}
+.pcv2__geotrace-form input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 14px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.pcv2__geotrace-form input::placeholder { color: var(--pc-geo-text-faint, #94A3B8); }
+
+.pcv2__btn--accent {
+  background: var(--pc-geo-accent, #22D3EE);
+  color: #001018;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: filter 120ms;
+}
+.pcv2__btn--accent:hover { filter: brightness(1.1); }
+
+.pcv2__geotrace-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.pcv2__geotrace-chips-label {
+  font-size: 11px;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  letter-spacing: 0.04em;
+}
+.pcv2__geotrace .pcv2__chip {
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--pc-geo-surface-2, #161B22);
+  color: var(--pc-geo-text, #E5E7EB);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+.pcv2__geotrace .pcv2__chip:hover { border-color: var(--pc-geo-accent, #22D3EE); }
+
+.pcv2__geotrace-helper {
+  font-size: 11px;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  margin: 0;
+  font-family: var(--pc-geo-font-mono, monospace);
+}
+
+/* Stats strip */
+.pcv2__geotrace-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 0 28px;
+}
+.pcv2__geotrace-stat {
+  background: var(--pc-geo-surface, #0F1419);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pcv2__geotrace-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  font-weight: 600;
+}
+.pcv2__geotrace-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--pc-geo-text, #E5E7EB);
+}
+
+/* 2-up: map + hops */
+.pcv2__geotrace-2up {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+@media (max-width: 800px) {
+  .pcv2__geotrace-2up { grid-template-columns: 1fr; }
+}
+
+.pcv2__geotrace-map {
+  background: var(--pc-geo-surface, #0F1419);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 10px;
+  min-height: 460px;
+  position: relative;
+  overflow: hidden;
+}
+.pcv2__geotrace-map .leaflet-container {
+  background: var(--pc-geo-bg, #0A0E14);
+  font-family: var(--pc-geo-font-sans, system-ui);
+}
+.pcv2__geotrace-map .leaflet-control-attribution {
+  background: rgba(15, 20, 25, 0.7);
+  color: var(--pc-geo-text-faint, #94A3B8);
+  font-size: 9px;
+}
+.pcv2__geotrace-map .leaflet-control-attribution a { color: var(--pc-geo-accent, #22D3EE); }
+.pcv2__geotrace-map .leaflet-popup-content-wrapper {
+  background: var(--pc-geo-surface-2, #161B22);
+  color: var(--pc-geo-text, #E5E7EB);
+  border-radius: 6px;
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 11px;
+  border: 1px solid var(--pc-geo-border, #1F2937);
+}
+.pcv2__geotrace-map .leaflet-popup-tip { background: var(--pc-geo-surface-2, #161B22); }
+.pcv2__geotrace-map-msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 460px;
+  padding: 24px;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  font-size: 13px;
+  text-align: center;
+}
+
+.pcv2__geotrace-hops {
+  background: var(--pc-geo-surface, #0F1419);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 10px;
+  padding: 12px;
+  max-height: 560px;
+  overflow: auto;
+  font-family: var(--pc-geo-font-mono, monospace);
+}
+.pcv2__geotrace-hops table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pcv2__geotrace-hops th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--pc-geo-border, #1F2937);
+  position: sticky;
+  top: 0;
+  background: var(--pc-geo-surface, #0F1419);
+}
+.pcv2__geotrace-hops td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.5);
+  vertical-align: middle;
+}
+.pcv2__geotrace-hops .hop-num {
+  color: var(--pc-geo-accent, #22D3EE);
+  font-weight: 700;
+  width: 28px;
+  text-align: right;
+}
+.pcv2__geotrace-hops .hop-host {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.pcv2__geotrace-hops .hop-loc { color: var(--pc-geo-text-faint, #94A3B8); }
+.pcv2__geotrace-hops .hop-rtt {
+  text-align: right;
+  white-space: nowrap;
+}
+.pcv2__geotrace-hops .hop-no-reply {
+  text-align: right;
+  color: var(--pc-geo-text-faint, #94A3B8);
+}
+.pcv2__geotrace-hops .hop-conf {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.15);
+  color: var(--pc-geo-accent, #22D3EE);
+  margin-left: 4px;
+}
+
+/* Paste + disclosure */
+.pcv2__geotrace-paste,
+.pcv2__geotrace-disclosure {
+  max-width: 1100px;
+  margin: 16px auto;
+  padding: 0 28px;
+}
+.pcv2__geotrace-paste summary,
+.pcv2__geotrace-disclosure summary {
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--pc-geo-text-faint, #94A3B8);
+  padding: 8px 0;
+}
+.pcv2__geotrace-paste textarea {
+  width: 100%;
+  min-height: 140px;
+  background: var(--pc-geo-surface, #0F1419);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 6px;
+  color: inherit;
+  font-family: var(--pc-geo-font-mono, monospace);
+  font-size: 12px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.pcv2__geotrace-paste form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.pcv2__geotrace-disclosure-body {
+  background: var(--pc-geo-surface, #0F1419);
+  border: 1px solid var(--pc-geo-border, #1F2937);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--pc-geo-text-faint, #94A3B8);
+}
+.pcv2__geotrace-disclosure-body ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.pcv2__geotrace-disclosure-body li { margin-bottom: 4px; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .pcv2__geotrace-hero { padding: 36px 16px 24px; }
+  .pcv2__geotrace-stats,
+  .pcv2__geotrace-2up,
+  .pcv2__geotrace-paste,
+  .pcv2__geotrace-disclosure { padding-left: 16px; padding-right: 16px; }
+}
