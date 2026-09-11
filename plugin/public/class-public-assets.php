@@ -178,36 +178,31 @@ final class PublicAssets {
             true
         );
 
-        // Optional 3D globe for Geo Traceroute. The 2D Leaflet map is the
-        // default; the three.js + three-globe stack (~600 KB) is only
-        // loaded on demand when the visitor explicitly toggles to the
-        // 3D view AND has not requested prefers-reduced-motion. We
-        // register the scripts (not enqueue) so the toggle handler in
-        // scanner.js can load them lazily via wp_enqueue_script() +
-        // a one-shot fetch of the script tag. When the toggle is never
-        // clicked, the 3D library is never downloaded — significant
-        // wins for first-paint on the Geo Traceroute page.
-        if ( false !== strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'geotraceroute' )
-            || ( is_singular() && has_shortcode( get_post()->post_content ?? '', 'privacy_checker_geotraceroute' ) ) ) {
-            $local_three = PRIVACY_CHECKER_DIR . 'public/assets/js/three.min.js';
-            $local_globe = PRIVACY_CHECKER_DIR . 'public/assets/js/three-globe.min.js';
-            $three_src   = is_readable( $local_three ) ? PRIVACY_CHECKER_URL . 'public/assets/js/three.min.js' : 'https://unpkg.com/three@0.160.0/build/three.min.js';
-            $globe_src   = is_readable( $local_globe ) ? PRIVACY_CHECKER_URL . 'public/assets/js/three-globe.min.js' : 'https://unpkg.com/three-globe@2.33.0/dist/three-globe.min.js';
-            $three_ver   = is_readable( $local_three ) ? filemtime( $local_three ) : '0.160.0';
-            $globe_ver   = is_readable( $local_globe ) ? filemtime( $local_globe ) : '2.33.0';
-            // Register (not enqueue) so scanner.js can wp_enqueue_script()
-            // these on demand when the user clicks the 3D Globe toggle.
-            wp_register_script( 'pc-three', $three_src, array(), $three_ver, true );
-            wp_register_script( 'pc-three-globe', $globe_src, array( 'pc-three' ), $globe_ver, true );
-            // Expose the URLs so the JS toggle handler can lazy-load
-            // them on first click (wp_register_script alone doesn't
-            // surface the URL the way wp_enqueue_script would). This is
-            // the standard WordPress idiom for on-demand script loads.
-            wp_localize_script( 'pc-scanner', 'PC_GLOBE_LIBS', array(
-                'three'    => $three_src,
-                'globe'    => $globe_src,
-            ) );
-        }
+        // Optional 3D globe stack (three.js + three-globe). Phase 36:
+        // registered on every scanner page so the Network Path card on
+        // the main dashboard can lazy-load the same libraries for its
+        // own 3D mode. The 2D Leaflet / SVG remain the default; the
+        // 3D stack (~600 KB) is only fetched when the visitor toggles
+        // a card into 3D AND has not requested prefers-reduced-motion.
+        // wp_register_script (not enqueue) keeps the libraries off
+        // the initial network waterfall when the toggle is never
+        // clicked — significant wins for first-paint.
+        $local_three = PRIVACY_CHECKER_DIR . 'public/assets/js/three.min.js';
+        $local_globe = PRIVACY_CHECKER_DIR . 'public/assets/js/three-globe.min.js';
+        $three_src   = is_readable( $local_three ) ? PRIVACY_CHECKER_URL . 'public/assets/js/three.min.js' : 'https://unpkg.com/three@0.160.0/build/three.min.js';
+        $globe_src   = is_readable( $local_globe ) ? PRIVACY_CHECKER_URL . 'public/assets/js/three-globe.min.js' : 'https://unpkg.com/three-globe@2.33.0/dist/three-globe.min.js';
+        $three_ver   = is_readable( $local_three ) ? filemtime( $local_three ) : '0.160.0';
+        $globe_ver   = is_readable( $local_globe ) ? filemtime( $local_globe ) : '2.33.0';
+        wp_register_script( 'pc-three', $three_src, array(), $three_ver, true );
+        wp_register_script( 'pc-three-globe', $globe_src, array( 'pc-three' ), $globe_ver, true );
+        // Expose the URLs so the JS toggle handlers can lazy-load
+        // them on first click. wp_register_script alone doesn't
+        // surface the URL the way wp_enqueue_script would. This is
+        // the standard WordPress idiom for on-demand script loads.
+        wp_localize_script( 'pc-scanner', 'PC_GLOBE_LIBS', array(
+            'three' => $three_src,
+            'globe' => $globe_src,
+        ) );
 
         wp_register_script(
             'pc-scanner',

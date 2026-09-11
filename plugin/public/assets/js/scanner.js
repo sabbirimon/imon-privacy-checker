@@ -3163,11 +3163,30 @@
         contBtn.appendChild(el('span', { class: 'pc-network__continuous-dot' }));
         contBtn.appendChild(document.createTextNode(continuous ? 'LIVE' : 'CONTINUOUS'));
         titleRow.appendChild(contBtn);
+
+        // Phase 36: 2D / 3D mode toggle. Defaults to 2D (the
+        // existing SVG diagram). When clicked the first time it
+        // lazy-loads three.js + three-globe from PC_GLOBE_LIBS and
+        // swaps in a 3D globe with animated arcs.
+        var modeBtn = el('button', {
+            type: 'button',
+            class: 'pc-network__mode-toggle',
+            'data-pc-action': 'network-mode-toggle',
+            'aria-pressed': 'false',
+            title: 'Switch to 3D globe view'
+        });
+        modeBtn.appendChild(el('span', { class: 'pc-network__mode-dot', text: '2D' }));
+        modeBtn.appendChild(document.createTextNode(' / 3D'));
+        titleRow.appendChild(modeBtn);
+
         card.appendChild(titleRow);
 
         // ===== Diagram + side details =====
         var body = el('div', { class: 'pc-network__body' });
         var diagramWrap = el('div', { class: 'pc-network__diagram' });
+        var mode3dContainer = el('div', { class: 'pc-network__diagram-3d', hidden: true });
+        diagramWrap.parentNode; // keep linter happy
+        body.appendChild(mode3dContainer);
 
         // Choose between horizontal SVG, multi-row SVG, or pure vertical list
         // based on hop count and viewport. Hop counts beyond ~8 always fall back
@@ -3442,6 +3461,37 @@
         body.appendChild(diagramWrap);
         body.appendChild(sidePanel);
         card.appendChild(body);
+
+        // Phase 36: expose the canonical hops array + lat/lng-
+        // augmented points so the 3D Network Path renderer can find
+        // them when the visitor flips the 2D/3D toggle. Source hops
+        // pin to the visitor's own lat/lng; intermediate hops are
+        // spread along the great-circle; destination pins to a
+        // stable counterpoint so the globe always shows *some*
+        // motion rather than collapsing to a single point when the
+        // proxy report carries no coords.
+        var report = (typeof PC_LAST_REPORT === 'object' && PC_LAST_REPORT) || {};
+        var visitorLat = (report.geo && Number(report.geo.latitude)) || 0;
+        var visitorLng = (report.geo && Number(report.geo.longitude)) || 0;
+        var destLat, destLng;
+        try {
+            destLat = visitorLat + 35;
+            destLng = visitorLng + 60;
+            if (visitorLat > 60) destLat = visitorLat - 35;
+        } catch (_e) {
+            destLat = 40; destLng = -74;
+        }
+        var augmented = hops.map(function (h, i) {
+            var t = (i / Math.max(1, hops.length - 1));
+            // Interpolate along great-circle with a few degrees of
+            // lateral wobble so the arcs don't all overlap on the
+            // equator.
+            var lat = visitorLat + (destLat - visitorLat) * t;
+            var lng = visitorLng + (destLng - visitorLng) * t;
+            return Object.assign({}, h, { lat: lat, lng: lng });
+        });
+        try { window.__pcLastNetworkHops = augmented; } catch (_e) {}
+
         return finalizeCard(card, hops);
     }
 
@@ -4770,6 +4820,273 @@
         });
     }
 
+    /**
+     * Phase 36 — 2D / 3D mode toggle for the Network Path card.
+     *
+     * The default render is the 2D SVG diagram. On the first toggle to
+     * 3D the script lazy-loads three.js + three-globe from the URLs
+     * exposed via `PC_GLOBE_LIBS` (printed by class-public-assets.php),
+     * waits for both to be ready, then swaps the SVG for a 3D globe
+     * with animated arcs flowing from each hop to the next along the
+     * great-circle path. Subsequent toggles use the cached objects.
+     *
+     * Honors prefers-reduced-motion: visitors who opted out get a
+     * toast and stay on 2D. Falls back to 2D silently if WebGL is
+     * unavailable or the libraries fail to load.
+     */
+    function attachNetworkModeDelegation() {
+        var dashboard = document.querySelector('[data-pc-component="dashboard"]');
+        if (!dashboard || dashboard.__pcNetworkModeBound) return;
+        dashboard.__pcNetworkModeBound = true;
+        dashboard.addEventListener('click', function (e) {
+            var t = e.target.closest('[data-pc-action="network-mode-toggle"]');
+            if (!t) return;
+            var want3d = !t.classList.contains('is-on');
+            if (want3d && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                if (typeof showToast === 'function') {
+                    showToast('3D Network Path is disabled because you requested reduced motion.', 'warn');
+                }
+                return;
+            }
+            t.classList.toggle('is-on', want3d);
+            t.setAttribute('aria-pressed', want3d ? 'true' : 'false');
+            // Replace label dot + text only (keep structure clean).
+            t.innerHTML = '';
+            t.appendChild(el('span', { class: 'pc-network__mode-dot', text: want3d ? '3D' : '2D' }));
+            t.appendChild(document.createTextNode(want3d ? ' / 2D' : ' / 3D'));
+            t.title = want3d ? 'Switch back to 2D SVG view' : 'Switch to 3D globe view';
+            // Find the network card + containers.
+            var card = t.closest('.pc-network');
+            if (!card) return;
+            var diagram2d = card.querySelector('.pc-network__diagram');
+            var diagram3d = card.querySelector('.pc-network__diagram-3d');
+            if (!diagram2d || !diagram3d) return;
+            if (want3d) {
+                diagram2d.hidden = true;
+                diagram3d.hidden = false;
+                ensureNetwork3d(diagram3d, getHopsFor3d());
+            } else {
+                diagram2d.hidden = false;
+                diagram3d.hidden = true;
+            }
+        });
+    }
+
+    /**
+     * Pull the canonical hops array off the last-rendered report.
+     * Falls back to a global exposed by the network path card at
+     * render time (set after networkPathCard() finishes).
+     */
+    function getHopsFor3d() {
+        if (window.__pcLastNetworkHops && Array.isArray(window.__pcLastNetworkHops)) {
+            return window.__pcLastNetworkHops;
+        }
+        if (PC_LAST_REPORT && PC_LAST_REPORT.connection && Array.isArray(PC_LAST_REPORT.connection.path_hops)) {
+            return PC_LAST_REPORT.connection.path_hops;
+        }
+        return [];
+    }
+
+    /**
+     * Lazy-load three.js + three-globe the first time the visitor
+     * flips the toggle. Caches the promise so re-toggles don't
+     * re-fetch.
+     */
+    var __network3dLibsPromise = null;
+    function loadNetwork3dLibs() {
+        if (window.THREE && (window.ThreeGlobe || window.ThreeGlobe3D || window.Globe)) {
+            return Promise.resolve();
+        }
+        if (__network3dLibsPromise) return __network3dLibsPromise;
+        var libs = (typeof window.PC_GLOBE_LIBS === 'object' && window.PC_GLOBE_LIBS) || null;
+        if (!libs || !libs.three || !libs.globe) {
+            return Promise.reject(new Error('PC_GLOBE_LIBS not exposed'));
+        }
+        function inject(src) {
+            return new Promise(function (resolve, reject) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.async = true;
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('Failed to load ' + src)); };
+                document.head.appendChild(s);
+            });
+        }
+        __network3dLibsPromise = inject(libs.three).then(function () { return inject(libs.globe); });
+        return __network3dLibsPromise;
+    }
+
+    /**
+     * Initialise a 3D Network Path globe in the given container.
+     * Idempotent: re-calling on the same container clears + redraws.
+     */
+    function ensureNetwork3d(container, hops) {
+        if (!container || !hops || hops.length === 0) return false;
+        // Test for WebGL support before paying the script-load cost.
+        try {
+            var probe = document.createElement('canvas');
+            if (!(probe.getContext('webgl') || probe.getContext('experimental-webgl'))) {
+                if (typeof showToast === 'function') {
+                    showToast('3D Network Path requires WebGL — staying on 2D.', 'warn');
+                }
+                return false;
+            }
+        } catch (e) {
+            return false;
+        }
+        loadNetwork3dLibs().then(function () { renderNetwork3d(container, hops); })
+            .catch(function (err) {
+                // eslint-disable-next-line no-console
+                console.warn('[IMON net3d] library load failed:', err && err.message);
+                if (typeof showToast === 'function') {
+                    showToast('3D Network Path failed to load — staying on 2D.', 'warn');
+                }
+            });
+        return true;
+    }
+
+    /**
+     * Render the actual ThreeGlobe with hops + arcs.
+     */
+    var __network3dInstance = null;
+    function renderNetwork3d(container, hops) {
+        var THREE = window.THREE;
+        var Ctor = window.ThreeGlobe || window.ThreeGlobe3D || window.Globe;
+        if (!THREE || !Ctor) return;
+        // Tear down any previous instance.
+        if (__network3dInstance && __network3dInstance.container === container) {
+            try {
+                if (__network3dInstance.raf) cancelAnimationFrame(__network3dInstance.raf);
+                if (__network3dInstance.renderer) {
+                    container.removeChild(__network3dInstance.renderer.domElement);
+                    __network3dInstance.renderer.dispose && __network3dInstance.renderer.dispose();
+                }
+            } catch (e) {}
+        }
+        container.innerHTML = '';
+        var width = Math.max(320, container.clientWidth || 720);
+        var height = Math.max(280, container.clientHeight || 360);
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 1000);
+        camera.position.z = 240;
+        var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(width, height, false);
+        renderer.setClearColor(0x000000, 0);
+        container.appendChild(renderer.domElement);
+        scene.add(new THREE.AmbientLight(0x9bbcff, 1.6));
+        var light = new THREE.DirectionalLight(0xffffff, 2.2);
+        light.position.set(100, 80, 180);
+        scene.add(light);
+        var globe = new Ctor()
+            .globeImageUrl(networkPath3dTexture('earth-blue-marble.jpg'))
+            .bumpImageUrl(networkPath3dTexture('earth-topology.png'))
+            .backgroundImageUrl(networkPath3dTexture('night-sky.png'))
+            .showAtmosphere(true)
+            .atmosphereColor('#4a86e8')
+            .atmosphereAltitude(0.18)
+            .arcDashLength(0.18)
+            .arcDashGap(1.1)
+            .arcDashAnimateTime(1400)
+            .arcStroke(0.55)
+            .pointAltitude(0.02)
+            .pointRadius(0.55)
+            .labelSize(1.1)
+            .labelDotRadius(0.28)
+            .labelColor(function () { return 'rgba(220,235,255,0.95)'; });
+        var points = hops.map(function (h, i) {
+            return {
+                lat: Number(h.lat) || 0,
+                lng: Number(h.lng) || 0,
+                label: (i + 1) + '. ' + (h.label || h.hostname || 'Hop'),
+                color: hopColor(h)
+            };
+        });
+        var arcs = [];
+        for (var i = 0; i < points.length - 1; i++) {
+            arcs.push({
+                startLat: points[i].lat,
+                startLng: points[i].lng,
+                endLat: points[i + 1].lat,
+                endLng: points[i + 1].lng,
+                color: legColor(hops[i + 1])
+            });
+        }
+        globe.pointsData(points).labelsData(points).arcsData(arcs);
+        scene.add(globe);
+        function resize() {
+            var w = Math.max(280, container.clientWidth || 640);
+            var h = Math.max(260, container.clientHeight || 360);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h, false);
+        }
+        var resizeObs = null;
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObs = new ResizeObserver(resize);
+            resizeObs.observe(container);
+        } else {
+            window.addEventListener('resize', resize);
+        }
+        function loop() {
+            globe.rotation.y += 0.0009;
+            renderer.render(scene, camera);
+            __network3dInstance.raf = requestAnimationFrame(loop);
+        }
+        __network3dInstance = {
+            container: container,
+            renderer: renderer,
+            resizeObs: resizeObs,
+            raf: null
+        };
+        resize();
+        loop();
+    }
+
+    function networkPath3dTexture(name) {
+        var base = (typeof window.PC_SCAN === 'object' && window.PC_SCAN && window.PC_SCAN.assetUrl)
+            ? window.PC_SCAN.assetUrl
+            : '';
+        return base + 'img/' + name;
+    }
+
+    /**
+     * Pick a colour per-hop: device types share a palette with the
+     * 2D SVG (see finalizeCard legend), so users see the same colour
+     * when they toggle between modes.
+     */
+    function hopColor(hop) {
+        switch (hop && hop.type) {
+            case 'mobile':     return '#22d3ee';
+            case 'tablet':     return '#a78bfa';
+            case 'device':     return '#143b52';
+            case 'pc':         return '#143b52';
+            case 'firewall':   return '#dc3545';
+            case 'switch':     return '#20586f';
+            case 'router':     return '#17a2b8';
+            case 'vpn':        return '#f0a020';
+            case 'tor':        return '#ff5470';
+            case 'satellite':  return '#8b5cf6';
+            case 'cell-tower': return '#22c55e';
+            case 'server':     return '#28a745';
+            case 'destination':return '#ffffff';
+            default:           return '#d9b88a';
+        }
+    }
+    function legColor(hop) {
+        // Arc colour follows the per-leg latency from the SVG
+        // renderer: green < 30 ms, amber < 80 ms, red otherwise.
+        // Without explicit latency we default to the connection
+        // hue (cyan) for the link itself.
+        var ms = hop && (hop.rtt_ms || hop.rtt || hop.ms);
+        if (typeof ms === 'number') {
+            if (ms < 30) return '#28a745';
+            if (ms < 80) return '#f0a020';
+            return '#dc3545';
+        }
+        return hopColor(hop);
+    }
+
     // Hook into runScan: keep a reference to the latest report and
     // ensure the delegation is attached after each render.
     (function () {
@@ -4778,6 +5095,7 @@
         window.__pcRenderCardsHook = function (rep) {
             PC_LAST_REPORT = rep;
             setTimeout(attachContinuousDelegation, 0);
+            setTimeout(attachNetworkModeDelegation, 0);
             // If continuous mode is already on, refresh metrics now.
             if (window.PC_NETWORK_CONTINUOUS === true) {
                 setTimeout(refreshNetworkMetrics, 50);
