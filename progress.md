@@ -1600,3 +1600,82 @@ User asked how to upload to wordpress.com. Realistic options:
   than automated (free hosts rarely have shell; manual intervention
   is expected).
 
+
+## Phase 51 + 31d + 48c — InfinityFree live-site fixes (Sep 12 2026)
+
+Three regressions surfaced after deploying to `https://imon.infinityfree.me/`:
+
+- v1 privacy score was 32, v2 was 76 — same connection, same
+  server, different numbers. Root cause: `score_ip()` in
+  `class-privacy-report.php` had no branch for the new `'unavailable'`
+  status returned when the IP-intel provider chain is blocked
+  outbound (InfinityFree firewall blocks ip-api.com / ipinfo.io).
+  It fell through to the default `50/warning` branch which
+  over-counted credit on a category with no measured evidence.
+- Connection card showed "Type: 4g" even on Wi-Fi/Ethernet
+  because Chromium reports `effectiveType=4g` on every desktop
+  browser regardless of link class. The Connection card and the
+  Connection Quality card both trusted it as the connection label.
+- v1 APPROXIMATE LOCATION & PATH hop rows showed "United States"
+  with no flag emoji, and the default hop count was 3 (under-selling
+  how many network elements a real residential connection traverses).
+
+Fixes in this commit:
+
+- `plugin/includes/class-privacy-report.php::score_ip()` now returns
+  `30/bad` with an explicit "IP intelligence unavailable on this host"
+  message when `status === 'unavailable'`. The headline score no
+  longer claims credit we didn't earn.
+- `score_consistency()` now drops to `45` and surfaces the proxy
+  verdict in its message when GeoIP failed but a proxy was still
+  detected locally (proxy detection runs entirely on the visitor's
+  IP string + known-ASN tables, no outbound calls).
+- `plugin/public/assets/js/scanner-v2.js::renderScoreHero()`:
+  the Connection card `signalText` shows the proxy verdict
+  ("VPN detected — geo lookup unavailable on this host") instead of
+  a blank "Geo lookup unavailable" placeholder. Anonymity card uses
+  `proxy.label || proxy.category` so it stops reading "Unknown" when
+  the proxy detector has a verdict.
+- `plugin/public/assets/js/scanner-v2.js::renderScoreHero()`
+  connTypeLabel no longer falls back to `effectiveType.toUpperCase()`
+  on its own — `effectiveType=4g` is a cellular-tier hint, not a
+  connection-class hint. The RTT/downlink inference wins.
+- `plugin/public/assets/js/scanner.js::navigatorConnectionSnapshot()`
+  now exposes the raw `type` field and infers broadband-vs-cellular
+  from RTT/downlink whenever `type` is empty (regardless of
+  `effectiveType`).
+- `plugin/public/assets/js/scanner.js::connectionQualityCard()`
+  shows `effectiveType` as a `Tier:` hint only, never as the
+  connection label.
+- `plugin/public/assets/js/scanner.js::renderHopList()` prepends
+  the country flag emoji to each hop's location line.
+- `plugin/public/assets/js/scanner.js::mapCard()` default hop
+  count is now 4-6 (was 3-5) to better reflect residential links.
+- `plugin/public/assets/css/scanner-v2.css`: a real bug — the
+  `.pcv2__connection-tile { ... }` block was split across two
+  rules with an extra `}` in the middle, causing the tile's
+  flexbox/padding/background/border/animation rules to be silently
+  dropped. Merged back into a single well-formed rule. Mobile
+  query at `max-width:480px` now hides the decorative globe,
+  shrinks the signal bar height, drops the fact-grid min-width
+  to 108 px, and tightens the IP badge padding/font so a 375 px
+  viewport flows without horizontal scroll.
+
+### Verification
+
+- `diff -q plugin/ wp/wp-content/plugins/privacy-checker/` → silent
+- `gh release upload v1.1.0-deploy /tmp/pc-plugin.zip --clobber` →
+  release asset updated at `https://github.com/sabbirimon/imon-privacy-checker/releases/tag/v1.1.0-deploy`
+- Manual: user needs to re-download `/tmp/pc-plugin.zip` from the
+  release and re-upload via cPanel File Manager (replacing the
+  existing `privacy-checker/` folder).
+
+### Limits
+
+- Score still depends on at least one IP-intel provider being
+  reachable. If InfinityFree's outbound firewall blocks all four
+  providers (MaxMind local file → IP2Location → ip-api → ipinfo),
+  the score will be `30/bad` on IP — that's the correct posture.
+- `effectiveType=4g` is still shown as a tier hint in the
+  Connection Quality card so the visitor knows what Chromium
+  reports about the link, just not as the headline label.
