@@ -1510,3 +1510,47 @@ Headless Chromium computed-style readback after Phase 46 fix:
   cycling hue).
 - v2 nav now reads: `Home · IP Check · DNS Leak · Browser ·
   GeoTrace · About`.
+
+## Phase 48 — Responsive design verification + mobile header fix (2026-09-12)
+
+### Why
+
+User asked "didnt u build this site dynamic screen or device for?".
+Verified the v2 dashboard against 4 viewports (375 / 768 / 1280 / 1920)
+via Playwright + computed-style readback. v2 reflows correctly on
+tablet + desktop via the existing `auto-fit minmax(...)` grid:
+
+- **mobile-375** → nav hidden, grid collapses to 1 column.
+- **tablet-768** → nav becomes `display: flex`, grid → 2 cols (326px).
+- **desktop-1280+** → grid → 3 cols (~354px).
+
+But at 375px the v2 header overflowed: brand "I AM ON" wrapped
+mid-word and the "Run Check" button extended past the right edge
+because the ELI5 toggle + button + brand-tag all tried to share
+one row.
+
+### What changed
+
+- `plugin/public/assets/css/scanner-v2.css` — added a `@media
+  (max-width: 480px)` rule:
+  - `.pcv2__header` switches to `flex-wrap: wrap` with `gap: 0.5rem 0.75rem`
+    and slimmer padding (`0.7rem 1rem`).
+  - `.pcv2__brand` keeps `flex: 0 0 auto` so the wordmark doesn't
+    stretch.
+  - `.pcv2__header-actions` gets `flex: 1 1 100%` so the action
+    group (ELI5 toggle + Run Check) wraps to row 2, right-aligned.
+  - `.pcv2__btn--primary` inside the header shrinks to
+    `padding: 0.5rem 1rem; font-size: 0.85rem` so the button fits.
+
+### Verification
+
+- 375px screenshot: brand + tag on row 1, ELI5 toggle + Run Check
+  on row 2, button readable, no horizontal scrollbar.
+- 768px / 1280px / 1920px: zero regression — `@media (min-width: 768px)`
+  nav rule still wins and the new mobile rules don't fire above
+  480px.
+- v1 (`[privacy_checker]`) cards stay single-column at every
+  viewport (no `.pc-cards` breakpoint rules in `scanner.css`).
+  Not addressed in this pass — v1 is the legacy path. New shortcode
+  builds on v2.
+- Committed as `d737333`, pushed to `main`.
