@@ -1554,3 +1554,49 @@ one row.
   Not addressed in this pass — v1 is the legacy path. New shortcode
   builds on v2.
 - Committed as `d737333`, pushed to `main`.
+
+## Phase 49 — FTP deploy mode for free PHP hosts (2026-09-12)
+
+### Why
+
+User asked how to upload to wordpress.com. Realistic options:
+
+- **wordpress.com (hosted)** does NOT allow custom plugin uploads on
+  free/personal plans. Business plan is $33/mo. No free tier with
+  custom plugins.
+- **Free PHP hosts** (InfinityFree, 000webhost, AwardSpace) give you
+  free PHP+MySQL+FTP. Plugin works fully dynamic — real IP scan, REST
+  endpoints, GeoIP. Just no SSH, no composer.
+
+### What changed
+
+- `bin/deploy.sh` — new `ftp` mode that ships the plugin over FTP using
+  `lftp`'s reverse-mirror (parallel + resumable). Reads credentials
+  from `.env` (added `.env` to `.gitignore` so real passwords never
+  get committed). Pre-builds `vendor/` locally and bundles it into
+  the release so the remote doesn't need composer. Skips Step 6's
+  on-server `composer install` + `wp-cli activate` because free hosts
+  have no shell.
+- `.env.example` — template covering both SSH/rsync and FTP deploys.
+- `docs/deploy-free-host.md` — beginner walkthrough: signup → FTP
+  creds → WP install → lftp → `.env` → `bin/deploy.sh ftp` →
+  activate. Includes free-host gotchas (MaxMind upload path, hit
+  limits, disabled PHP functions).
+- `bin/deploy.sh` usage block now lists `ftp` mode and the four
+  FTP-related env vars.
+
+### Verification
+
+- `bash -n bin/deploy.sh` → exit 0 (syntax clean)
+- `bin/deploy.sh` (no args) → prints new usage block with `ftp` line
+- Free-host deploy cannot be smoke-tested without a real account, but
+  the logic reuses the proven `ship_rsync` / `ship_zip` paths — only
+  the transport differs.
+
+### Limits
+
+- `lftp` is not bundled with macOS; user must `brew install lftp`.
+- Rollback for FTP mode prints a manual `lftp` mirror command rather
+  than automated (free hosts rarely have shell; manual intervention
+  is expected).
+

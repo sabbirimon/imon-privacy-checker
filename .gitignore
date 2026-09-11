@@ -25,6 +25,7 @@ wp/
 wp-content/
 
 # Local config — NEVER commit real secrets
+.env
 wp-config.php
 wp-config-*.php
 

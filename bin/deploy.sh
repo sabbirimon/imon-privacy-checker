@@ -87,6 +87,21 @@ case "${MODE}" in
         TARGET_USER="$(id -un)"
         TRANSPORT="local"
         ;;
+    ftp)
+        # Free-host deploy — no SSH, no composer on the remote.
+        # Reads FTP_HOST / FTP_USER / FTP_PASS / FTP_PLUGIN_DIR / FTP_THEME_DIR
+        # from .env. Builds vendor/ locally (so the remote doesn't need
+        # composer) then mirrors the release over FTP.
+        command -v lftp >/dev/null 2>&1 || die "lftp not in PATH (brew install lftp)"
+        [[ -z "${FTP_HOST:-}" ]]      && die "FTP_HOST missing from .env"
+        [[ -z "${FTP_USER:-}" ]]      && die "FTP_USER missing from .env"
+        [[ -z "${FTP_PASS:-}" ]]      && die "FTP_PASS missing from .env"
+        [[ -z "${FTP_PLUGIN_DIR:-}" ]] && die "FTP_PLUGIN_DIR missing from .env (e.g. /htdocs/wp-content/plugins)"
+        TARGET_HOST="ftp://${FTP_HOST}"
+        TARGET_WP=""
+        TARGET_USER=""
+        TRANSPORT="ftp"
+        ;;
     rsync)
         [[ -z "${TARGET}" ]] && die "rsync mode needs TARGET like user@host:/path"
         TARGET_HOST="$(echo "${TARGET}" | cut -d: -f1)"
@@ -117,12 +132,17 @@ Usage:
   $(basename "$0") local                                  Deploy to ./wp (built-in PHP server)
   $(basename "$0") rsync user@host:/var/www/wordpress    Rsync plugin+theme to remote
   $(basename "$0") remote user@host                      Rsync to \${WP_ROOT} on remote
+  $(basename "$0") ftp                                    FTP deploy to free host (InfinityFree etc.)
   $(basename "$0") zip /path/release.zip                 Build a release zip only
 
 Environment (set in .env or shell):
   WP_ROOT         remote WordPress root (default: /var/www/wordpress)
   WP_USER         SSH user (default: www-data)
   WP_SITE_URL     public URL for smoke tests (default: https://example.test)
+  FTP_HOST        FTP hostname (e.g. ftpupload.net)
+  FTP_USER        FTP username
+  FTP_PASS        FTP password
+  FTP_PLUGIN_DIR  absolute path on FTP for wp-content/plugins (e.g. /htdocs/wp-content/plugins)
 USAGE
         exit 0
         ;;
@@ -166,6 +186,15 @@ rsync -a --exclude='.git/' --exclude='node_modules/' --exclude='vendor-src/' \
     --exclude='tests/' --exclude='*.log' --exclude='.phpunit.cache/' \
     --exclude='.DS_Store' --exclude='Thumbs.db' \
     "${PROJECT_ROOT}/plugin/" "${RELEASE_DIR}/plugin/"
+
+# FTP/free-host transport cannot run composer on the remote. Ship the
+# pre-built vendor/ directory so the plugin works out of the box.
+# For SSH-based transports this is harmless — vendor/ is also rebuilt
+# server-side in Step 6 anyway.
+if [[ -d "${PROJECT_ROOT}/vendor" ]]; then
+    note "Bundling vendor/ → ${RELEASE_DIR}/plugin/vendor/ (pre-built for FTP/free hosts)"
+    cp -a "${PROJECT_ROOT}/vendor" "${RELEASE_DIR}/plugin/vendor"
+fi
 
 # composer.json / composer.lock live at the project root, but the
 # project-root composer.json uses classmap paths like `plugin/includes/`
@@ -295,14 +324,50 @@ ship_rsync() {
     ok "Shipped via rsync"
 }
 
+ship_ftp() {
+    # Free-host deploy (InfinityFree, 000webhost, AwardSpace, etc.).
+    # Mirrors plugin + theme into the remote over FTP using lftp's
+    # parallel+reverse-mirror. No SSH/composer on the remote.
+    local PLUGIN_REMOTE="${FTP_PLUGIN_DIR%/}/privacy-checker"
+    local THEME_REMOTE="${FTP_PLUGIN_DIR%/}/../themes/privacy-checker-theme"
+    THEME_REMOTE="$(dirname "$(dirname "${FTP_PLUGIN_DIR}")")/themes/privacy-checker-theme"
+
+    # lftp complains about unknown commands if we mix set with
+    # non-bash-style syntax. Keep it readable; rely on lftp -e.
+    local LFTP_CMD
+    LFTP_CMD=$(cat <<LFTPEOF
+set ssl:verify-certificate no
+set ftp:ssl-allow no
+set net:timeout 30
+set net:max-retries 2
+set mirror:use-get no
+open -u "${FTP_USER}","${FTP_PASS}" "${FTP_HOST}"
+mkdir -p "${PLUGIN_REMOTE}"
+mkdir -p "${THEME_REMOTE}"
+lcd "${RELEASE_DIR}/plugin"
+cd "${PLUGIN_REMOTE}"
+mirror --reverse --delete --verbose --parallel=4 --ignore-time
+lcd "${RELEASE_DIR}/theme"
+cd "${THEME_REMOTE}"
+mirror --reverse --delete --verbose --parallel=4 --ignore-time
+bye
+LFTPEOF
+    )
+
+    note "lftp mirror → ftp://${FTP_HOST}${PLUGIN_REMOTE}"
+    lftp -c "${LFTP_CMD}"
+    ok "Shipped via FTP"
+}
+
 case "${TRANSPORT}" in
     zip)    ship_zip ;;
     local)  ship_local ;;
     rsync)  ship_rsync ;;
+    ftp)    ship_ftp ;;
 esac
 
-# ─── Step 6 — On-server install (skip for zip) ───────────────────────────
-if [[ "${TRANSPORT}" != "zip" ]]; then
+# ─── Step 6 — On-server install (skip for zip + ftp) ─────────────────────
+if [[ "${TRANSPORT}" != "zip" && "${TRANSPORT}" != "ftp" ]]; then
     step "On-server install"
 
     # Re-build composer on the server because vendor/ is huge and we don't
@@ -374,6 +439,7 @@ SITE_URL="${WP_SITE_URL}"
 note "Site URL: ${SITE_URL}"
 
 # Skip smoke entirely for zip mode (nothing to probe against yet).
+# FTP mode still probes — the free host serves HTTP like any other WP.
 if [[ "${TRANSPORT}" == "zip" ]]; then
     note "Skipping smoke test for zip build (no live target yet)."
 else
@@ -451,6 +517,14 @@ case "${TRANSPORT}" in
         ROLLBACK_PUSH="(no rollback path — you built a zip, not a deploy)"
         OFFLINE_CMD="(no live site to deactivate against)"
         SSH_DESC="(no ssh target — zip build)"
+        ;;
+    ftp)
+        # Rollback = re-deploy the previous release via lftp, or just
+        # delete the plugin folder via FTP client. Free hosts rarely
+        # have shell access — manual intervention expected.
+        ROLLBACK_PUSH="lftp -c 'open -u ${FTP_USER},*** ftp://${FTP_HOST}; rm -rf ${FTP_PLUGIN_DIR%/}/privacy-checker; mirror --reverse --delete /path/to/PREVIOUS/plugin ${FTP_PLUGIN_DIR%/}/privacy-checker'"
+        OFFLINE_CMD="Log into ${FTP_HOST} via FTP client and rename privacy-checker/ to privacy-checker.disabled/"
+        SSH_DESC="(no ssh — FTP-only host)"
         ;;
 esac
 
