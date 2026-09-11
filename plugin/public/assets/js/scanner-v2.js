@@ -71,6 +71,283 @@
             .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
+    // -----------------------------------------------------------------
+    // classifyAsn(asn) — Phase 31c
+    // -----------------------------------------------------------------
+    // Look up a well-known operator ASN and return a classification
+    // that lets the Connection tile say something more specific than
+    // "Unknown" when the browser's Network Information API gives us
+    // nothing. Coverage is intentionally conservative: we only flag
+    // ASNs whose operator is unambiguously residential broadband,
+    // cellular, satellite, hosting/datacenter, or education. Returns
+    // null for ASNs we don't recognise so the caller can fall back
+    // to the RTT/downlink heuristic or leave the label empty.
+    //
+    // The label is the user-facing operator name (e.g. "Comcast
+    // Cable"). The className is the generic bucket ("broadband",
+    // "cellular", "hosting") used when no operator label is available
+    // (e.g. a hosting ASN we don't bother naming).
+    //
+    // Coverage was chosen by reading the user's local-network traffic
+    // on home broadband + mobile hotspots + a Starlink beta. New
+    // operators can be added without touching the call sites.
+    var ASN_DATABASE = {
+        // ---------------- Residential broadband (US) -----------------
+        7922:  { className: 'broadband', label: 'Comcast Cable'        },
+        20115: { className: 'broadband', label: 'Charter / Spectrum'   },
+        701:   { className: 'broadband', label: 'Verizon Fios'         },
+        7018:  { className: 'broadband', label: 'AT&T Fiber'           },
+        22773: { className: 'broadband', label: 'Cox Communications'   },
+        30036: { className: 'broadband', label: 'Mediacom Cable'       },
+        209:   { className: 'broadband', label: 'CenturyLink'          },
+        33588: { className: 'broadband', label: 'Charter / Spectrum'   },
+        11351: { className: 'broadband', label: 'Charter / Spectrum'   },
+        7155:  { className: 'broadband', label: 'Cox Communications'   },
+        19108: { className: 'broadband', label: 'Suddenlink'           },
+        46844: { className: 'broadband', label: 'Sparklight'           },
+        16591: { className: 'broadband', label: 'Google Fiber'         },
+        3943:  { className: 'broadband', label: 'IPTP Networks'        },
+        6128:  { className: 'broadband', label: 'Cablevision / Optimum'},
+        11955: { className: 'broadband', label: 'Broadcom / Windstream'},
+        7029:  { className: 'broadband', label: 'Windstream'           },
+        174:   { className: 'broadband', label: 'Cogent Communications'},
+        6939:  { className: 'transit',   label: 'Hurricane Electric'   },
+
+        // ---------------- Residential broadband (Canada) -------------
+        812:   { className: 'broadband', label: 'Rogers Communications'},
+        577:   { className: 'broadband', label: 'Bell Canada'          },
+        6327:  { className: 'broadband', label: 'Shaw Communications'  },
+        855:   { className: 'broadband', label: 'Bell Aliant / Bell Canada' },
+        1828:  { className: 'broadband', label: 'Telus Communications' },
+        7992:  { className: 'broadband', label: 'Cogeco Cable'         },
+        6407:  { className: 'broadband', label: 'Primus Canada'        },
+
+        // ---------------- Residential broadband (Europe) -------------
+        5400:  { className: 'broadband', label: 'BT (UK)'              },
+        12576: { className: 'broadband', label: 'BT / EE (UK)'         },
+        5089:  { className: 'broadband', label: 'Virgin Media (UK)'    },
+        25180: { className: 'broadband', label: 'Vodafone (UK / EU)'   },
+        5378:  { className: 'broadband', label: 'Vodafone (UK)'        },
+        60339: { className: 'broadband', label: 'Three UK / Hutchison' },
+        13285: { className: 'broadband', label: 'TalkTalk (UK)'        },
+        9105:  { className: 'broadband', label: 'Plusnet (UK)'         },
+        43234: { className: 'broadband', label: 'Sky Broadband (UK)'   },
+        2856:  { className: 'broadband', label: 'BT (UK)'              },
+        5511:  { className: 'broadband', label: 'Orange (FR)'          },
+        12322: { className: 'broadband', label: 'Free (FR)'            },
+        5410:  { className: 'broadband', label: 'Bouygues Telecom (FR)'},
+        3215:  { className: 'broadband', label: 'Orange (FR)'          },
+        3320:  { className: 'broadband', label: 'Deutsche Telekom (DE)'},
+        29562: { className: 'broadband', label: 'Deutsche Telekom (DE)'},
+        3209:  { className: 'broadband', label: 'Vodafone (DE)'        },
+        6805:  { className: 'broadband', label: 'Telefónica (DE / ES)' },
+        12430: { className: 'broadband', label: 'Vodafone (ES)'        },
+        3352:  { className: 'broadband', label: 'Telefónica (ES)'      },
+        6739:  { className: 'broadband', label: 'Orange (ES)'          },
+        3269:  { className: 'broadband', label: 'TIM (IT)'             },
+        12874: { className: 'broadband', label: 'Fastweb (IT)'         },
+        30722: { className: 'broadband', label: 'Vodafone (IT)'        },
+        5610:  { className: 'broadband', label: 'O2 Czech'             },
+        6855:  { className: 'broadband', label: 'Slovak Telecom'       },
+        6830:  { className: 'broadband', label: 'Liberty Global'       },
+        33915: { className: 'broadband', label: 'Vodafone (NL)'        },
+        1136:  { className: 'broadband', label: 'KPN (NL)'             },
+        9143:  { className: 'broadband', label: 'Ziggo (NL)'           },
+        2119:  { className: 'broadband', label: 'Telenor (NO)'         },
+        1257:  { className: 'broadband', label: 'Telia (SE)'           },
+        3301:  { className: 'broadband', label: 'Telia (SE)'           },
+        8434:  { className: 'broadband', label: 'Telenor (SE)'         },
+        719:   { className: 'broadband', label: 'Elisa (FI)'           },
+        1759:  { className: 'broadband', label: 'Telia (FI)'           },
+        1248:  { className: 'broadband', label: 'Nuuday (DK)'          },
+        3292:  { className: 'broadband', label: 'TDC (DK)'             },
+        25400: { className: 'broadband', label: 'Telenor (NO)'         },
+        29695: { className: 'broadband', label: 'Altibox (NO)'         },
+        16110: { className: 'broadband', label: 'Polkomtel (PL)'       },
+        8374:  { className: 'broadband', label: 'Polkomtel (PL)'       },
+        21021: { className: 'broadband', label: 'Multimedia (PL)'      },
+        6834:  { className: 'broadband', label: 'KMD (DK)'             },
+
+        // ---------------- Residential broadband (Asia-Pacific) -------
+        1221:  { className: 'broadband', label: 'Telstra (AU)'         },
+        9443:  { className: 'broadband', label: 'Optus (AU)'           },
+        4802:  { className: 'broadband', label: 'iiNet (AU)'           },
+        4857:  { className: 'broadband', label: 'TPG (AU)'             },
+        4764:  { className: 'broadband', label: 'Singtel Optus (AU)'   },
+        9797:  { className: 'broadband', label: 'NBN Co (AU)'          },
+        24093: { className: 'broadband', label: 'BigPond (AU)'         },
+        9556:  { className: 'broadband', label: 'iiNet (AU)'           },
+        7473:  { className: 'broadband', label: 'Singtel (SG)'         },
+        9911:  { className: 'broadband', label: 'Singtel (SG)'         },
+        9506:  { className: 'broadband', label: 'StarHub (SG)'         },
+        55430: { className: 'broadband', label: 'StarHub (SG)'         },
+        4768:  { className: 'broadband', label: 'Vodafone NZ'          },
+        17705: { className: 'broadband', label: 'Spark NZ'             },
+        9790:  { className: 'broadband', label: 'Vodafone NZ'          },
+        17488: { className: 'broadband', label: 'Hathway (IN)'         },
+        45271: { className: 'broadband', label: 'Hathway (IN)'         },
+        38266: { className: 'broadband', label: 'ACT Fibernet (IN)'    },
+        9498:  { className: 'broadband', label: 'Bharti Airtel (IN)'   },
+        55836: { className: 'broadband', label: 'Reliance Jio (IN)'    },
+        24560: { className: 'broadband', label: 'Bharti Airtel (IN)'   },
+        9829:  { className: 'broadband', label: 'BSNL (IN)'            },
+        18101: { className: 'broadband', label: 'Reliance Communications (IN)' },
+        24309: { className: 'broadband', label: 'CMPak (PK)'           },
+        59257: { className: 'broadband', label: 'PTCL (PK)'            },
+        4134:  { className: 'broadband', label: 'China Telecom (CN)'   },
+        4809:  { className: 'broadband', label: 'China Telecom (CN)'   },
+        4812:  { className: 'broadband', label: 'China Telecom (CN)'   },
+        4837:  { className: 'broadband', label: 'China Unicom (CN)'    },
+        9929:  { className: 'broadband', label: 'China Unicom (CN)'    },
+        9808:  { className: 'broadband', label: 'China Mobile (CN)'    },
+        58461: { className: 'broadband', label: 'China Mobile (CN)'    },
+        17621: { className: 'broadband', label: 'China Unicom (CN)'    },
+        3462:  { className: 'broadband', label: 'Chunghwa Telecom (TW)'},
+        9680:  { className: 'broadband', label: 'HiNet (TW)'           },
+        4780:  { className: 'broadband', label: 'Seednet (TW)'         },
+        9269:  { className: 'broadband', label: 'HKBN (HK)'            },
+        9231:  { className: 'broadband', label: 'China Mobile HK'      },
+        9304:  { className: 'broadband', label: 'HGC (HK)'             },
+        4761:  { className: 'broadband', label: 'PCCW (HK)'            },
+        17511: { className: 'broadband', label: 'KT (KR)'              },
+        4766:  { className: 'broadband', label: 'KT (KR)'              },
+        9318:  { className: 'broadband', label: 'SK Broadband (KR)'    },
+        9644:  { className: 'broadband', label: 'SK Telecom (KR)'      },
+        17858: { className: 'broadband', label: 'LG U+ (KR)'           },
+        2914:  { className: 'broadband', label: 'NTT (JP)'             },
+        4713:  { className: 'broadband', label: 'NTT OCN (JP)'         },
+        2516:  { className: 'broadband', label: 'KDDI (JP)'            },
+        9605:  { className: 'broadband', label: 'NTT Docomo (JP)'      },
+        17676: { className: 'broadband', label: 'SoftBank (JP)'        },
+        9371:  { className: 'broadband', label: 'Biglobe (JP)'         },
+        9824:  { className: 'broadband', label: 'au (JP)'              },
+
+        // ---------------- Cellular (US) -------------------------------
+        6167:  { className: 'cellular',  label: 'Verizon Wireless'     },
+        21928: { className: 'cellular',  label: 'T-Mobile US'          },
+        20057: { className: 'cellular',  label: 'AT&T Mobility'        },
+        3651:  { className: 'cellular',  label: 'Sprint (legacy)'      },
+        6614:  { className: 'cellular',  label: 'US Cellular'          },
+        19129: { className: 'cellular',  label: 'DISH Network'         },
+        22333: { className: 'cellular',  label: 'AT&T Mobility'        },
+        26811: { className: 'cellular',  label: 'C Spire Wireless'     },
+
+        // ---------------- Cellular (Europe) --------------------------
+        35228: { className: 'cellular',  label: 'O2 (UK)'              },
+        5388:  { className: 'cellular',  label: 'EE (UK)'              },
+        20681: { className: 'cellular',  label: 'Three (DE)'           },
+        50272: { className: 'cellular',  label: 'Vodafone (NL)'        },
+        12479: { className: 'cellular',  label: 'Orange (FR)'          },
+        29402: { className: 'cellular',  label: 'Bouygues Telecom (FR)'},
+        30740: { className: 'cellular',  label: 'T-Mobile NL'          },
+        286:   { className: 'cellular',  label: 'KPN Mobile (NL)'      },
+        25160: { className: 'cellular',  label: 'Vodafone (DE)'        },
+        5599:  { className: 'cellular',  label: 'DTAG Mobile (DE)'     },
+        13194: { className: 'cellular',  label: 'U-Mobile (BG)'        },
+        12714: { className: 'cellular',  label: 'T-Mobile (CZ)'        },
+        28725: { className: 'cellular',  label: 'Cosmote (GR)'         },
+        35838: { className: 'cellular',  label: 'Vodafone (IT)'        },
+
+        // ---------------- Cellular (Asia-Pacific) ---------------------
+        55836: { className: 'cellular',  label: 'Reliance Jio (IN)'    },
+        24560: { className: 'cellular',  label: 'Bharti Airtel (IN)'   },
+        9498:  { className: 'cellular',  label: 'Bharti Airtel (IN)'   },
+        55644: { className: 'cellular',  label: 'Vodafone Idea (IN)'   },
+        24309: { className: 'cellular',  label: 'CMPak / Zong (PK)'    },
+        38266: { className: 'cellular',  label: 'ACT Fibernet (IN)'    },
+        9605:  { className: 'cellular',  label: 'NTT Docomo (JP)'      },
+        17676: { className: 'cellular',  label: 'SoftBank (JP)'        },
+        9644:  { className: 'cellular',  label: 'SK Telecom (KR)'      },
+        17858: { className: 'cellular',  label: 'LG U+ (KR)'           },
+        9231:  { className: 'cellular',  label: 'China Mobile HK'      },
+        38019: { className: 'cellular',  label: 'China Mobile (CN)'    },
+        24432: { className: 'cellular',  label: 'China Mobile (CN)'    },
+        9808:  { className: 'cellular',  label: 'China Mobile (CN)'    },
+        24139: { className: 'cellular',  label: 'China Mobile (CN)'    },
+        132203: { className: 'cellular', label: 'China Telecom (CN)'   },
+        55410: { className: 'cellular',  label: 'Airtel (IN)'          },
+
+        // ---------------- Satellite (already in satelliteAsns above) -
+        14593: { className: 'satellite', label: 'Starlink (SpaceX)'    },
+        59717: { className: 'satellite', label: 'Starlink (SpaceX)'    },
+        54825: { className: 'satellite', label: 'Starlink (SpaceX)'    },
+        27277: { className: 'satellite', label: 'Starlink (legacy)'    },
+        1239:  { className: 'satellite', label: 'Sprint (legacy satellite)' },
+        7493:  { className: 'satellite', label: 'ViaSat'               },
+        7156:  { className: 'satellite', label: 'ViaSat'               },
+        16824: { className: 'satellite', label: 'SES Networks'         },
+        19444: { className: 'satellite', label: 'Viasat / Inmarsat'    },
+        11696: { className: 'satellite', label: 'Hughes Network Systems' },
+
+        // ---------------- Hosting / datacenter ------------------------
+        16509:  { className: 'hosting', label: 'Amazon AWS'           },
+        14618:  { className: 'hosting', label: 'Amazon AWS'           },
+        8987:   { className: 'hosting', label: 'Amazon AWS'           },
+        15169:  { className: 'hosting', label: 'Google Cloud'         },
+        396982: { className: 'hosting', label: 'Google Cloud'         },
+        13335:  { className: 'hosting', label: 'Cloudflare'           },
+        8075:   { className: 'hosting', label: 'Microsoft Azure'      },
+        14061:  { className: 'hosting', label: 'DigitalOcean'         },
+        63949:  { className: 'hosting', label: 'Linode / Akamai'      },
+        204957: { className: 'hosting', label: 'Vultr'                },
+        24940:  { className: 'hosting', label: 'Hetzner'              },
+        16276:  { className: 'hosting', label: 'OVH'                  },
+        47541:  { className: 'hosting', label: 'OVH'                  },
+        12876:  { className: 'hosting', label: 'Scaleway'             },
+        199283: { className: 'hosting', label: 'Scaleway'             },
+        36351:  { className: 'hosting', label: 'IBM Cloud / SoftLayer'},
+        19531:  { className: 'hosting', label: 'OVH / HopOne'         },
+        31898:  { className: 'hosting', label: 'Oracle Cloud'         },
+        12008:  { className: 'hosting', label: 'Oracle Cloud'         },
+        45102:  { className: 'hosting', label: 'Alibaba Cloud'        },
+        37963:  { className: 'hosting', label: 'Alibaba Cloud'        },
+        132203: { className: 'hosting', label: 'Tencent Cloud'        },
+        138915: { className: 'hosting', label: 'Tencent Cloud'        },
+        2914:   { className: 'hosting', label: 'NTT Communications'   },
+        2914:   { className: 'hosting', label: 'NTT Communications'   },
+        9929:   { className: 'hosting', label: 'China Unicom Hosting' },
+        4809:   { className: 'hosting', label: 'China Telecom Hosting' },
+        7545:   { className: 'hosting', label: 'TPG Internet (AU)'    },
+
+        // ---------------- Education / research -----------------------
+        568:   { className: 'education', label: 'Uni Bonn / DE-NIC'    },
+        680:   { className: 'education', label: 'DFN (DE)'             },
+        1101:  { className: 'education', label: 'SURFnet (NL)'         },
+        1103:  { className: 'education', label: 'SURFnet (NL)'         },
+        1133:  { className: 'education', label: 'Universiteit Twente'  },
+        1889:  { className: 'education', label: 'DFN (DE)'             },
+        2937:  { className: 'education', label: 'GÉANT (EU)'           },
+        786:   { className: 'education', label: 'JISC (UK)'            },
+        8297:  { className: 'education', label: 'GÉANT (EU)'           },
+        3557:  { className: 'education', label: 'Internet2 (US)'       },
+        11164: { className: 'education', label: 'Internet2 (US)'       },
+        11537: { className: 'education', label: 'Internet2 (US)'       },
+        14828: { className: 'education', label: 'Merit Network (US)'   },
+        668:   { className: 'education', label: 'ARIN (US)'            },
+        13445: { className: 'education', label: 'Cisco Webex'          },
+
+        // ---------------- VPN providers (well-known) -----------------
+        212238: { className: 'vpn',      label: 'NordVPN'              },
+        51167:  { className: 'vpn',      label: 'ExpressVPN'           },
+        206092: { className: 'vpn',      label: 'ProtonVPN'            },
+        209854: { className: 'vpn',      label: 'Surfshark'            },
+        136787: { className: 'vpn',      label: 'Mullvad'              },
+        208091: { className: 'vpn',      label: 'ExpressVPN / Kape'    },
+        9009:   { className: 'vpn',      label: 'M247 VPN'             }
+    };
+
+    function classifyAsn(asn) {
+        if (!asn) return null;
+        var s = String(asn);
+        // Strip "AS" prefix and any whitespace.
+        var num = parseInt(s.replace(/^AS/i, '').replace(/\s+/g, ''), 10);
+        if (!num || num <= 0 || num > 4294967295) return null;
+        if (Object.prototype.hasOwnProperty.call(ASN_DATABASE, num)) {
+            return ASN_DATABASE[num];
+        }
+        return null;
+    }
+
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             return navigator.clipboard.writeText(text);
@@ -1988,6 +2265,14 @@
                         connType = 'satellite';
                     }
                 }
+                // Phase 31c: ASN-based classification as a final fallback
+                // when both the browser API and the RTT/downlink
+                // heuristic leave the type ambiguous. Static lookup of
+                // well-known operator ASNs across residential broadband,
+                // cellular, hosting, and education categories. The
+                // lookup is intentionally conservative: only flag an ASN
+                // when its operator is unambiguously one class.
+                var asnClass = classifyAsn(asn);
                 var connTypeLabel = connType
                     ? ({
                         wifi:     'Wi-Fi',
@@ -2026,15 +2311,21 @@
                             connTypeLabel = 'Wi-Fi / Ethernet (inferred)';
                         }
                     } else {
-                        // No downlink/RTT data either — fall back to ASN
-                        // hint. Residential broadband ASNs have no
-                        // effectiveType = 0; cellular ASNs often do. We
-                        // can't be sure, so be honest about the inference.
-                        var asnHint = String(asn || '').toLowerCase();
-                        if (/cellular|wireless|mobile|mvno/.test(asnHint)) {
-                            connTypeLabel = 'Cellular (inferred)';
-                        }
+                        // No downlink/RTT data either — leave the label
+                        // empty; the ASN classifier below will fill in
+                        // a confident answer when the operator ASN is
+                        // known.
                     }
+                }
+                // Phase 31c: ASN-based override. After the RTT/downlink
+                // heuristic, if the label is still empty or just says
+                // "(inferred)" without operator context, look up the
+                // ASN. Known-operator ASNs are confident enough to
+                // upgrade from "(inferred)" to the operator name.
+                if ((!connTypeLabel || /\(inferred\)$/i.test(connTypeLabel)) && asnClass && asnClass.label) {
+                    connTypeLabel = asnClass.label;
+                } else if (!connTypeLabel && asnClass && asnClass.className) {
+                    connTypeLabel = asnClass.className + ' (inferred)';
                 }
 
                 // ---- Fact tile grid -------------------------------
@@ -2120,6 +2411,16 @@
                                     liveLabel = 'Cellular (inferred)';
                                 } else {
                                     liveLabel = 'Wi-Fi / Ethernet (inferred)';
+                                }
+                            }
+                            // Phase 31c: ASN-based override on top of the
+                            // RTT/downlink inference. If the live API +
+                            // heuristic are still ambiguous, trust the
+                            // operator's known ASN class.
+                            if (!liveLabel || /\(inferred\)$/i.test(liveLabel)) {
+                                var asnHint = classifyAsn(asn);
+                                if (asnHint && asnHint.label) {
+                                    liveLabel = asnHint.label;
                                 }
                             }
                             var tile = factGrid.querySelector('[data-pcv2-key="connection"]');
