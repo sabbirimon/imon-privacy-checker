@@ -2004,6 +2004,38 @@
                 if (connEffective && !connTypeLabel) {
                     connTypeLabel = connEffective.toUpperCase();
                 }
+                // Phase 31b: when the browser reports `type === 'unknown'`
+                // and `effectiveType` is empty (common on macOS, Linux, and
+                // Chromium without the NetworkService flag — i.e. almost
+                // every WiFi-only network), don't leave the tile reading
+                // "Unknown". Infer from the network evidence we already
+                // have: high downlink + low RTT → broadband (Wi-Fi or
+                // Ethernet); low downlink + high RTT → cellular; satellite
+                // ASNs override everything. This is heuristic but it's
+                // strictly better than "Unknown" when the API gave us
+                // nothing useful.
+                if ((!connTypeLabel || /^unknown$/i.test(connTypeLabel)) && (!connType || /unknown/i.test(connType)) && !connEffective) {
+                    if (typeof connDownlink === 'number' || typeof connRtt === 'number') {
+                        if (connRtt != null && connRtt >= 100) {
+                            connTypeLabel = 'Cellular (inferred)';
+                        } else if (connDownlink != null && connDownlink >= 5) {
+                            connTypeLabel = 'Wi-Fi / Ethernet (inferred)';
+                        } else if (connDownlink != null && connDownlink < 1) {
+                            connTypeLabel = 'Cellular (inferred)';
+                        } else {
+                            connTypeLabel = 'Wi-Fi / Ethernet (inferred)';
+                        }
+                    } else {
+                        // No downlink/RTT data either — fall back to ASN
+                        // hint. Residential broadband ASNs have no
+                        // effectiveType = 0; cellular ASNs often do. We
+                        // can't be sure, so be honest about the inference.
+                        var asnHint = String(asn || '').toLowerCase();
+                        if (/cellular|wireless|mobile|mvno/.test(asnHint)) {
+                            connTypeLabel = 'Cellular (inferred)';
+                        }
+                    }
+                }
 
                 // ---- Fact tile grid -------------------------------
                 var factItems = [
@@ -2069,6 +2101,8 @@
                             if (!live) return;
                             var liveType      = live.type || '';
                             var liveEffective = live.effectiveType || '';
+                            var liveDownlink  = typeof live.downlink === 'number' ? live.downlink : null;
+                            var liveRtt       = typeof live.rtt === 'number' ? live.rtt : null;
                             var liveLabel = liveType
                                 ? ({
                                     wifi: 'Wi-Fi', cellular: 'Cellular', ethernet: 'Ethernet',
@@ -2076,6 +2110,18 @@
                                     vpn: 'VPN tunnel', bluetooth: 'Bluetooth', none: 'Offline'
                                 }[liveType.toLowerCase()] || (liveType.charAt(0).toUpperCase() + liveType.slice(1)))
                                 : (liveEffective ? liveEffective.toUpperCase() : '');
+                            // Phase 31b: same inference for the live update.
+                            if ((!liveLabel || /^unknown$/i.test(liveLabel)) && (!liveType || /unknown/i.test(liveType)) && !liveEffective) {
+                                if (liveRtt != null && liveRtt >= 100) {
+                                    liveLabel = 'Cellular (inferred)';
+                                } else if (liveDownlink != null && liveDownlink >= 5) {
+                                    liveLabel = 'Wi-Fi / Ethernet (inferred)';
+                                } else if (liveDownlink != null && liveDownlink < 1) {
+                                    liveLabel = 'Cellular (inferred)';
+                                } else {
+                                    liveLabel = 'Wi-Fi / Ethernet (inferred)';
+                                }
+                            }
                             var tile = factGrid.querySelector('[data-pcv2-key="connection"]');
                             if (!tile) return;
                             var valueEl = tile.querySelector('.pcv2__connection-tile-value');

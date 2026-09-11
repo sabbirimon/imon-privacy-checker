@@ -823,6 +823,21 @@
                     if (nc && typeof nc.addEventListener === 'function') {
                         nc.addEventListener('change', function () {
                             var fresh = navigatorConnectionSnapshot();
+                            // Phase 31b: apply the same inference the static
+                            // render does so the live-update row never
+                            // reads "Type: unknown" alone on a Wi-Fi-only
+                            // network.
+                            if (fresh.available && !fresh.effective_type) {
+                                if (fresh.rtt_ms != null && fresh.rtt_ms >= 100) {
+                                    fresh.inferred_type = 'cellular';
+                                } else if (fresh.downlink_mbps != null && fresh.downlink_mbps >= 5) {
+                                    fresh.inferred_type = 'wifi';
+                                } else if (fresh.downlink_mbps != null && fresh.downlink_mbps < 1) {
+                                    fresh.inferred_type = 'cellular';
+                                } else {
+                                    fresh.inferred_type = 'wifi';
+                                }
+                            }
                             var replaced = connectionQualityCard(liveReport, {
                                 latency: payload && payload.latency ? payload.latency : null,
                                 network: fresh
@@ -1328,24 +1343,46 @@
      * Returns null fields when unavailable rather than zeroing — Safari /
      * Firefox don't expose the API and showing "0 Mbps" there would be
      * misleading.
+     *
+     * Phase 31b: also computes an `inferred_type` heuristic so the
+     * Connection tile never reads "Type: unknown" alone when the API
+     * just leaves both `type` and `effectiveType` empty (typical of
+     * macOS / Linux Chromium on a Wi-Fi-only network).
      */
     function navigatorConnectionSnapshot() {
         var c = (typeof navigator !== 'undefined' && navigator.connection) || null;
         if (!c) {
             return {
-                available:    false,
+                available:     false,
                 downlink_mbps: null,
                 effective_type: null,
                 rtt_ms:        null,
-                save_data:     null
+                save_data:     null,
+                inferred_type: null
             };
+        }
+        var dl = (typeof c.downlink === 'number')  ? c.downlink  : null;
+        var rt = (typeof c.rtt === 'number')        ? c.rtt       : null;
+        var et = c.effectiveType || null;
+        var inferred = null;
+        if (!et) {
+            if (rt != null && rt >= 100) {
+                inferred = 'cellular';
+            } else if (dl != null && dl >= 5) {
+                inferred = 'wifi';
+            } else if (dl != null && dl < 1) {
+                inferred = 'cellular';
+            } else {
+                inferred = 'wifi';
+            }
         }
         return {
             available:     true,
-            downlink_mbps: (typeof c.downlink === 'number')  ? c.downlink  : null,
-            effective_type: c.effectiveType || null,
-            rtt_ms:        (typeof c.rtt === 'number')        ? c.rtt       : null,
-            save_data:     (typeof c.saveData === 'boolean') ? c.saveData  : null
+            downlink_mbps: dl,
+            effective_type: et,
+            rtt_ms:        rt,
+            save_data:     (typeof c.saveData === 'boolean') ? c.saveData : null,
+            inferred_type: inferred
         };
     }
 
@@ -1431,13 +1468,29 @@
 
         // Network Information API — Chromium-only. Explicit fallback message
         // for Safari / Firefox / anything else that doesn't expose it.
+        // Phase 31b: when the API says "type: unknown" with no effectiveType
+        // (typical of WiFi-only networks on macOS / Linux Chromium), infer
+        // broadband vs cellular from the RTT/downlink hints so the row
+        // never reads "Type: unknown" alone.
+        var inferredType = '';
+        if (net.available && (!net.effective_type) && (!net.downlink_mbps || net.downlink_mbps <= 0)) {
+            if (net.rtt_ms != null && net.rtt_ms >= 100) {
+                inferredType = 'cellular';
+            } else if (net.downlink_mbps != null && net.downlink_mbps >= 5) {
+                inferredType = 'wifi';
+            } else if (net.downlink_mbps != null && net.downlink_mbps < 1) {
+                inferredType = 'cellular';
+            } else {
+                inferredType = 'wifi';
+            }
+        }
         tbody.appendChild(el('tr', {}, [
             el('th', { text: I18N.cqNetInfo || 'Browser network info' }),
             el('td', { text: net.available
                 ? (
-                    (net.effective_type ? ('Type: ' + net.effective_type + ' · ') : '') +
+                    (inferredType ? ('Type: ' + inferredType + ' (inferred) · ') : (net.effective_type ? ('Type: ' + net.effective_type + ' · ') : '')) +
                     (net.downlink_mbps != null ? ('Downlink: ' + net.downlink_mbps + ' Mbps · ') : '') +
-                    (net.rtt_ms != null ? ('RTT hint: ' + net.rtt_ms + ' ms') : (net.effective_type || (I18N.unable || '—')))
+                    (net.rtt_ms != null ? ('RTT hint: ' + net.rtt_ms + ' ms') : (net.effective_type || inferredType || (I18N.unable || '—')))
                   ).replace(/·\s*$/, '')
                 : (I18N.cqNetInfoUnavailable || 'Not available in this browser.')
             })
