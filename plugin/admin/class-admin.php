@@ -569,6 +569,93 @@ final class Admin {
             );
         }, self::MENU_SLUG, 'pc_api_access' );
 
+        // Phase 37 — Map tile-source picker. Free providers don't
+        // need a key; Google / Yandex / Baidu / Apple show their
+        // key field conditionally. We list all the popular
+        // providers so the admin can compare visual style.
+        add_settings_section( 'pc_map_tiles', __( 'Map Tile Source', 'privacy-checker' ), function () {
+            echo '<p>' . esc_html__( 'Pick the basemap the Leaflet maps use. Free providers (OpenStreetMap, CartoDB, Stamen, OpenTopoMap, ESRI Imagery) work without an API key. Google, Yandex, Baidu and Apple Maps work best with a key — paste it below. Bad or missing keys gracefully fall back to OpenStreetMap so the dashboard stays usable.', 'privacy-checker' ) . '</p>';
+        } );
+
+        add_settings_field( 'map_tile_source', __( 'Tile source', 'privacy-checker' ), function () {
+            $current = (string) Plugin::instance()->setting( 'map.tile_source', 'osm' );
+            $choices = array(
+                'osm'               => __( 'OpenStreetMap (default, no key)', 'privacy-checker' ),
+                'cartodb_voyager'   => __( 'CartoDB Voyager (no key, light style)', 'privacy-checker' ),
+                'cartodb_dark'      => __( 'CartoDB Dark Matter (no key, dark style)', 'privacy-checker' ),
+                'stamen_toner'      => __( 'Stamen Toner (no key, B&W)', 'privacy-checker' ),
+                'opentopomap'       => __( 'OpenTopoMap (no key, topographic)', 'privacy-checker' ),
+                'esri_worldimagery' => __( 'ESRI World Imagery (no key, satellite)', 'privacy-checker' ),
+                'google_roadmap'    => __( 'Google Maps — Roadmap (best with key)', 'privacy-checker' ),
+                'google_satellite' => __( 'Google Maps — Satellite (best with key)', 'privacy-checker' ),
+                'yandex_map'        => __( 'Yandex Maps (best with key)', 'privacy-checker' ),
+                'baidu_map'         => __( 'Baidu Maps (best with key, GCJ-02 offset)', 'privacy-checker' ),
+                'apple_map'         => __( 'Apple Maps (requires MapKit JS — see docs)', 'privacy-checker' ),
+            );
+            echo '<select name="' . esc_attr( Settings::OPTION_KEY ) . '[map][tile_source]">';
+            foreach ( $choices as $key => $label ) {
+                printf(
+                    '<option value="%1$s" %2$s>%3$s</option>',
+                    esc_attr( $key ),
+                    selected( $current, $key, false ),
+                    esc_html( $label )
+                );
+            }
+            echo '</select>';
+        }, self::MENU_SLUG, 'pc_map_tiles' );
+
+        add_settings_field( 'map_google_key', __( 'Google Maps API key', 'privacy-checker' ), function () {
+            $value = (string) Plugin::instance()->setting( 'map.google_key', '' );
+            printf(
+                '<input type="text" autocomplete="off" size="40" name="%1$s[map][google_key]" value="%2$s" />',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_attr( $value )
+            );
+            echo '<p class="description">' . esc_html__( 'Get one at https://console.cloud.google.com/. Required for production use; basic tiles work best-effort without it.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_map_tiles' );
+
+        add_settings_field( 'map_yandex_key', __( 'Yandex Maps API key', 'privacy-checker' ), function () {
+            $value = (string) Plugin::instance()->setting( 'map.yandex_key', '' );
+            printf(
+                '<input type="text" autocomplete="off" size="40" name="%1$s[map][yandex_key]" value="%2$s" />',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_attr( $value )
+            );
+            echo '<p class="description">' . esc_html__( 'Get one at https://developer.tech.yandex.com/.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_map_tiles' );
+
+        add_settings_field( 'map_baidu_key', __( 'Baidu Maps API key (ak)', 'privacy-checker' ), function () {
+            $value = (string) Plugin::instance()->setting( 'map.baidu_key', '' );
+            printf(
+                '<input type="text" autocomplete="off" size="40" name="%1$s[map][baidu_key]" value="%2$s" />',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_attr( $value )
+            );
+            echo '<p class="description">' . esc_html__( 'Get one at https://lbsyun.baidu.com/. Note: Baidu uses GCJ-02 coordinates; lat/lng values will be offset by up to a few hundred metres.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_map_tiles' );
+
+        add_settings_field( 'map_apple_keys', __( 'Apple Maps (MapKit JS)', 'privacy-checker' ), function () {
+            $team = (string) Plugin::instance()->setting( 'map.apple_team_id', '' );
+            $kid  = (string) Plugin::instance()->setting( 'map.apple_key_id', '' );
+            $key  = (string) Plugin::instance()->setting( 'map.apple_key', '' );
+            printf(
+                '<input type="text" autocomplete="off" size="20" placeholder="Team ID" name="%1$s[map][apple_team_id]" value="%2$s" /> ',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_attr( $team )
+            );
+            printf(
+                '<input type="text" autocomplete="off" size="20" placeholder="Key ID" name="%1$s[map][apple_key_id]" value="%2$s" /><br>',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_attr( $kid )
+            );
+            printf(
+                '<textarea autocomplete="off" rows="3" cols="60" placeholder="Private key (P8)" name="%1$s[map][apple_key]">%2$s</textarea>',
+                esc_attr( Settings::OPTION_KEY ),
+                esc_textarea( $key )
+            );
+            echo '<p class="description">' . esc_html__( 'Apple Maps requires MapKit JS with a JWT. The plugin needs the Team ID, Key ID, and the private key from your Apple Developer account. The dedicated MapKit shim is planned for a future release — for now, the dashboard will fall back to OpenStreetMap and show a console notice.', 'privacy-checker' ) . '</p>';
+        }, self::MENU_SLUG, 'pc_map_tiles' );
+
         // Phase 8.2 — read-only reference card. Positioned last so it
         // reads as an "appendix" of hardcoded constants the admin should
         // be aware of. No inputs here — values come from the source

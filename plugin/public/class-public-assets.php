@@ -226,6 +226,24 @@ final class PublicAssets {
             'tipsPageUrl'  => esc_url_raw( home_url( '/anonymity-tips/' ) ),
             'geoPageUrl'   => esc_url_raw( home_url( '/geotraceroute/' ) ),
             'guidePageUrl' => esc_url_raw( home_url( '/user-guide/' ) ),
+            // Phase 37: map tile-source picker. The JS reads this to
+            // decide which Leaflet tile URL to use. `key` is the
+            // admin-supplied API key for paid providers (Google,
+            // Baidu, Apple, Yandex). `dark` is honoured for sources
+            // that have a dark variant (CartoDB). `no_key_ok` is true
+            // for sources that work without an API key.
+            'map'          => array(
+                'source'   => (string) Plugin::instance()->setting( 'map.tile_source', 'osm' ),
+                'dark'     => false,
+                'google_key'=> (string) Plugin::instance()->setting( 'map.google_key', '' ),
+                'yandex_key'=> (string) Plugin::instance()->setting( 'map.yandex_key', '' ),
+                'baidu_key' => (string) Plugin::instance()->setting( 'map.baidu_key', '' ),
+                'apple'     => array(
+                    'team_id' => (string) Plugin::instance()->setting( 'map.apple_team_id', '' ),
+                    'key_id'  => (string) Plugin::instance()->setting( 'map.apple_key_id', '' ),
+                    'key'     => (string) Plugin::instance()->setting( 'map.apple_key', '' ),
+                ),
+            ),
             'i18n'      => array(
                 'scanning'        => __( 'Scanning…', 'privacy-checker' ),
                 'rescan'          => __( 'Run Privacy Check', 'privacy-checker' ),

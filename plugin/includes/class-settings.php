@@ -295,6 +295,34 @@ final class Settings {
             'max_rows'        => max( 1000, min( 1000000, (int) ( $logs_in['max_rows'] ?? ( $logs_current['max_rows'] ?? 50000 ) ) ) ),
         );
 
+        // Phase 37: map tile-source picker. Default OSM (no key, no
+        // ToS issues). For paid providers (Google, Baidu, Apple, Yandex
+        // Maps SDK), admins paste their API key here. The JS reads
+        // pc_settings.map.tile_source + .api_keys via the
+        // PC_SCAN.map localize object and swaps the Leaflet tile URL
+        // accordingly. Unknown choices silently fall back to OSM so a
+        // typo can't break the dashboard.
+        $map_in      = is_array( $input['map'] ?? null ) ? (array) $input['map'] : array();
+        $map_current = is_array( $current['map'] ?? null ) ? (array) $current['map'] : array();
+        $allowed_sources = array(
+            'osm', 'cartodb_voyager', 'cartodb_dark', 'stamen_toner',
+            'opentopomap', 'esri_worldimagery', 'google_roadmap',
+            'google_satellite', 'yandex_map', 'baidu_map', 'apple_map',
+        );
+        $source = sanitize_key( (string) ( $map_in['tile_source'] ?? ( $map_current['tile_source'] ?? 'osm' ) ) );
+        if ( ! in_array( $source, $allowed_sources, true ) ) {
+            $source = 'osm';
+        }
+        $output['map'] = array(
+            'tile_source'  => $source,
+            'google_key'   => sanitize_text_field( (string) ( $map_in['google_key'] ?? ( $map_current['google_key'] ?? '' ) ) ),
+            'yandex_key'   => sanitize_text_field( (string) ( $map_in['yandex_key'] ?? ( $map_current['yandex_key'] ?? '' ) ) ),
+            'baidu_key'    => sanitize_text_field( (string) ( $map_in['baidu_key']  ?? ( $map_current['baidu_key']  ?? '' ) ) ),
+            'apple_team_id'=> sanitize_text_field( (string) ( $map_in['apple_team_id'] ?? ( $map_current['apple_team_id'] ?? '' ) ) ),
+            'apple_key_id' => sanitize_text_field( (string) ( $map_in['apple_key_id']  ?? ( $map_current['apple_key_id']  ?? '' ) ) ),
+            'apple_key'    => sanitize_text_field( (string) ( $map_in['apple_key']     ?? ( $map_current['apple_key']     ?? '' ) ) ),
+        );
+
         return $output;
     }
 

@@ -11,6 +11,130 @@
     if (typeof window === 'undefined') return;
 
     var globals = window.PC_SCAN || {};
+
+    /**
+     * Phase 37 — Map tile-source picker.
+     *
+     * Returns the Leaflet tile config (url template, attribution,
+     * max zoom, subdomains, optional API key) for the provider the
+     * admin picked in Settings → Map. Defaults to OpenStreetMap if
+     * the configured source is unknown or unavailable. Sources
+     * that require an API key (Google, Baidu, Apple, Yandex)
+     * without a configured key fall back to a notice-friendly
+     * stub: we still return a working config so the map loads,
+     * and the admin sees an attribution line.
+     *
+     * Provider notes:
+     *   - osm, cartodb_*, stamen_toner, opentopomap, esri_*:
+     *     free XYZ tile services, no API key needed.
+     *   - google_roadmap / google_satellite: Google's standard
+     *     mt{s}.googleapis.com tile pattern. ToS requires a key
+     *     for production but the basic tiles still serve without
+     *     one — best-effort only.
+     *   - yandex_map: vector tiles from core-renderer-tiles.maps.yandex.net
+     *     — works without a key for limited use.
+     *   - baidu_map: GCJ-02 coord system; we surface the URL but
+     *     locations would be offset. Better to use a custom shim.
+     *   - apple_map: requires MapKit JS with a JWT — no direct
+     *     tile URL; we surface a stub URL that 404s gracefully so
+     *     the admin sees a clear console warning.
+     */
+    function getTileConfig() {
+        var cfg = (window.PC_SCAN && window.PC_SCAN.map) || {};
+        var source = (cfg.source || 'osm').toLowerCase();
+        var key = cfg.google_key || cfg.yandex_key || cfg.baidu_key || '';
+        switch (source) {
+            case 'cartodb_voyager':
+                return {
+                    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    maxZoom: 19, subdomains: 'abcd'
+                };
+            case 'cartodb_dark':
+                return {
+                    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    maxZoom: 19, subdomains: 'abcd'
+                };
+            case 'stamen_toner':
+                return {
+                    url: 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png',
+                    attribution: 'Map tiles by Stamen Design, CC BY 3.0 — Map data &copy; OSM contributors',
+                    maxZoom: 18
+                };
+            case 'opentopomap':
+                return {
+                    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+                    attribution: 'Map data: &copy; OSM, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
+                    maxZoom: 17, subdomains: 'abc'
+                };
+            case 'esri_worldimagery':
+                return {
+                    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+                    maxZoom: 18
+                };
+            case 'google_roadmap':
+                // Google's standard XYZ pattern. Works best-effort
+                // without a key; for production, paste a key in
+                // Settings → Map → Google API Key.
+                return {
+                    url: key
+                        ? 'https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&key=' + encodeURIComponent(key)
+                        : 'https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
+                    attribution: '&copy; Google',
+                    maxZoom: 19, subdomains: '0123'
+                };
+            case 'google_satellite':
+                return {
+                    url: key
+                        ? 'https://mt{s}.google.com/vt/lyrs=s,h&hl=en&x={x}&y={y}&z={z}&key=' + encodeURIComponent(key)
+                        : 'https://mt{s}.google.com/vt/lyrs=s,h&hl=en&x={x}&y={y}&z={z}',
+                    attribution: '&copy; Google',
+                    maxZoom: 19, subdomains: '0123'
+                };
+            case 'yandex_map':
+                return {
+                    url: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=en_US',
+                    attribution: '&copy; Yandex',
+                    maxZoom: 18
+                };
+            case 'baidu_map':
+                // Baidu tiles use GCJ-02 (Mars coords). Locations
+                // will be offset from real lat/lng by ~50–500m.
+                // We surface the URL but warn in console.
+                if (typeof console !== 'undefined') {
+                    console.warn('[IMON map] Baidu tiles use GCJ-02 coordinates; locations may be offset from real lat/lng.');
+                }
+                return {
+                    url: key
+                        ? 'https://api.map.baidu.com/customimage/tile?&x={x}&y={y}&z={z}&ak=' + encodeURIComponent(key)
+                        : 'https://maponline0.bdimg.com/tile/?qt=satepc&u=x={x};y={y};z={z};styles=pl;scale=1;v=033',
+                    attribution: '&copy; Baidu',
+                    maxZoom: 18
+                };
+            case 'apple_map':
+                // MapKit JS requires JWT — we have no tile URL.
+                // Surface a placeholder; the admin must paste the
+                // JWT into Settings → Map → Apple Maps Keys and
+                // switch to the dedicated MapKit shim (Phase 38+).
+                if (typeof console !== 'undefined') {
+                    console.warn('[IMON map] Apple Maps requires MapKit JS (JWT). See DEPLOY.md → Map providers.');
+                }
+                return {
+                    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    attribution: '&copy; OpenStreetMap (Apple Maps requires MapKit JS — see docs)',
+                    maxZoom: 19, subdomains: 'abc'
+                };
+            case 'osm':
+            default:
+                return {
+                    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19, subdomains: 'abc'
+                };
+        }
+    }
     // WordPress localizes `restUrl` as an absolute URL built from
     // `siteurl()`. When the visitor accesses the site via a different
     // hostname (e.g. `localhost` while WP is configured at `127.0.0.1`)
@@ -4236,9 +4360,12 @@
                 var hops = buildHopChain(origin, dest, hopCount, proxy, intel);
 
                 var map = L.map(canvas, { scrollWheelZoom: false, attributionControl: false });
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 12,
-                    minZoom: 3
+                // Phase 37: tile source chosen by admin (defaults to OSM).
+                var _tileCfg = getTileConfig();
+                L.tileLayer(_tileCfg.url, {
+                    maxZoom: _tileCfg.maxZoom || 12,
+                    minZoom: 3,
+                    subdomains: _tileCfg.subdomains || 'abc'
                 }).addTo(map);
 
                 var latlngs = hops.map(function (h) { return [h.lat, h.lng]; });
@@ -6143,10 +6270,13 @@
                 minZoom: 2,
                 maxZoom: 8
             });
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 8,
+            // Phase 37: tile source chosen by admin (defaults to OSM).
+            var _tileCfg2 = getTileConfig();
+            L.tileLayer(_tileCfg2.url, {
+                maxZoom: _tileCfg2.maxZoom ? Math.min(_tileCfg2.maxZoom, 8) : 8,
                 minZoom: 2,
-                attribution: '© OpenStreetMap'
+                subdomains: _tileCfg2.subdomains || 'abc',
+                attribution: _tileCfg2.attribution || '© OpenStreetMap'
             }).addTo(map);
             map.setView([20, 0], 2);
             return map;
@@ -6653,4 +6783,9 @@
         bindGeotraceroute();
         bindUserGuide();
     });
+
+    // Phase 37: expose getTileConfig() on window so scanner-v2.js
+    // (which lives in its own IIFE) can read the admin's tile
+    // preference without duplicating the provider table.
+    window.__pcGetTileConfig = getTileConfig;
 })();

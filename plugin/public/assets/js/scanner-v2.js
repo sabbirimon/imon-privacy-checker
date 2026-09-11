@@ -3114,20 +3114,34 @@
         container.innerHTML = '';
         var map = window.L.map(container, { worldCopyJump: true, scrollWheelZoom: false }).setView([20, 0], 2);
 
-        // Phase 30: when the host element is on the dedicated GeoTrace page
-        // (data-pcv2-route="geotrace"), switch to the CartoDB Dark Matter
-        // basemap so the page matches traceroute-online.com's wireframe.
+        // Phase 30 + 37: when the host element is on the dedicated
+        // GeoTrace page (data-pcv2-route="geotrace"), prefer the
+        // CartoDB Dark Matter basemap so the page matches
+        // traceroute-online.com's wireframe — unless the admin
+        // explicitly picked a non-OSM source in Settings → Map, in
+        // which case we honour their choice (the dark UI works
+        // equally well with CartoDB Voyager, ESRI Imagery, etc.).
         var isGeoPage = !!(container.closest && container.closest('[data-pcv2-route="geotrace"]'));
-        var tileUrl    = isGeoPage
-            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        var tileAttrib = isGeoPage
-            ? '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            : '&copy; OpenStreetMap contributors';
+        var tileCfg = (typeof window.__pcGetTileConfig === 'function') ? window.__pcGetTileConfig() : null;
+        var tileUrl, tileAttrib, tileMaxZoom, tileSub;
+        if (isGeoPage && (!tileCfg || tileCfg.source === 'osm' || tileCfg.source === 'cartodb_dark')) {
+            tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+            tileAttrib = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+            tileMaxZoom = 18; tileSub = 'abcd';
+        } else if (tileCfg) {
+            tileUrl = tileCfg.url;
+            tileAttrib = tileCfg.attribution || '&copy; OpenStreetMap contributors';
+            tileMaxZoom = tileCfg.maxZoom || 18;
+            tileSub = tileCfg.subdomains || 'abc';
+        } else {
+            tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            tileAttrib = '&copy; OpenStreetMap contributors';
+            tileMaxZoom = 18; tileSub = 'abc';
+        }
         window.L.tileLayer(tileUrl, {
             attribution: tileAttrib,
-            maxZoom: 18,
-            subdomains: 'abcd'
+            maxZoom: tileMaxZoom,
+            subdomains: tileSub
         }).addTo(map);
 
         var publicPoints = [];
