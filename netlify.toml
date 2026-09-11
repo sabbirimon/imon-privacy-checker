@@ -1,0 +1,35 @@
+# Netlify config for the IMON static demo + landing page.
+#
+# The IMON plugin itself is a WordPress plugin — Netlify cannot run PHP,
+# so we ship a single-page demo that lets visitors play with the v1/v2
+# scan UI without a WordPress host. The demo points at the public REST
+# endpoint of any deployed IMON install.
+#
+# To deploy:
+#   1. Push this repo to GitHub.
+#   2. Connect the repo at https://app.netlify.com/start.
+#   3. Netlify auto-detects this file; no further setup needed.
+
+[build]
+  publish = "."
+  command = "echo 'No build step — static demo only.'"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Cache headers — assets are fingerprinted with ?ver= so we can let
+# the CDN cache aggressively.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Security headers — sensible defaults for a static page.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.basemaps.cartocdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.example.test https://example.test"
