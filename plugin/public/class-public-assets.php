@@ -490,6 +490,14 @@ final class PublicAssets {
                 'geoConnectedHops'=> __( 'Connected (%s hops received)', 'privacy-checker' ),
                 'geoLongWait'     => __( 'Taking longer than expected… still working!', 'privacy-checker' ),
                 'geoInferring'    => __( 'Inferring physical path…', 'privacy-checker' ),
+
+                // Phase 39 — global dashboard search/filter.
+                // Placeholder for the search bar that filters every
+                // card on the dashboard. Matching cards get a yellow
+                // accent + bold text; non-matches dim to 35%.
+                'dashboardSearchPlaceholder' => __( 'Filter cards — IP, country, ASN, score, hops…', 'privacy-checker' ),
+                'dashboardSearchClearLabel' => __( 'Clear filter', 'privacy-checker' ),
+                'dashboardSearchAria'        => __( 'Filter dashboard cards', 'privacy-checker' ),
             ),
         ) );
 

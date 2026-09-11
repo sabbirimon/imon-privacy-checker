@@ -85,6 +85,87 @@
 /* =========================================================
    3.  Hero — IP card with big IP + flag + score
    ========================================================= */
+
+/* ---- Phase 39: global search/filter bar ---- */
+.pc-dashboard__search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.9rem;
+    padding: 0.45rem 0.6rem;
+    background: var(--pc-surface, #fff);
+    border: 1px solid var(--pc-border, #e2e8f0);
+    border-radius: 999px;
+    box-shadow: var(--pc-shadow-1, 0 1px 2px rgba(15,23,42,0.04));
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pc-dashboard__search:focus-within {
+    border-color: var(--pc-accent, #facc15);
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.18);
+}
+.pc-dashboard__search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--pc-text, #0f172a);
+    font: 500 0.95rem/1.4 inherit;
+    padding: 0.25rem 0.4rem;
+}
+.pc-dashboard__search-input::placeholder {
+    color: var(--pc-text-faint, #64748b);
+    opacity: 1;
+}
+.pc-dashboard__search-clear {
+    flex: 0 0 auto;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--pc-text-faint, #64748b);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.pc-dashboard__search-clear:hover,
+.pc-dashboard__search-clear:focus {
+    background: var(--pc-border, #e2e8f0);
+    color: var(--pc-text, #0f172a);
+    outline: 0;
+}
+/* Match: yellow accent outline + bold text inside. */
+.pc-search-match {
+    outline: 2px solid var(--pc-accent, #facc15);
+    outline-offset: 2px;
+    border-radius: var(--pc-radius, 12px);
+}
+.pc-search-match,
+.pc-search-match * {
+    font-weight: 700 !important;
+}
+/* Non-match: dim to 35% opacity. */
+.pc-search-dim {
+    opacity: 0.35;
+    filter: saturate(0.4);
+    transition: opacity 0.18s ease, filter 0.18s ease;
+}
+.pc-search-match {
+    transition: outline-color 0.18s ease;
+}
+/* Respect reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+    .pc-search-dim,
+    .pc-search-match {
+        transition: none;
+    }
+}
+
 .pc-dashboard__hero {
     background: var(--pc-surface);
     border: 1px solid var(--pc-border);

@@ -805,6 +805,30 @@
             try { window.__pcRenderCardsHook(report); } catch (e) { /* noop */ }
         }
 
+        // ===== Search bar (Phase 39) =====
+        // A global search input that filters every card on the
+        // dashboard. Matching items get a highlight outline +
+        // bold text; non-matching items get dimmed. No card is
+        // hidden — the user always sees the full report, just
+        // with visual emphasis on what matches their query.
+        var searchBar = el('div', { class: 'pc-dashboard__search' });
+        var searchInput = el('input', {
+            type: 'search',
+            class: 'pc-dashboard__search-input',
+            placeholder: (window.I18N && window.I18N.dashboardSearchPlaceholder) || 'Filter cards — IP, country, ASN, score, hops…',
+            'aria-label': (window.I18N && window.I18N.dashboardSearchAria) || 'Filter dashboard cards'
+        });
+        searchInput.id = 'pc-dashboard-search';
+        var searchClear = el('button', {
+            type: 'button',
+            class: 'pc-dashboard__search-clear',
+            'aria-label': (window.I18N && window.I18N.dashboardSearchClearLabel) || 'Clear filter',
+            text: '×'
+        });
+        searchBar.appendChild(searchInput);
+        searchBar.appendChild(searchClear);
+        region.appendChild(searchBar);
+
         // ===== HERO (big IP + flag + score) =====
         var hero = el('section', { class: 'pc-dashboard__hero' });
         var heroBody = el('div', { class: 'pc-hero' });
@@ -1025,6 +1049,73 @@
         detailedWrap.appendChild(detailedReportCard(report));
         detailedWrap.appendChild(anonymityTipsCard(report));
         region.appendChild(detailedWrap);
+
+        // ===== Phase 39: Global search/filter index =====
+        // After the report is rendered, walk every searchable block
+        // (the hero, every card, the network-path diagram and the
+        // hop table) and stash its concatenated visible text into a
+        // data-search-index attribute. The input handler below
+        // compares the query against this index — matching blocks
+        // get a yellow accent + bold, non-matching blocks get
+        // dimmed so the user can still see the full report but
+        // visually focus on what they searched for.
+        try {
+            var searchable = region.querySelectorAll(
+                '.pc-dashboard__hero, .pc-card, .pc-network, .pc-hops, .pc-detail, .pc-tips'
+            );
+            for (var i = 0; i < searchable.length; i++) {
+                var node = searchable[i];
+                if (!node.dataset.searchIndex) {
+                    node.dataset.searchIndex = (node.innerText || node.textContent || '')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .toLowerCase();
+                }
+            }
+            // Replace the input node so any stale listeners on a
+            // prior render are dropped, then bind fresh listeners
+            // on the new node. Using `this` inside the listener
+            // (instead of a captured reference) means the handler
+            // reads the current live input — important because the
+            // search input may be cloned mid-render.
+            var freshInput = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(freshInput, searchInput);
+            freshInput.id = 'pc-dashboard-search';
+            freshInput.addEventListener('input', debounce(function () {
+                var q = (this.value || '').trim().toLowerCase();
+                for (var j = 0; j < searchable.length; j++) {
+                    var n = searchable[j];
+                    var idx = n.dataset.searchIndex || '';
+                    if (!q) {
+                        n.classList.remove('pc-search-match');
+                        n.classList.remove('pc-search-dim');
+                    } else if (idx.indexOf(q) !== -1) {
+                        n.classList.add('pc-search-match');
+                        n.classList.remove('pc-search-dim');
+                    } else {
+                        n.classList.remove('pc-search-match');
+                        n.classList.add('pc-search-dim');
+                    }
+                }
+            }, 100));
+            var freshClear = searchClear.cloneNode(true);
+            searchClear.parentNode.replaceChild(freshClear, searchClear);
+            freshClear.addEventListener('click', function () {
+                freshInput.value = '';
+                freshInput.focus();
+                freshInput.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        } catch (e) { /* search index is progressive enhancement */ }
+    }
+
+    function debounce(fn, wait) {
+        var t = null;
+        return function () {
+            var args = arguments;
+            var ctx = this;
+            clearTimeout(t);
+            t = setTimeout(function () { fn.apply(ctx, args); }, wait);
+        };
     }
 
     function scoreLevelLabel(level) {
