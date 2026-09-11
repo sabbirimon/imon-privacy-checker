@@ -40,11 +40,14 @@
   --pcv2-grad-green:  linear-gradient(135deg, #34d399 0%, #10b981 100%);
   --pcv2-grad-mixed:  linear-gradient(135deg, #8b5cf6 0%, #ec4899 50%, #fb923c 100%);
 
-  --pcv2-action: #6b3ce0;
-  --pcv2-action-hover: #5a2dd1;
-  --pcv2-action-active: #4a22b8;
+  --pcv2-action: #5b21b6;
+  --pcv2-action-hover: #4c1d95;
+  --pcv2-action-active: #3b1380;
   --pcv2-action-fg: #ffffff;
-  --pcv2-action-grad: linear-gradient(135deg, #8b5cf6 0%, #6b3ce0 100%);
+  --pcv2-action-grad: linear-gradient(135deg, #06B6D4 0%, #5B21B6 60%, #C026D3 100%);
+  /* Phase 44: stronger glow + thicker outline so the Run Check
+   * button is unmistakable against the glassy v2 header. */
+  --pcv2-shadow-glow-purple: 0 8px 24px -8px rgba(91, 33, 182, 0.55), 0 0 0 1px rgba(255,255,255,0.18);
 
   /* Status tokens — bg (soft wash), fg (saturated), border (1px line) */
   --pcv2-safe-bg:     rgba(16, 185, 129, 0.14);
@@ -95,11 +98,11 @@
   --pcv2-text-inverse: #14102b;
   --pcv2-text-link: #a78bfa;
 
-  --pcv2-action: #8b5cf6;
-  --pcv2-action-hover: #a78bfa;
-  --pcv2-action-active: #c4b5fd;
-  --pcv2-action-fg: #ffffff;
-  --pcv2-action-grad: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  --pcv2-action: #22D3EE;
+  --pcv2-action-hover: #67E8F9;
+  --pcv2-action-active: #06B6D4;
+  --pcv2-action-fg: #0A0E14;
+  --pcv2-action-grad: linear-gradient(135deg, #22D3EE 0%, #8B5CF6 60%, #EC4899 100%);
 
   --pcv2-safe-bg:     rgba(52, 211, 153, 0.16);
   --pcv2-safe-fg:     #6ee7b7;
@@ -127,7 +130,7 @@
 
   --pcv2-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
   --pcv2-shadow-2: 0 14px 36px rgba(0, 0, 0, 0.50), 0 4px 12px rgba(0, 0, 0, 0.30);
-  --pcv2-shadow-glow-purple: 0 0 36px rgba(139, 92, 246, 0.55);
+  --pcv2-shadow-glow-purple: 0 0 24px rgba(139, 92, 246, 0.45), 0 0 36px rgba(34, 211, 238, 0.35);
   --pcv2-shadow-glow-pink:   0 0 36px rgba(236, 72, 153, 0.50);
   --pcv2-shadow-glow-orange: 0 0 36px rgba(251, 146, 60, 0.45);
   --pcv2-focus-ring: #a78bfa;
@@ -177,7 +180,7 @@
 
     --pcv2-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
     --pcv2-shadow-2: 0 14px 36px rgba(0, 0, 0, 0.50), 0 4px 12px rgba(0, 0, 0, 0.30);
-    --pcv2-shadow-glow-purple: 0 0 36px rgba(139, 92, 246, 0.55);
+    --pcv2-shadow-glow-purple: 0 0 24px rgba(139, 92, 246, 0.45), 0 0 36px rgba(34, 211, 238, 0.35);
     --pcv2-shadow-glow-pink:   0 0 36px rgba(236, 72, 153, 0.50);
     --pcv2-shadow-glow-orange: 0 0 36px rgba(251, 146, 60, 0.45);
     --pcv2-focus-ring: #a78bfa;
@@ -324,7 +327,12 @@
 }
 .pcv2__nav a:hover { color: var(--pcv2-text); text-decoration: none; }
 
-.pcv2__header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.pcv2__header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+.pcv2__header-actions .pcv2__btn--primary {
+  padding: 0.55rem 1.4rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
 
 @media (min-width: 768px) {
   .pcv2__nav { display: flex; }
@@ -400,13 +408,15 @@
   background: var(--pcv2-action-grad);
   color: var(--pcv2-action-fg);
   box-shadow: var(--pcv2-shadow-glow-purple);
+  border: 1px solid rgba(255, 255, 255, 0.22);
 }
 .pcv2__btn--primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 0 36px rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.60), 0 0 48px rgba(34, 211, 238, 0.40);
+  filter: brightness(1.08);
   text-decoration: none;
 }
-.pcv2__btn--primary:active { transform: translateY(0); }
+.pcv2__btn--primary:active { transform: translateY(0); filter: brightness(0.95); }
 .pcv2__btn--ghost {
   background: var(--pcv2-surface);
   color: var(--pcv2-text);
