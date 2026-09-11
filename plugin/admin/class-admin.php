@@ -575,7 +575,7 @@ final class Admin {
         // providers so the admin can compare visual style.
         add_settings_section( 'pc_map_tiles', __( 'Map Tile Source', 'privacy-checker' ), function () {
             echo '<p>' . esc_html__( 'Pick the basemap the Leaflet maps use. Free providers (OpenStreetMap, CartoDB, Stamen, OpenTopoMap, ESRI Imagery) work without an API key. Google, Yandex, Baidu and Apple Maps work best with a key — paste it below. Bad or missing keys gracefully fall back to OpenStreetMap so the dashboard stays usable.', 'privacy-checker' ) . '</p>';
-        } );
+        }, self::MENU_SLUG );
 
         add_settings_field( 'map_tile_source', __( 'Tile source', 'privacy-checker' ), function () {
             $current = (string) Plugin::instance()->setting( 'map.tile_source', 'osm' );

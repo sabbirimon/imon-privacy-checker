@@ -30,7 +30,7 @@ declare( strict_types=1 );
 
 namespace PrivacyChecker\Admin;
 
-use PrivacyChecker\AdminDashboard;
+use PrivacyChecker\Admin\AdminDashboard;
 use PrivacyChecker\AnonymityScorer;
 use PrivacyChecker\BrowserVersions;
 use PrivacyChecker\Fingerprint;
