@@ -2665,6 +2665,27 @@
     grid-template-columns: minmax(5.5rem, 35%) 1fr auto;
     gap: 0.5rem;
   }
+
+  /* Phase 48b — Mobile header overflow.
+   * At 375px the brand-mark + Run Check button can't fit on one
+   * row alongside the ELI5/ELI5-toggle. Wrap the header onto two
+   * rows: brand+tag on row 1, actions on row 2. This keeps the
+   * button readable without the brand text wrapping mid-word. */
+  .pcv2__header {
+    flex-wrap: wrap;
+    padding: 0.7rem 1rem;
+    gap: 0.5rem 0.75rem;
+  }
+  .pcv2__brand { flex: 0 0 auto; }
+  .pcv2__header-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+  .pcv2__header-actions .pcv2__btn--primary {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
 }
 
 /* ============================================================== */
