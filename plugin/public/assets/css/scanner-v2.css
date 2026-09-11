@@ -101,7 +101,7 @@
   --pcv2-action: #22D3EE;
   --pcv2-action-hover: #67E8F9;
   --pcv2-action-active: #06B6D4;
-  --pcv2-action-fg: #0A0E14;
+  --pcv2-action-fg: #ffffff;
   --pcv2-action-grad: linear-gradient(135deg, #22D3EE 0%, #8B5CF6 60%, #EC4899 100%);
 
   --pcv2-safe-bg:     rgba(52, 211, 153, 0.16);
@@ -406,7 +406,10 @@
 }
 .pcv2__btn--primary {
   background: var(--pcv2-action-grad);
-  color: var(--pcv2-action-fg);
+  /* !important: wins against `.pcv2 a { color: var(--pcv2-text-link) }`
+     so the Run Check link in the header stays white instead of being
+     recolored as a navigation link. */
+  color: var(--pcv2-action-fg) !important;
   box-shadow: var(--pcv2-shadow-glow-purple);
   border: 1px solid rgba(255, 255, 255, 0.22);
 }
@@ -2232,8 +2235,11 @@
 }
 
 .pcv2__btn--primary[data-pcv2-action="start-scan"] {
-  animation: pcv2-btn-rainbow 6s linear infinite;
-  color: hsl(var(--pcv2-btn-hue), 92%, 62%);
+  /* White text on the cyan→violet→magenta gradient — strong contrast
+     across all hues. Was previously a hue-rainbow that cycled through
+     red/orange/yellow/green/blue (poor contrast on cyan/violet parts). */
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(10, 14, 20, 0.45);
 }
 
 @keyframes pcv2-btn-rainbow {
@@ -2245,10 +2251,12 @@
   83%  { --pcv2-btn-hue: 300; }
   100% { --pcv2-btn-hue: 360; }
 }
+/* pcv2-btn-rainbow was removed in Phase 46 — the cycling hue produced
+   poor contrast against the cyan→violet→magenta gradient. See
+   .pcv2__btn--primary[data-pcv2-action="start-scan"] above. */
 
 @media (prefers-reduced-motion: reduce) {
   .pcv2__connection-tile { animation: none; opacity: 1; transform: none; }
-  .pcv2__btn--primary[data-pcv2-action="start-scan"] { animation: none; color: var(--pcv2-action-fg); }
 }
 
 /* ============================================================== */

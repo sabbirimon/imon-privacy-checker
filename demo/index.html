@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IMON — Privacy &amp; Anonymity Diagnostic</title>
-    <meta name="description" content="See what your browser and network reveal about you. Open-source WordPress plugin + free static demo.">
+    <meta name="description" content="See what your browser and network reveal about you. Privacy Checker is a free, open-source WordPress plugin.">
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%2306B6D4%22/></svg>">
 
@@ -120,24 +120,25 @@
         }
         .demo-btn--ghost:hover { border-color: #22D3EE; text-decoration: none; }
 
-        /* Demo notice banner */
-        .demo-notice {
-            max-width: 760px;
+        /* Demo mode badge — tiny, top-right of hero */
+        .demo-mode-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
             margin: 0 auto 24px;
-            padding: 14px 18px;
-            background: rgba(34, 211, 238, 0.08);
-            border: 1px solid rgba(34, 211, 238, 0.25);
-            border-radius: 10px;
+            padding: 6px 14px;
+            background: rgba(148, 163, 184, 0.08);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 999px;
             color: #94A3B8;
-            font-size: 14px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
         }
-        .demo-notice strong { color: #22D3EE; }
-        .demo-notice code {
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            background: rgba(255, 255, 255, 0.06);
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-size: 13px;
+        .demo-mode-badge__dot {
+            width: 6px; height: 6px;
+            background: #22D3EE;
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.15);
         }
 
         /* Demo wrapper around scanner */
@@ -256,15 +257,13 @@
 </section>
 
 <!-- ============================================== -->
-<!-- Mock-mode notice                                 -->
+<!-- Mode badge (centered, between hero and scanner)  -->
 <!-- ============================================== -->
-<div class="demo-notice">
-    <strong>Demo mode.</strong>
-    This static page ships without a WordPress backend, so the scan shows
-    <em>browser-only</em> results (your real IP &amp; geo are not exposed to
-    us). For the full six-stage scan with IP intel, reputation, and
-    traceroute, install the plugin at <code>/wp-admin → Plugins → Add New</code>
-    and use the <code>[privacy_checker]</code> shortcode.
+<div style="text-align: center;">
+    <div class="demo-mode-badge" aria-label="Static preview">
+        <span class="demo-mode-badge__dot"></span>
+        Static preview · showing sample data with mock scan results
+    </div>
 </div>
 
 <!-- ============================================== -->
@@ -288,7 +287,7 @@
                 <a href="#pcv2-main">IP Check</a>
                 <a href="#pcv2-main">DNS Leak</a>
                 <a href="#pcv2-main">Browser</a>
-                <a href="#pcv2-geotrace" data-pcv2-action="open-geotrace">GeoTrace</a>
+                <a href="#pcv2-geotrace">GeoTrace</a>
                 <a href="#demo-install">About</a>
             </nav>
             <div class="pcv2__header-actions">

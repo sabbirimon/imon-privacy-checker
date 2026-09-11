@@ -262,7 +262,7 @@ final class PublicAssetsV2 {
                     <a href="<?php echo esc_url( home_url( '/ip-lookup/' ) ); ?>"><?php esc_html_e( 'IP Check', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/dns-leak-test/' ) ); ?>"><?php esc_html_e( 'DNS Leak', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/webrtc-test/' ) ); ?>"><?php esc_html_e( 'Browser', 'privacy-checker' ); ?></a>
-                    <a href="#pcv2-geotrace" data-pcv2-action="open-geotrace"><?php esc_html_e( 'GeoTrace', 'privacy-checker' ); ?></a>
+                    <a href="<?php echo esc_url( home_url( '/geotrace/' ) ); ?>"><?php esc_html_e( 'GeoTrace', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/user-guide/' ) ); ?>"><?php esc_html_e( 'About', 'privacy-checker' ); ?></a>
                 </nav>
                 <div class="pcv2__header-actions">

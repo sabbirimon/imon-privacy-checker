@@ -1457,3 +1457,56 @@ Anonymous scan data is randomised but stable per session.
   Security 65 %), Connection card shows real IPv4 + flag + city +
   ISP + ASN, 3 install cards present, footer present, **0
   console errors / page errors**.
+
+---
+
+## Phase 46 — Run Check white text + dedicated GeoTrace link (2026-09-11)
+
+### Why
+
+After deploying Phase 45, the Netlify preview showed two visual
+issues in the v2 header:
+
+1. **"Run Check" button text was rainbow-cycling** through HSL hues
+   (`hsl(--pcv2-btn-hue, 92%, 62%)`) via the `pcv2-btn-rainbow`
+   animation. On the cyan→violet→magenta gradient the cycling hue
+   produced poor contrast — text was yellow/red/green at different
+   moments instead of staying legible.
+2. **GeoTrace was an in-page anchor, not a dedicated tab.** The
+   `data-pcv2-action="open-geotrace"` link only scrolled to the
+   inline section; it didn't deep-link to the standalone
+   `/geotrace/` page that already exists via
+   `[privacy_checker_geotrace]`.
+
+Also the demo page had a loud cyan "Demo mode." banner at the top
+that read as a warning rather than a quiet disclosure.
+
+### What changed
+
+- `plugin/public/assets/css/scanner-v2.css`:
+  - Removed `pcv2-btn-rainbow` animation that cycled HSL hues.
+  - `.pcv2__btn--primary` now uses `color: var(--pcv2-action-fg) !important`
+    so the white text wins against `.pcv2 a { color: var(--pcv2-text-link) }`.
+  - Dark-theme `--pcv2-action-fg` flipped from `#0A0E14` → `#ffffff`.
+  - Hero CTA gets `text-shadow: 0 1px 2px rgba(10,14,20,0.45)` for
+    crisper letter edges against the gradient.
+- `plugin/public/class-public-assets-v2.php`: GeoTrace nav link
+  points at `home_url('/geotrace/')` (the dedicated page) instead of
+  the in-page `#pcv2-geotrace` anchor. The inline scroll handler is
+  still wired for visitors who land on a page that has the inline
+  section.
+- `demo/index.html`: replaced the big cyan "Demo mode" banner with
+  a small `Static preview · showing sample data with mock scan
+  results` pill badge centred between the hero and the dashboard.
+- `demo/assets/css/scanner-v2.css`: synced with the plugin fix.
+
+### Verification
+
+Headless Chromium computed-style readback after Phase 46 fix:
+
+- Header "Run Check" link: `color: rgb(255, 255, 255)` (was
+  `rgb(167, 139, 250)` light violet).
+- Hero CTA "Re-run scan": `color: rgb(255, 255, 255)` (was the
+  cycling hue).
+- v2 nav now reads: `Home · IP Check · DNS Leak · Browser ·
+  GeoTrace · About`.
