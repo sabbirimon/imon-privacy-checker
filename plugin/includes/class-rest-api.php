@@ -1216,6 +1216,62 @@ final class RestApi {
                 count( $trace['hops'] )
             );
 
+        // Phase 43: synthetic fallback hop when the server can't run
+        // traceroute (hosting sandboxes, outbound ICMP/TCP probes
+        // blocked). We never invent hop IPs, but we can still show
+        // a single arrow from the probe to the target so the 2D map
+        // and 3D globe aren't empty — only when both endpoints have
+        // real coordinates. The frontend renders these hops in a
+        // distinct "estimated" style.
+        $estimated_route = false;
+        if ( empty( $trace['hops'] )
+            && is_array( $probe_record ) && is_array( $target_record )
+            && null !== ( $probe_record['lat'] ?? null ) && null !== ( $probe_record['lon'] ?? null )
+            && null !== ( $target_record['lat'] ?? null ) && null !== ( $target_record['lon'] ?? null )
+        ) {
+            $trace['hops'] = array(
+                array(
+                    'index'        => 1,
+                    'ip'           => $probe_record['ip'] ?: '',
+                    'hostname'     => $probe_record['hostname'] ?: '',
+                    'rtt_ms'       => null,
+                    'status'       => 'public',
+                    'lat'          => (float) $probe_record['lat'],
+                    'lon'          => (float) $probe_record['lon'],
+                    'city'         => $probe_record['city'] ?? '',
+                    'country'      => $probe_record['country'] ?? '',
+                    'country_code' => $probe_record['country_code'] ?? '',
+                    'asn'          => $probe_record['asn'] ?? '',
+                    'isp'          => $probe_record['isp'] ?? '',
+                    'confidence'   => $probe_record['confidence'] ?? 'medium',
+                    'estimated'    => true,
+                ),
+                array(
+                    'index'        => 2,
+                    'ip'           => $target_record['ip'] ?: $ip,
+                    'hostname'     => $host,
+                    'rtt_ms'       => null,
+                    'status'       => 'public',
+                    'lat'          => (float) $target_record['lat'],
+                    'lon'          => (float) $target_record['lon'],
+                    'city'         => $target_record['city'] ?? '',
+                    'country'      => $target_record['country'] ?? '',
+                    'country_code' => $target_record['country_code'] ?? '',
+                    'asn'          => $target_record['asn'] ?? '',
+                    'isp'          => $target_record['isp'] ?? '',
+                    'confidence'   => $target_record['confidence'] ?? 'medium',
+                    'estimated'    => true,
+                ),
+            );
+            $estimated_route = true;
+            $source_kind     = 'estimated-route';
+            $message         = sprintf(
+                '%1$s %2$s',
+                $trace['message'],
+                __( 'Showing the start and end points as an estimated line — intermediate hops are unavailable because the server cannot probe outbound.', 'privacy-checker' )
+            );
+        }
+
         // Phase 28: record the live-traceroute event. Surface failures
         // (source_kind=unavailable) at warning level so the admin can
         // see them in the logs view.
@@ -1238,13 +1294,14 @@ final class RestApi {
         );
 
         return rest_ensure_response( array(
-            'probe'      => $probe_record,
-            'target'     => $target_record,
-            'hops'       => $trace['hops'],
-            'method'     => $trace['method'],
-            'source_kind'=> $source_kind,
-            'message'    => $message,
-            'disclaimer' => __( 'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS — coordinates indicate the registered location of each hop IP, not its physical router.', 'privacy-checker' ),
+            'probe'          => $probe_record,
+            'target'         => $target_record,
+            'hops'           => $trace['hops'],
+            'method'         => $trace['method'],
+            'source_kind'    => $source_kind,
+            'message'        => $message,
+            'disclaimer'     => __( 'Approximate geographic visualization of traceroute hops. IP geolocation is not GPS — coordinates indicate the registered location of each hop IP, not its physical router.', 'privacy-checker' ),
+            'estimated_route'=> $estimated_route,
         ) );
     }
 

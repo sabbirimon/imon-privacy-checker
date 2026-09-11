@@ -3275,6 +3275,12 @@
             ensureLeaflet(function (ok) {
                 if (ok) renderRoute2D(route, mapEl);
                 else mapEl.innerHTML = '<div class="pcv2__geotrace-map-msg">' + (PCV2.i18n.geoUnavailable || 'Map unavailable') + '</div>';
+                // Phase 42: stash route + hops for the 3D globe toggle so
+                // the user can flip to 3D without re-running the trace.
+                try {
+                    window.__pcLastGeoRoute = route;
+                    window.__pcLastGeoHops  = Array.isArray(route.hops) ? route.hops : [];
+                } catch (_e) { /* globalThis might be locked */ }
             });
         } else {
             mapEl.innerHTML = '<div class="pcv2__geotrace-map-msg">' + (PCV2.i18n.geoUnavailable || 'No traceroute data — paste your own below') + '</div>';
@@ -3460,18 +3466,56 @@
                 run();
             });
         });
-        // Phase 30: 3D globe toggle — gates on prefers-reduced-motion and
-        // currently only displays a friendly notice (the v1 globe lives
-        // on the existing geotraceroute page).
+        // Phase 42: 3D globe toggle — actually renders a Three.js / three-globe
+        // view inside the existing map container, replacing the 2D
+        // Leaflet tiles. Honors prefers-reduced-motion and falls back
+        // gracefully when WebGL is unavailable. Reuses the v1 loader
+        // (window.__pcLoadNetwork3dLibs) so we never load two copies
+        // of three.js on the same page.
         var globeBtn = host.querySelector('[data-pcv2-action="geo-3d"]');
         if (globeBtn) {
+            var geoGlobeActive = false;
             globeBtn.addEventListener('click', function () {
                 var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                 if (reduced) {
                     window.alert(PCV2.i18n.geoPending || '3D globe disabled — your system prefers reduced motion.');
                     return;
                 }
-                window.alert(PCV2.i18n.geoPending || '3D globe view is on the v1 GeoTrace page.');
+                var mapEl = host.querySelector('[data-pcv2-region="geo-map"]');
+                if (!mapEl) return;
+                if (geoGlobeActive) {
+                    // Switch back: reload the route through renderRoute2D.
+                    geoGlobeActive = false;
+                    globeBtn.setAttribute('aria-pressed', 'false');
+                    globeBtn.textContent = (PCV2.i18n && PCV2.i18n.geo3dLabel) || 'View in 3D globe';
+                    if (window.__pcLastGeoRoute) {
+                        renderRoute2D(window.__pcLastGeoRoute, mapEl);
+                    }
+                    return;
+                }
+                geoGlobeActive = true;
+                globeBtn.setAttribute('aria-pressed', 'true');
+                globeBtn.textContent = (PCV2.i18n && PCV2.i18n.geo2dLabel) || 'Back to 2D map';
+                if (window.__pcEnsureNetwork3d) {
+                    try {
+                        window.__pcEnsureNetwork3d(mapEl, window.__pcLastGeoHops || []);
+                    } catch (e) {
+                        mapEl.innerHTML = '<div class="pcv2__geo-map-msg">3D globe could not be initialised.</div>';
+                    }
+                } else if (window.__pcLoadNetwork3dLibs) {
+                    window.__pcLoadNetwork3dLibs().then(function () {
+                        if (window.__pcEnsureNetwork3d) {
+                            window.__pcEnsureNetwork3d(mapEl, window.__pcLastGeoHops || []);
+                        }
+                    });
+                } else {
+                    var libs = (typeof window.PC_GLOBE_LIBS === 'object' && window.PC_GLOBE_LIBS) || null;
+                    if (libs && libs.three && libs.globe) {
+                        lazyLoadThreeStandalone(mapEl, window.__pcLastGeoHops || []);
+                    } else {
+                        mapEl.innerHTML = '<div class="pcv2__geo-map-msg">3D libraries not configured. Add Three.js in Settings → Providers.</div>';
+                    }
+                }
             });
         }
         if (pasteForm && pasteTextarea) {
@@ -3666,6 +3710,21 @@
         var geo = document.querySelector('[data-pcv2-component="geotrace"]');
         if (geo) bindGeoTrace(geo);
 
+        // Phase 42: top-nav GeoTrace link scrolls the user down to the
+        // inline geotrace section if it's on this page, otherwise it
+        // deep-links to the standalone /geotrace/ page (set in the
+        // <a> href by the shortcode). Same UX for both cases.
+        document.addEventListener('click', function (ev) {
+            var t = ev.target.closest('[data-pcv2-action="open-geotrace"]');
+            if (!t) return;
+            var target = document.querySelector('[data-pcv2-component="geotrace"]');
+            if (target) {
+                ev.preventDefault();
+                try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                catch (_e) { target.scrollIntoView(); }
+            }
+        });
+
         // If a `data-pcv2-autostart="1"` attribute is present, fire the
         // scan immediately. (Manual-only otherwise.)
         if (dashboard.getAttribute('data-pcv2-autostart') === '1') {
@@ -3735,4 +3794,265 @@
     }
 
     window.PCV2 = PCV2;
+
+    // Phase 42 — Network Path card on the v2 dashboard.
+    //
+    // The v1 scanner exposes `window.__pcLastNetworkHops` after each
+    // render. The v2 page can be opened in isolation (no v1 scanner
+    // loaded), so we also accept a hops array stashed on PCV2 by a
+    // future v2-native scan pipeline. For now: if v1 has rendered
+    // (the same page often loads both scanners), borrow the hops.
+    function getV2NetworkHops() {
+        if (Array.isArray(window.__pcLastNetworkHops) && window.__pcLastNetworkHops.length) {
+            return window.__pcLastNetworkHops;
+        }
+        return [];
+    }
+
+    function renderV2NetworkPath(card, hops) {
+        if (!card) return;
+        var body = card.querySelector('[data-pcv2-region="card-body"]');
+        var twoD = card.querySelector('[data-pcv2-region="network-2d"]');
+        var threeD = card.querySelector('[data-pcv2-region="network-3d"]');
+        if (!body || !twoD || !threeD) return;
+        clear(twoD);
+        clear(threeD);
+
+        // Build a lightweight 2D node/edge diagram (not a full
+        // Leaflet map — this is the inline card view, so we keep
+        // it self-contained as an SVG).
+        var svgNS = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('viewBox', '0 0 100 24');
+        svg.setAttribute('class', 'pcv2__network-svg');
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        var w = 100 / Math.max(1, hops.length - 1);
+        var nodes = hops.map(function (h, i) {
+            var cx = i * w;
+            var cy = 12 + (h.latency_ms ? Math.min(8, h.latency_ms / 30) : 0) * 0.4;
+            var fill = (h.loss_pct && h.loss_pct > 0) ? '#F87171' : '#22D3EE';
+            var c = document.createElementNS(svgNS, 'circle');
+            c.setAttribute('cx', String(cx));
+            c.setAttribute('cy', String(cy));
+            c.setAttribute('r', '1.2');
+            c.setAttribute('fill', fill);
+            c.setAttribute('stroke', '#0F172A');
+            c.setAttribute('stroke-width', '0.18');
+            svg.appendChild(c);
+            return { cx: cx, cy: cy, hop: h };
+        });
+        for (var i = 1; i < nodes.length; i++) {
+            var ln = document.createElementNS(svgNS, 'line');
+            ln.setAttribute('x1', String(nodes[i - 1].cx));
+            ln.setAttribute('y1', String(nodes[i - 1].cy));
+            ln.setAttribute('x2', String(nodes[i].cx));
+            ln.setAttribute('y2', String(nodes[i].cy));
+            ln.setAttribute('stroke', '#94A3B8');
+            ln.setAttribute('stroke-width', '0.18');
+            svg.appendChild(ln);
+        }
+        // Numbered hop labels.
+        nodes.forEach(function (n, i) {
+            var t = document.createElementNS(svgNS, 'text');
+            t.setAttribute('x', String(n.cx));
+            t.setAttribute('y', '23');
+            t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('font-size', '2');
+            t.setAttribute('fill', '#94A3B8');
+            t.setAttribute('font-family', 'JetBrains Mono, Menlo, monospace');
+            t.textContent = String(i + 1).padStart(2, '0');
+            svg.appendChild(t);
+        });
+        twoD.appendChild(svg);
+
+        // Compact hop table beneath the SVG.
+        var table = el('table', { class: 'pcv2__network-table' });
+        var tbody = el('tbody');
+        hops.forEach(function (h, i) {
+            var tr = el('tr', {});
+            tr.appendChild(el('td', { class: 'pcv2__network-table-num mono', text: String(i + 1).padStart(2, '0') }));
+            tr.appendChild(el('td', { class: 'pcv2__network-table-name', text: h.name || h.host || 'hop ' + (i + 1) }));
+            tr.appendChild(el('td', { class: 'pcv2__network-table-rtt mono', text: (h.latency_ms != null ? h.latency_ms + ' ms' : '—') }));
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        twoD.appendChild(table);
+    }
+
+    function initV2NetworkPath() {
+        var card = document.querySelector('[data-pcv2-card="network-path"]');
+        if (!card) return;
+        var hops = getV2NetworkHops();
+        if (!hops.length) {
+            card.hidden = true;
+            return;
+        }
+        card.hidden = false;
+        renderV2NetworkPath(card, hops);
+
+        // 2D/3D toggle. The 3D view uses the same Three.js + three-globe
+        // libraries the v1 Network Path uses, lazy-loaded once via the
+        // shared PC_GLOBE_LIBS localize bag. If three.js isn't available
+        // (not yet loaded, or visitor opted out of motion), the toggle
+        // stays disabled and the 2D view is the only view.
+        var toggle = card.querySelector('[data-pcv2-action="network-mode-toggle"]');
+        var twoD = card.querySelector('[data-pcv2-region="network-2d"]');
+        var threeD = card.querySelector('[data-pcv2-region="network-3d"]');
+        if (!toggle || !twoD || !threeD) return;
+
+        toggle.addEventListener('click', function () {
+            var want3d = toggle.getAttribute('aria-pressed') !== 'true';
+            if (want3d && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                window.alert('3D Network Path is disabled — your system prefers reduced motion.');
+                return;
+            }
+            toggle.setAttribute('aria-pressed', want3d ? 'true' : 'false');
+            var dot = toggle.querySelector('.pcv2__network-mode-dot');
+            var suf = toggle.querySelector('.pcv2__network-mode-suffix');
+            if (dot) dot.textContent = want3d ? '3D' : '2D';
+            if (suf) suf.textContent = want3d ? ' / 2D' : ' / 3D';
+            toggle.title = want3d ? 'Switch back to 2D' : 'Switch to 3D globe';
+            twoD.hidden = want3d;
+            threeD.hidden = !want3d;
+            if (want3d) {
+                // Lazy-load three.js + three-globe via the v1 scanner's
+                // loader. The v2 IIFE doesn't import the libraries
+                // itself — it asks the v1 IIFE to render — so we never
+                // load two copies of three.js on the same page.
+                if (window.__pcEnsureNetwork3d) {
+                    try { window.__pcEnsureNetwork3d(threeD, hops); }
+                    catch (e) {
+                        threeD.innerHTML = '<p class="pcv2__network-3d-pending">3D view could not be initialised.</p>';
+                    }
+                } else if (window.__pcLoadNetwork3dLibs) {
+                    window.__pcLoadNetwork3dLibs().then(function () {
+                        if (window.__pcEnsureNetwork3d) {
+                            window.__pcEnsureNetwork3d(threeD, hops);
+                        }
+                    });
+                } else {
+                    // No v1 scanner on this page — lazy-load three.js
+                    // ourselves so the v2 standalone page still gets a
+                    // working 3D view.
+                    threeD.innerHTML = '<p class="pcv2__network-3d-pending">Loading 3D view…</p>';
+                    lazyLoadThreeStandalone(threeD, hops);
+                }
+            }
+        });
+    }
+
+    // Watch for v1 hops arriving after first paint (the v1 scanner
+    // usually finishes a beat after DOMContentLoaded). Polling is
+    // cheaper than wiring a mutation observer here because the card
+    // stays in the DOM.
+    function watchV2NetworkHops() {
+        var attempts = 0;
+        var poll = setInterval(function () {
+            attempts++;
+            var card = document.querySelector('[data-pcv2-card="network-path"]');
+            if (!card) { clearInterval(poll); return; }
+            var hops = getV2NetworkHops();
+            if (hops.length) {
+                card.hidden = false;
+                renderV2NetworkPath(card, hops);
+                clearInterval(poll);
+            } else if (attempts > 60) {
+                // ~30s — give up so the card stays hidden instead of
+                // flickering forever.
+                clearInterval(poll);
+            }
+        }, 500);
+    }
+
+    // Hook the network path card up after DOM ready.
+    ready(function () {
+        initV2NetworkPath();
+        watchV2NetworkHops();
+    });
+
+    // Lazy-load three.js + three-globe on v2-only pages (no v1 scanner).
+    // Reuses the same PC_GLOBE_LIBS localize bag the v1 scanner reads.
+    function lazyLoadThreeStandalone(container, hops) {
+        var libs = (typeof window.PC_GLOBE_LIBS === 'object' && window.PC_GLOBE_LIBS) || null;
+        if (!libs || !libs.three || !libs.globe) {
+            container.innerHTML = '<p class="pcv2__network-3d-pending">3D view libraries not configured.</p>';
+            return;
+        }
+        function inject(src) {
+            return new Promise(function (resolve, reject) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.async = true;
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('Failed to load ' + src)); };
+                document.head.appendChild(s);
+            });
+        }
+        inject(libs.three).then(function () { return inject(libs.globe); })
+            .then(function () {
+                // three-globe needs a small render bridge. The v1
+                // renderNetwork3d() is the only implementation we
+                // ship, and it's gated behind the v1 IIFE. If v1
+                // isn't on this page we render a minimal Three.js
+                // scene showing the hops as a sphere with arcs.
+                if (window.__pcRenderNetwork3d) {
+                    window.__pcRenderNetwork3d(container, hops);
+                } else {
+                    renderThreeFallback(container, hops);
+                }
+            })
+            .catch(function () {
+                container.innerHTML = '<p class="pcv2__network-3d-pending">3D view could not load — staying on 2D.</p>';
+            });
+    }
+
+    function renderThreeFallback(container, hops) {
+        try {
+            var w = container.clientWidth || 600;
+            var h = container.clientHeight || 320;
+            var scene = new window.THREE.Scene();
+            var camera = new window.THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+            camera.position.z = 320;
+            var renderer = new window.THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+            container.innerHTML = '';
+            container.appendChild(renderer.domElement);
+
+            var geo = new window.THREE.SphereGeometry(140, 32, 32);
+            var mat = new window.THREE.MeshBasicMaterial({
+                color: 0x0F172A,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.45
+            });
+            scene.add(new window.THREE.Mesh(geo, mat));
+
+            hops.forEach(function (hop) {
+                if (hop.lat == null || hop.lng == null) return;
+                var phi   = (90 - hop.lat) * Math.PI / 180;
+                var theta = (hop.lng + 180) * Math.PI / 180;
+                var r = 145;
+                var dot = new window.THREE.Mesh(
+                    new window.THREE.SphereGeometry(2.2, 12, 12),
+                    new window.THREE.MeshBasicMaterial({ color: 0x22D3EE })
+                );
+                dot.position.set(
+                    -r * Math.sin(phi) * Math.cos(theta),
+                    r * Math.cos(phi),
+                    r * Math.sin(phi) * Math.sin(theta)
+                );
+                scene.add(dot);
+            });
+            function tick() {
+                requestAnimationFrame(tick);
+                scene.rotation.y += 0.0025;
+                renderer.render(scene, camera);
+            }
+            tick();
+            container.__pcThreeFallback = true;
+        } catch (e) {
+            container.innerHTML = '<p class="pcv2__network-3d-pending">3D rendering failed in this browser.</p>';
+        }
+    }
 })();

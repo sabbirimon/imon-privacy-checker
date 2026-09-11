@@ -262,6 +262,7 @@ final class PublicAssetsV2 {
                     <a href="<?php echo esc_url( home_url( '/ip-lookup/' ) ); ?>"><?php esc_html_e( 'IP Check', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/dns-leak-test/' ) ); ?>"><?php esc_html_e( 'DNS Leak', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/webrtc-test/' ) ); ?>"><?php esc_html_e( 'Browser', 'privacy-checker' ); ?></a>
+                    <a href="#pcv2-geotrace" data-pcv2-action="open-geotrace"><?php esc_html_e( 'GeoTrace', 'privacy-checker' ); ?></a>
                     <a href="<?php echo esc_url( home_url( '/user-guide/' ) ); ?>"><?php esc_html_e( 'About', 'privacy-checker' ); ?></a>
                 </nav>
                 <div class="pcv2__header-actions">
@@ -326,6 +327,32 @@ final class PublicAssetsV2 {
                         <article class="pcv2__card" data-pcv2-card="browser">     <header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
                         <article class="pcv2__card" data-pcv2-card="security">    <header class="pcv2__card-header"><h2 data-pcv2-region="card-title"></h2></header><div class="pcv2__card-body" data-pcv2-region="card-body"></div></article>
                     </div>
+                    <?php
+                    // Phase 42 — Network Path card on the v2 dashboard.
+                    // Same wireframe as the v1 card (2D SVG with a 3D
+                    // toggle), rendered through the scanner-v2.js IIFE so
+                    // it picks up the admin's tile-source choice. Hidden
+                    // until the first scan completes and the hops array
+                    // is populated by either the v1 scanner (exposed via
+                    // window.__pcLastNetworkHops) or the v2 scanner's
+                    // own scan pipeline.
+                    ?>
+                    <article class="pcv2__card pcv2__card--wide" data-pcv2-card="network-path" hidden>
+                        <header class="pcv2__card-header">
+                            <h2 data-pcv2-region="card-title"><?php esc_html_e( 'Network Path', 'privacy-checker' ); ?></h2>
+                            <div class="pcv2__card-actions">
+                                <button type="button" class="pcv2__btn pcv2__btn--ghost" data-pcv2-action="network-mode-toggle" aria-pressed="false" title="<?php esc_attr_e( 'Switch to 3D globe view', 'privacy-checker' ); ?>">
+                                    <span class="pcv2__network-mode-dot">2D</span>
+                                    <span class="pcv2__network-mode-suffix"> / 3D</span>
+                                </button>
+                            </div>
+                        </header>
+                        <div class="pcv2__card-body" data-pcv2-region="card-body">
+                            <div class="pcv2__network-2d" data-pcv2-region="network-2d"></div>
+                            <div class="pcv2__network-3d" data-pcv2-region="network-3d" hidden></div>
+                            <p class="pcv2__network-note"><?php esc_html_e( 'Hops are estimates based on a typical route. Switch to 3D to visualise the path on a globe.', 'privacy-checker' ); ?></p>
+                        </div>
+                    </article>
                     <div class="pcv2__findings" data-pcv2-region="findings"></div>
                     <div class="pcv2__actions-host"></div>
                 </section>

@@ -1004,6 +1004,14 @@
   }
 }
 
+/* Phase 42: Network Path card spans the full grid width on every
+ * breakpoint — the user wants the network-path diagram to feel like
+ * a hero, not a sidecar. */
+.pcv2__card--wide,
+.pcv2__card[data-pcv2-card="network-path"] {
+  grid-column: 1 / -1;
+}
+
 .pcv2__card {
   background: var(--pcv2-surface);
   border: 1px solid var(--pcv2-border);

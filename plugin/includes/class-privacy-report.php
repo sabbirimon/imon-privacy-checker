@@ -144,25 +144,99 @@ final class PrivacyReport {
             : 0;
         $overall = max( 0, min( 100, $overall ) );
 
-        $grade = self::grade_for( $overall );
+        // Phase 40: a high score alone shouldn't buy you a "Good privacy"
+        // headline if several categories came back Bad. Count weighted bad
+        // categories and pull the headline down (and the grade, where the
+        // weighted bad count is high enough to matter). The numeric score
+        // stays the same — it's still a weighted average — but the words
+        // we wrap around it get honest.
+        $bad_count  = 0;
+        $warn_count = 0;
+        $good_count = 0;
+        foreach ( $categories as $row ) {
+            $weight = (int) ( $row['weight'] ?? 1 );
+            if ( $weight <= 0 ) {
+                continue;
+            }
+            $st = (string) ( $row['status'] ?? '' );
+            if ( 'bad' === $st ) {
+                $bad_count++;
+            } elseif ( 'warning' === $st ) {
+                $warn_count++;
+            } else {
+                $good_count++;
+            }
+        }
+
+        $grade = self::grade_for( $overall, $bad_count, $warn_count );
+
+        // Phase 41: identity leak despite using a VPN/proxy is the
+        // worst possible privacy outcome — the masking tool is on but
+        // signals are still exposing the visitor. Force the grade to F
+        // regardless of the weighted average. The numeric overall still
+        // reflects what was measured (for transparency), but the letter
+        // grade must be unmistakable. We also surface a flag in the
+        // report so the UI can highlight the leak prominently.
+        $leak_despite_proxy = self::leak_despite_proxy( $scan, $categories );
+        if ( $leak_despite_proxy ) {
+            $grade = 'F';
+        }
+
         $confidence = self::confidence_for( $categories );
 
+        // Build the headline AFTER we've decided whether the visitor is
+        // leaking identity through their VPN/proxy — that condition
+        // overrides everything else in the wording. The numeric
+        // overall/grade pair tells the same story one block above.
+        $headline = self::headline_for( $overall, $worst, $categories, $leak_despite_proxy );
+
         return array(
-            'overall'      => $overall,
-            'grade'        => $grade,
-            'confidence'   => $confidence,
-            'headline'     => self::headline_for( $overall, $worst, $categories ),
-            'categories'   => $categories,
-            'proxy'        => is_array( $proxy_meta ) ? $proxy_meta : null,
-            'recommendations' => self::recommendations( $categories, $scan ),
-            'generated_at' => gmdate( 'c' ),
+            'overall'              => $overall,
+            'grade'                => $grade,
+            'confidence'           => $confidence,
+            'headline'             => $headline,
+            'categories'           => $categories,
+            'proxy'                => is_array( $proxy_meta ) ? $proxy_meta : null,
+            'leak_despite_proxy'   => $leak_despite_proxy,
+            'recommendations'      => self::recommendations( $categories, $scan ),
+            'generated_at'         => gmdate( 'c' ),
         );
     }
 
     /**
      * Map a 0-100 score to a letter grade.
+     *
+     * Phase 40: the grade must also reflect the number of BAD-flagged
+     * categories. A score of 72% with two Bad categories is not a "C"
+     * — it's at best a "D" because real failures are being averaged
+     * down by clean signals that are easy wins. The thresholds below
+     * keep a 100% all-good run at A but pull a "two bad + DNS failing"
+     * run from C to D.
      */
-    private static function grade_for( int $score ): string {
+    private static function grade_for( int $score, int $bad_count = 0, int $warn_count = 0 ): string {
+        // Hard cap: a D grade should mean "below average" — below 60.
+        // Two weighted-BAD categories with a 78% overall used to read
+        // as a C ("good"), which is misleading. The buckets below
+        // guarantee that 2+ BADs can never grade above E and 1 BAD can
+        // never grade above D.
+        if ( $bad_count >= 2 ) {
+            // 2+ true failures drag the grade down hard. Below 40 is F,
+            // 40-59 is E, and even a clean-looking 80 is still E.
+            if ( $score >= 80 ) { return 'E'; }
+            if ( $score >= 60 ) { return 'E'; }
+            if ( $score >= 40 ) { return 'F'; }
+            return 'F';
+        }
+        if ( $bad_count === 1 ) {
+            // One failure: cap at D unless the score is below 30.
+            if ( $score >= 75 ) { return 'D'; }
+            if ( $score >= 60 ) { return 'D'; }
+            if ( $score >= 40 ) { return 'E'; }
+            if ( $score >= 20 ) { return 'F'; }
+            return 'F';
+        }
+        // No bad categories — use the clean baselines. D is reserved
+        // for 50-64 so a passing scan with warnings still reads honestly.
         if ( $score >= 90 ) { return 'A'; }
         if ( $score >= 80 ) { return 'B'; }
         if ( $score >= 65 ) { return 'C'; }
@@ -195,13 +269,48 @@ final class PrivacyReport {
 
     /**
      * One-line summary shown above the detailed report.
+     *
+     * Phase 40: the headline counts the BAD-flagged categories (not just
+     * the weighted score) so a 72% with two Bad signals doesn't get the
+     * "Good privacy with a few items" copy. A grade C with two Bad
+     * categories is at best "Mixed results — multiple components failed."
      */
-    private static function headline_for( int $overall, ?string $worst, array $categories ): string {
+    private static function headline_for( int $overall, ?string $worst, array $categories, bool $leak_despite_proxy = false ): string {
+        // Phase 41: identity leak despite a VPN/proxy is the headline
+        // case. Don't dress it up — say so in plain language.
+        if ( $leak_despite_proxy ) {
+            return __( 'Identity is leaking despite your VPN / proxy — your real network details are exposed.', 'privacy-checker' );
+        }
+
+        $bad_count  = 0;
+        $warn_count = 0;
+        foreach ( $categories as $row ) {
+            $weight = (int) ( $row['weight'] ?? 1 );
+            if ( $weight <= 0 ) {
+                continue;
+            }
+            $st = (string) ( $row['status'] ?? '' );
+            if ( 'bad' === $st ) {
+                $bad_count++;
+            } elseif ( 'warning' === $st ) {
+                $warn_count++;
+            }
+        }
+        // Multiple Bad categories overrides any score-based praise.
+        if ( $bad_count >= 2 ) {
+            return __( 'Multiple components failed — privacy is materially compromised.', 'privacy-checker' );
+        }
+        if ( $bad_count === 1 ) {
+            return __( 'One component failed — review the highlighted category below.', 'privacy-checker' );
+        }
+        if ( $warn_count >= 3 ) {
+            return __( 'Mostly clean with several warnings worth reviewing.', 'privacy-checker' );
+        }
         if ( $overall >= 90 ) {
             return __( 'Excellent privacy posture. Most signals are clean.', 'privacy-checker' );
         }
         if ( $overall >= 70 ) {
-            return __( 'Good privacy with a few items worth reviewing.', 'privacy-checker' );
+            return __( 'Good privacy posture.', 'privacy-checker' );
         }
         if ( $overall >= 50 ) {
             return __( 'Mixed results. Several components warrant attention.', 'privacy-checker' );
@@ -561,6 +670,39 @@ final class PrivacyReport {
         $summary    = (string) ( $anon['summary'] ?? '' );
         $consistent = (bool)   ( $anon['consistent'] ?? false );
 
+        // Phase 40: signal-availability penalty. If anonymity was scored
+        // with very few real signals (no IP timezone, no browser timezone,
+        // no WebRTC verdict, no DNS test result, no proxy signal) then
+        // claiming "100 — no inconsistencies" is dishonest because we
+        // didn't actually correlate anything. Count the real signals and
+        // cap the score at 60 if we couldn't correlate at least 2 inputs
+        // (the minimum for any "agreement between X and Y" statement).
+        $intel  = $scan['connection']['intel'] ?? array();
+        $webrtc = $scan['webrtc'] ?? array();
+        $webrtc_verdict = (string) ( $webrtc['verdict'] ?? '' );
+        $has_ip_tz       = '' !== (string) ( $intel['timezone'] ?? '' );
+        $has_browser_tz  = '' !== (string) ( $scan['client']['timezone'] ?? '' );
+        $has_webrtc      = '' !== $webrtc_verdict && 'unknown' !== $webrtc_verdict;
+        $has_dns         = is_array( $scan['dns_test'] ?? null ) && ! empty( $scan['dns_test']['configured'] ) && 'ok' === ( $scan['dns_test']['status'] ?? '' );
+        $has_proxy       = is_array( $scan['connection']['proxy'] ?? null ) && ! empty( $scan['connection']['proxy']['confidence'] ?? '' );
+        $signals_present = ( $has_ip_tz ? 1 : 0 ) + ( $has_browser_tz ? 1 : 0 ) + ( $has_webrtc ? 1 : 0 ) + ( $has_dns ? 1 : 0 ) + ( $has_proxy ? 1 : 0 );
+
+        if ( $signals_present < 2 ) {
+            // Insufficient signal to claim consistency. Surface as warning
+            // so the privacy score can't be lifted to 100 on weak data.
+            return self::row( 55, 'warning', 'consistency',
+                __( 'Anonymity could not be evaluated — multiple detectors were unavailable. Run a scan with all providers enabled for a real consistency verdict.', 'privacy-checker' ),
+                array(
+                    'consistent' => false,
+                    'mismatches' => $mismatches,
+                    'signals_present' => $signals_present,
+                    'weak_signal' => true,
+                ),
+                4,
+                'unknown'
+            );
+        }
+
         // Map the scorer's score → our category status. Tighter buckets
         // than other categories because consistency is the highest-weighted
         // signal: a single 100 must mean "no mismatches at all", not
@@ -583,9 +725,85 @@ final class PrivacyReport {
             array(
                 'consistent' => $consistent,
                 'mismatches' => $mismatches,
+                'signals_present' => $signals_present,
             ),
             4
         );
+    }
+
+    /**
+     * Phase 41 — detect "identity leak despite using a masking
+     * service". This is the worst possible privacy outcome: the user
+     * has gone to the trouble of turning on a VPN or proxy but one of
+     * the leak channels is still exposing their real network. The
+     * grade for that scenario is forced to F.
+     *
+     * "Using a masking service" means the proxy category is one of
+     *   vpn | proxy | tor | hosting | datacenter
+     * at confidence medium or higher. (We don't count residential
+     * connections here — that's the user NOT using a mask.)
+     *
+     * "Leak" means at least one of:
+     *   - WebRTC exposes a public IP that differs from the connection IP
+     *   - DNS resolvers exit via a different org than the visible IP
+     *   - The anonymity scorer found a high-severity mismatch
+     *
+     * @return bool True when the visitor is leaking through their
+     *              masking service and the grade must be F.
+     */
+    private static function leak_despite_proxy( array $scan, array $categories ): bool {
+        $proxy = $scan['connection']['proxy'] ?? array();
+        $cat   = (string) ( $proxy['category'] ?? '' );
+        $conf  = (string) ( $proxy['confidence'] ?? '' );
+        $masking_categories = array( 'vpn', 'proxy', 'tor', 'hosting', 'datacenter' );
+        if ( ! in_array( $cat, $masking_categories, true ) ) {
+            return false;
+        }
+        // Only medium-confidence (or better) detections count — we
+        // don't want a guessed "vpn" with low confidence to flip a
+        // borderline scan to F.
+        if ( ! in_array( $conf, array( 'medium', 'high' ), true ) ) {
+            return false;
+        }
+
+        // 1. WebRTC leak: WebRTC verdict is "potential_exposure" AND
+        //    the leaked public IP differs from the connection IP.
+        $webrtc = $scan['webrtc'] ?? array();
+        if ( 'potential_exposure' === (string) ( $webrtc['verdict'] ?? '' ) ) {
+            $leaked_ip     = (string) ( $webrtc['public_ips'][0] ?? '' );
+            $connection_ip = (string) ( $scan['connection']['ipv4'] ?? $scan['connection']['ipv6'] ?? $scan['request_ip']['ipv4'] ?? '' );
+            if ( '' !== $leaked_ip && '' !== $connection_ip && $leaked_ip !== $connection_ip ) {
+                return true;
+            }
+        }
+
+        // 2. DNS leak: resolvers exit via a different org than the
+        //    visible connection. The dns_test must have completed
+        //    with status=ok and the resolver_org must differ from the
+        //    IP-intel org/isp.
+        $dns    = $scan['dns_test'] ?? array();
+        $intel  = $scan['connection']['intel'] ?? array();
+        if ( 'ok' === (string) ( $dns['status'] ?? '' ) && ! empty( $dns['resolver_org'] ) ) {
+            $resolver_org   = (string) $dns['resolver_org'];
+            $connection_org = (string) ( $intel['org'] ?? $intel['isp'] ?? '' );
+            if ( '' !== $resolver_org && '' !== $connection_org
+                && stripos( $resolver_org, $connection_org ) === false
+                && stripos( $connection_org, $resolver_org ) === false ) {
+                return true;
+            }
+        }
+
+        // 3. High-severity anonymity mismatch surfaced by the scorer.
+        $anon_mismatches = is_array( $scan['connection']['anonymity']['mismatches'] ?? null )
+            ? $scan['connection']['anonymity']['mismatches']
+            : array();
+        foreach ( $anon_mismatches as $m ) {
+            if ( isset( $m['severity'] ) && 'high' === $m['severity'] ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

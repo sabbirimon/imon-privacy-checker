@@ -6879,4 +6879,13 @@
     // (which lives in its own IIFE) can read the admin's tile
     // preference without duplicating the provider table.
     window.__pcGetTileConfig = getTileConfig;
+
+    // Phase 42 — expose the v1 Network Path 3D helpers so the v2
+    // dashboard's Network Path card can reuse the same Three.js +
+    // three-globe loader. The card lives in scanner-v2.js (its own
+    // IIFE) and needs to defer to the v1 implementation so we don't
+    // load two copies of three.js.
+    window.__pcLoadNetwork3dLibs = loadNetwork3dLibs;
+    window.__pcEnsureNetwork3d  = ensureNetwork3d;
+    window.__pcRenderNetwork3d   = renderNetwork3d;
 })();

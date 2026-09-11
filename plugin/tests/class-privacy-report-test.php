@@ -498,4 +498,106 @@ final class PrivacyReportTest extends TestCase {
 			);
 		}
 	}
+
+	/**
+	 * Phase 40 — when several weighted categories are Bad, the grade
+	 * must not stay at C just because the numeric weighted average is
+	 * above the C threshold. A 72% with DNS+BAD and fingerprint+BAD is
+	 * not a "C" — it's at most a D, and the headline must say so.
+	 */
+	public function test_multiple_bad_categories_force_grade_to_d_or_below(): void {
+		$scan = array(
+			'request_ip'  => array( 'ipv4' => '8.8.8.8' ),
+			'connection'  => array(
+				'ipv4' => '8.8.8.8',
+				'intel' => array(
+					'status' => 'ok',
+					'country' => 'US',
+					'asn' => 'AS15169',
+					'org' => 'Test',
+					'timezone' => 'America/Los_Angeles',
+				),
+				'proxy' => array(
+					'category' => 'datacenter',
+					'confidence' => 'low',
+				),
+				'anonymity' => array(
+					'consistent' => true,
+					'score'      => 100,
+					'mismatches' => array(),
+					'summary'    => 'No inconsistencies.',
+				),
+			),
+			'security_posture' => array(
+				'tls' => array( 'status' => 'modern', 'protocol' => 'TLSv1.3' ),
+				'browser' => array( 'status' => 'current', 'browser' => 'Chrome', 'version' => 130 ),
+			),
+			'reputation'  => array( 'status' => 'clean' ),
+			'user_agent'  => array( 'ua' => 'Mozilla/5.0 (Macintosh) Chrome/130' ),
+			'fingerprint' => array( 'level' => 'high', 'bits' => 60 ),
+			'webrtc'      => array( 'verdict' => 'protected' ),
+			// Two weighted categories forced to bad: DNS probe failed AND
+			// fingerprint highly unique. Weighted average still lands
+			// around ~70% but with 2 BADs the grade must be at most D.
+			'dns_test'    => array(
+				'configured' => true,
+				'status'     => 'error',
+				'leak_score' => 0.0,
+			),
+		);
+
+		$report = PrivacyReport::build( $scan );
+
+		$bad_count = 0;
+		foreach ( $report['categories'] as $row ) {
+			if ( (int) ( $row['weight'] ?? 1 ) > 0 && 'bad' === ( $row['status'] ?? '' ) ) {
+				$bad_count++;
+			}
+		}
+		$this->assertGreaterThanOrEqual( 2, $bad_count, 'fixture must have at least 2 weighted BAD categories' );
+		$this->assertContains( $report['grade'], array( 'D', 'E', 'F' ),
+			"a scan with multiple BAD categories must grade D or below, got {$report['grade']}" );
+		$this->assertStringContainsString( 'Multiple components failed', $report['headline'],
+			'headline must surface the multiple-component failure' );
+	}
+
+	/**
+	 * Phase 40 — when anonymity could not be correlated (insufficient
+	 * signals), the consistency category must NOT claim 100. It should
+	 * fall back to a warning-grade value with a weak-signal flag.
+	 */
+	public function test_consistency_with_insufficient_signals_drops_to_warning(): void {
+		$scan = array(
+			'request_ip'  => array( 'ipv4' => '8.8.8.8' ),
+			'connection'  => array(
+				'ipv4' => '8.8.8.8',
+				// Empty intel — no IP timezone, no IP org. combined with no
+				// WebRTC verdict, no DNS test, no client timezone, no proxy
+				// signal: <2 signals present.
+				'intel' => array( 'status' => 'error' ),
+				'anonymity' => array(
+					'consistent' => true,
+					'score'      => 100,
+					'mismatches' => array(),
+					'summary'    => 'No inconsistencies.',
+				),
+			),
+			'security_posture' => array(
+				'tls' => array( 'status' => 'modern', 'protocol' => 'TLSv1.3' ),
+				'browser' => array( 'status' => 'current', 'browser' => 'Chrome', 'version' => 130 ),
+			),
+			'reputation'  => array( 'status' => 'clean' ),
+			'user_agent'  => array( 'ua' => 'Mozilla/5.0 (Macintosh) Chrome/130' ),
+			'fingerprint' => array( 'level' => 'low', 'bits' => 8 ),
+			'webrtc'      => array( 'verdict' => 'unknown' ),
+			'dns_test'    => array( 'configured' => false ),
+		);
+
+		$report = PrivacyReport::build( $scan );
+		$row    = $report['categories']['consistency'];
+		$this->assertSame( 'warning', $row['status'], 'consistency must be warning when signals_present < 2' );
+		$this->assertLessThan( 100, $row['percent'], 'consistency percent must drop below 100 when no signals correlated' );
+		$this->assertArrayHasKey( 'weak_signal', $row );
+		$this->assertTrue( $row['weak_signal'] );
+	}
 }
