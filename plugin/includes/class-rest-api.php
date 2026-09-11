@@ -161,6 +161,47 @@ final class RestApi {
             ),
         ) );
 
+        // Per-visitor scan history (Phase 32). The visitor_id is a
+        // UUIDv4 generated client-side; rows are 1 per visitor per day,
+        // deduped by the UNIQUE(visitor_id, scan_date) index. Public —
+        // only the visitor's own rows are ever returned, identified by
+        // the UUID the same browser just submitted.
+        register_rest_route( $ns, '/scan/history', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'scan_history' ),
+            'permission_callback' => '__return_true',
+            'args'                => array(
+                'visitor_id' => array(
+                    'required' => true,
+                    'type'     => 'string',
+                ),
+                'limit' => array(
+                    'required' => false,
+                    'type'     => 'integer',
+                    'default'  => 30,
+                ),
+                'forget' => array(
+                    'required' => false,
+                    'type'     => 'boolean',
+                    'default'  => false,
+                ),
+            ),
+        ) );
+
+        // Admin-only aggregates for the visitor-trends dashboard.
+        register_rest_route( $ns, '/admin/scan-history/aggregates', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array( $this, 'scan_history_aggregates' ),
+            'permission_callback' => array( $this, 'admin_only' ),
+            'args'                => array(
+                'days' => array(
+                    'required' => false,
+                    'type'     => 'integer',
+                    'default'  => 30,
+                ),
+            ),
+        ) );
+
         // Settings — admin only.
         register_rest_route( $ns, '/settings', array(
             'methods'             => WP_REST_Server::EDITABLE,
