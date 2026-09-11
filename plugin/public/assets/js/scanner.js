@@ -805,6 +805,35 @@
                 if (cqNode && cqNode.parentNode) {
                     cqNode.parentNode.replaceChild(newCard, cqNode);
                 }
+                // Phase 31: when the visitor's network changes (e.g. they
+                // hop off a 4G hotspot onto WiFi), Chromium fires
+                // `navigator.connection`'s `change` event. Without this
+                // listener the card would keep showing the stale 4G
+                // values from the original scan. Re-render the row in
+                // place so the user sees the live values within a beat
+                // of the network actually changing. We hold a reference
+                // to the swapped-in node so the closure always rewrites
+                // the right DOM node, even if the report is re-rendered
+                // before the next network change.
+                var liveCard = newCard;
+                var liveNode = cqNode;
+                var liveReport = report;
+                try {
+                    var nc = (typeof navigator !== 'undefined' && navigator.connection) || null;
+                    if (nc && typeof nc.addEventListener === 'function') {
+                        nc.addEventListener('change', function () {
+                            var fresh = navigatorConnectionSnapshot();
+                            var replaced = connectionQualityCard(liveReport, {
+                                latency: payload && payload.latency ? payload.latency : null,
+                                network: fresh
+                            });
+                            if (liveNode && liveNode.parentNode) {
+                                liveNode.parentNode.replaceChild(replaced, liveNode);
+                                liveNode = replaced;
+                            }
+                        });
+                    }
+                } catch (e) { /* listener unsupported — fall back to click-to-rescan */ }
             } catch (e) { /* noop — leave the placeholder */ }
         });
         rightCol.appendChild(fingerprintTableCard(report));

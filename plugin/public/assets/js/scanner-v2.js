@@ -2053,6 +2053,51 @@
                 body.appendChild(factGrid);
                 attachTileExpand(factGrid);
 
+                // Phase 31: when the visitor switches networks (4G → WiFi
+                // → Ethernet), Chromium fires `navigator.connection`'s
+                // `change` event. Without this listener the tile keeps
+                // showing the stale connection label until the next full
+                // rescan. We patch the "Connection" tile in place rather
+                // than re-rendering the whole card so the rest of the
+                // report stays steady while the live value updates.
+                (function () {
+                    try {
+                        var nci = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                        if (!nci || typeof nci.addEventListener !== 'function') return;
+                        nci.addEventListener('change', function () {
+                            var live = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                            if (!live) return;
+                            var liveType      = live.type || '';
+                            var liveEffective = live.effectiveType || '';
+                            var liveLabel = liveType
+                                ? ({
+                                    wifi: 'Wi-Fi', cellular: 'Cellular', ethernet: 'Ethernet',
+                                    satellite: 'Satellite', mixed: 'Mixed', wimax: 'WiMAX',
+                                    vpn: 'VPN tunnel', bluetooth: 'Bluetooth', none: 'Offline'
+                                }[liveType.toLowerCase()] || (liveType.charAt(0).toUpperCase() + liveType.slice(1)))
+                                : (liveEffective ? liveEffective.toUpperCase() : '');
+                            var tile = factGrid.querySelector('[data-pcv2-key="connection"]');
+                            if (!tile) return;
+                            var valueEl = tile.querySelector('.pcv2__connection-tile-value');
+                            if (valueEl) {
+                                valueEl.textContent = liveLabel || (PCV2.i18n.noData || '—');
+                            }
+                            // Update the detail panel content too so the
+                            // expanded tile reflects the live API values.
+                            var detailEl = tile.querySelector('.pcv2__connection-tile-detail');
+                            if (detailEl) {
+                                detailEl.innerHTML = '';
+                                var dl = live.downlink;
+                                var rt = live.rtt;
+                                if (liveType)      detailEl.appendChild(el('div', {}, [el('strong', { text: 'Type' }), el('span', { text: liveType })]));
+                                if (liveEffective) detailEl.appendChild(el('div', {}, [el('strong', { text: 'Effective' }), el('span', { text: liveEffective })]));
+                                if (dl != null)     detailEl.appendChild(el('div', {}, [el('strong', { text: 'Downlink' }), el('span', { text: dl + ' Mbps' })]));
+                                if (rt != null)     detailEl.appendChild(el('div', {}, [el('strong', { text: 'RTT' }), el('span', { text: rt + ' ms' })]));
+                            }
+                        });
+                    } catch (_e) { /* listener unsupported */ }
+                })();
+
                 renderCard(card, PCV2.i18n.connectionTitle || 'Connection', body);
             } else if (key === 'anonymity') {
                 // Anonymity card — redesigned in Phase 24:
