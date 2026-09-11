@@ -2191,14 +2191,26 @@
                         text: locationParts.join(' · ')
                     }));
                 } else {
-                    // No geo intel — show a "Geo lookup pending" placeholder
-                    // so the panel still reads as informative. Don't
-                    // show "Awaiting connection…" if we already have an IP.
+                    // No geo intel — show what's still useful instead of
+                    // a dead-end "unavailable" placeholder. On hosts that
+                    // block outbound IP-intel APIs (e.g. InfinityFree, some
+                    // corporate firewalls), the IP is still known but
+                    // city/country/ASN aren't. Show the proxy verdict
+                    // (which is computed locally without external calls)
+                    // plus an explicit reason so it doesn't read as
+                    // "broken" — just "limited intel".
+                    var proxyLabel = (proxy && proxy.label) ? proxy.label : '';
+                    var proxyCat   = (proxy && proxy.category) ? proxy.category : '';
+                    var geoFallback = primaryIp
+                        ? ( proxyLabel && /^(vpn|proxy|tor|hosting)/i.test(proxyCat)
+                            ? (proxyLabel + ' — geo lookup unavailable on this host')
+                            : (proxyLabel && proxyLabel !== 'No signal'
+                                ? proxyLabel + ' — geo lookup unavailable on this host'
+                                : (PCV2.i18n.geoPending || 'Geo lookup unavailable')) )
+                        : (PCV2.i18n.signalPending || 'Awaiting connection…');
                     signalText.appendChild(el('span', {
                         class: 'pcv2__row-missing',
-                        text: primaryIp
-                            ? (PCV2.i18n.geoPending || 'Geo lookup unavailable')
-                            : (PCV2.i18n.signalPending || 'Awaiting connection…')
+                        text: geoFallback
                     }));
                 }
                 if (isp) {
@@ -2286,7 +2298,15 @@
                         none:     'Offline'
                     }[connType.toLowerCase()] || (connType.charAt(0).toUpperCase() + connType.slice(1)))
                     : '';
-                if (connEffective && !connTypeLabel) {
+                // Phase 31d: do NOT fall back to effectiveType on its own.
+                // Chromium reports effectiveType=4g on every desktop browser
+                // whether the link is Wi-Fi, Ethernet, or cellular — it's a
+                // cellular-tier hint, not a connection-class hint. If `type`
+                // is empty, prefer the RTT/downlink inference (set just
+                // below) over a misleading "4G" label on a wired/Wi-Fi link.
+                // We only honour effectiveType as the connection label when
+                // the browser also reported a meaningful `type` of its own.
+                if (connEffective && !connTypeLabel && connType) {
                     connTypeLabel = connEffective.toUpperCase();
                 }
                 // Phase 31b: when the browser reports `type === 'unknown'`
@@ -2465,8 +2485,18 @@
                               : proxy.label && /tor/i.test(proxy.label) ? 'danger'
                               : proxy.label && /proxy/i.test(proxy.label) ? 'warning'
                               : proxy.label && /vpn/i.test(proxy.label) ? 'warning'
+                              : proxy.label && /hosting/i.test(proxy.label) ? 'warning'
                               : 'neutral';
-                var proxyLabel = proxy.label || (PCV2.i18n.noConfidence || 'Unknown');
+                // Phase 51: on hosts that block outbound IP-intel APIs,
+                // AnonymityScorer can't correlate and the consistency
+                // verdict is "Unknown". But the proxy verdict (computed
+                // locally) is still trustworthy — don't replace a useful
+                // "VPN (Cloudflare WARP)" label with a generic "Unknown".
+                // Only fall back to "Unknown" when there's no proxy info
+                // at all (label empty AND category empty).
+                var proxyLabel = proxy.label
+                    || (proxy.category && proxy.category !== 'none' ? proxy.category : '')
+                    || (PCV2.i18n.noConfidence || 'Unknown');
                 var conf = (proxy.confidence || '').toLowerCase();
                 var confPct = conf === 'high' ? 88
                             : conf === 'medium' ? 60

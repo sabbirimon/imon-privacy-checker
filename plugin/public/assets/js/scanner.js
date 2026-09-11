@@ -1569,6 +1569,7 @@
         if (!c) {
             return {
                 available:     false,
+                type:          null,
                 downlink_mbps: null,
                 effective_type: null,
                 rtt_ms:        null,
@@ -1579,8 +1580,14 @@
         var dl = (typeof c.downlink === 'number')  ? c.downlink  : null;
         var rt = (typeof c.rtt === 'number')        ? c.rtt       : null;
         var et = c.effectiveType || null;
+        var ty = c.type || null;
         var inferred = null;
-        if (!et) {
+        // Phase 31d: infer from RTT/downlink when the type is empty,
+        // regardless of effectiveType. Chromium reports effectiveType=4g
+        // on every desktop browser (Wi-Fi/Ethernet included); that's a
+        // cellular-tier hint, not a connection-class hint, so the
+        // broadband-vs-cellular decision must be driven by RTT/downlink.
+        if (!ty) {
             if (rt != null && rt >= 100) {
                 inferred = 'cellular';
             } else if (dl != null && dl >= 5) {
@@ -1593,6 +1600,7 @@
         }
         return {
             available:     true,
+            type:          ty,
             downlink_mbps: dl,
             effective_type: et,
             rtt_ms:        rt,
@@ -1687,8 +1695,15 @@
         // (typical of WiFi-only networks on macOS / Linux Chromium), infer
         // broadband vs cellular from the RTT/downlink hints so the row
         // never reads "Type: unknown" alone.
+        // Phase 31d: broaden the gate — Chromium Wi-Fi/Ethernet reports
+        // effectiveType=4g (a cellular-tier hint, not a connection-class
+        // hint) even though `type` is empty. We should infer the link
+        // class from RTT/downlink whenever the type is empty, regardless
+        // of what effectiveType says. The effectiveType stays useful as
+        // a separate tier label, but it should never drive the
+        // "broadband vs cellular" decision on a desktop browser.
         var inferredType = '';
-        if (net.available && (!net.effective_type) && (!net.downlink_mbps || net.downlink_mbps <= 0)) {
+        if (net.available && !net.type) {
             if (net.rtt_ms != null && net.rtt_ms >= 100) {
                 inferredType = 'cellular';
             } else if (net.downlink_mbps != null && net.downlink_mbps >= 5) {
@@ -1701,11 +1716,19 @@
         }
         tbody.appendChild(el('tr', {}, [
             el('th', { text: I18N.cqNetInfo || 'Browser network info' }),
+            // Phase 31d: do NOT trust effectiveType alone as the
+            // connection type. Chromium reports effectiveType=4g on every
+            // desktop browser (Wi-Fi, Ethernet, AND cellular) — it's a
+            // cellular-tier hint, not a connection-class hint. If we have
+            // an inferred type from RTT/downlink, prefer that. If not,
+            // show effectiveType ONLY as a tier hint (e.g. "4g") next to
+            // the downlink / RTT numbers, never as the connection label.
             el('td', { text: net.available
                 ? (
-                    (inferredType ? ('Type: ' + inferredType + ' (inferred) · ') : (net.effective_type ? ('Type: ' + net.effective_type + ' · ') : '')) +
+                    (inferredType ? ('Type: ' + inferredType + ' (inferred) · ') : '') +
                     (net.downlink_mbps != null ? ('Downlink: ' + net.downlink_mbps + ' Mbps · ') : '') +
-                    (net.rtt_ms != null ? ('RTT hint: ' + net.rtt_ms + ' ms') : (net.effective_type || inferredType || (I18N.unable || '—')))
+                    (net.rtt_ms != null ? ('RTT hint: ' + net.rtt_ms + ' ms · ') : '') +
+                    (inferredType ? '' : (net.effective_type ? ('Tier: ' + net.effective_type) : (I18N.unable || '—')))
                   ).replace(/·\s*$/, '')
                 : (I18N.cqNetInfoUnavailable || 'Not available in this browser.')
             })
@@ -4445,7 +4468,11 @@
                 var origin = [intel.latitude, intel.longitude];
                 var pr = (report && report.privacy_report && report.privacy_report.proxy) || null;
                 var proxy = (pr && pr.category) || (intel.proxy || intel.vpn || intel.tor || intel.hosting || 'residential');
-                var hopCount = proxy === 'tor' ? 5 : proxy === 'vpn' || proxy === 'proxy' ? 4 : 3;
+                // Phase 31d: a real residential connection still traverses
+                // 4-5 hops (device → router → ISP edge → regional gateway →
+                // destination). Showing only 3 hops for the most common case
+                // undersells how many network elements are actually involved.
+                var hopCount = proxy === 'tor' ? 6 : proxy === 'vpn' || proxy === 'proxy' ? 5 : 4;
                 // Synthesize intermediate hops along a small arc between origin and a "destination" ~25° away.
                 var dest = interpolateDestination(origin, hopCount);
                 var hops = buildHopChain(origin, dest, hopCount, proxy, intel);
@@ -4684,8 +4711,14 @@
                 if (h.org) { asnTxt += (asnTxt ? ' · ' : '') + h.org; }
                 subBits.push(asnTxt);
             }
+            // Phase 31d: prepend the country flag emoji so the location
+            // line reads 🇺🇸 United States / NY rather than just the bare
+            // country name. The hop rows above only showed "United States"
+            // (no flag) which made the visitor's location indistinguishable
+            // at a glance from any other country that shared the name.
             if (h.country) {
-                subBits.push(h.country + (h.region ? ' / ' + h.region : ''));
+                var flagPrefix = countryFlag(h.country);
+                subBits.push((flagPrefix ? flagPrefix + ' ' : '') + h.country + (h.region ? ' / ' + h.region : ''));
             }
             // Always render a sub line, even if empty, so the row layout stays
             // consistent across hop rows. Falls back to the hop label.

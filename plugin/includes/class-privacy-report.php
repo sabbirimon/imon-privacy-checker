@@ -351,6 +351,20 @@ final class PrivacyReport {
                 1
             );
         }
+        // Phase 51: when the IP-intel chain reports 'unavailable' (every
+        // provider failed — common on free hosts that block outbound HTTP
+        // to ip-api.com / ipinfo.io), we cannot determine country / ASN /
+        // ISP. That's a privacy blind spot, not a neutral state — the
+        // visitor could be in any country and we can't tell. Drop the
+        // category score hard (30 / bad) so the headline doesn't claim a
+        // good score we didn't earn.
+        if ( 'unavailable' === $status ) {
+            return self::row( 30, 'bad', 'ip',
+                __( 'IP intelligence unavailable on this host. Country / ASN / ISP cannot be determined — exposure is unknown.', 'privacy-checker' ),
+                array( 'chain' => $intel['chain'] ?? array(), 'error' => $intel['error'] ?? '' ),
+                2
+            );
+        }
         return self::row( 50, 'warning', 'ip',
             __( 'IP intelligence provider did not respond. Cannot fully evaluate exposure.', 'privacy-checker' ),
             array(),
@@ -690,6 +704,36 @@ final class PrivacyReport {
         if ( $signals_present < 2 ) {
             // Insufficient signal to claim consistency. Surface as warning
             // so the privacy score can't be lifted to 100 on weak data.
+            // Phase 51: when the IP-intel chain is unavailable we can't
+            // correlate timezone/ASN against the browser, but we still
+            // have a proxy verdict (which is computed locally from CF
+            // headers + IP-range heuristics, not an external API). If the
+            // proxy verdict is medium/high confidence, surface that in
+            // the message and bump the score down to 45 so the headline
+            // acknowledges the masking intent without claiming "verified".
+            $proxy = $scan['connection']['proxy'] ?? array();
+            $proxy_label = (string) ( $proxy['label'] ?? '' );
+            $proxy_conf  = (string) ( $proxy['confidence'] ?? '' );
+            $has_proxy_verdict = in_array( $proxy_conf, array( 'medium', 'high' ), true ) && '' !== $proxy_label;
+            $intel_status = (string) ( $intel['status'] ?? '' );
+            if ( 'unavailable' === $intel_status && $has_proxy_verdict ) {
+                return self::row( 45, 'warning', 'consistency',
+                    sprintf(
+                        /* translators: %s: proxy verdict (e.g. "VPN (Cloudflare WARP)") */
+                        __( 'IP intelligence unavailable on this host. Detected proxy: %s. Consistency could not be fully evaluated.', 'privacy-checker' ),
+                        $proxy_label
+                    ),
+                    array(
+                        'consistent' => false,
+                        'mismatches' => $mismatches,
+                        'signals_present' => $signals_present,
+                        'weak_signal' => true,
+                        'proxy_verdict' => $proxy_label,
+                    ),
+                    4,
+                    'low'
+                );
+            }
             return self::row( 55, 'warning', 'consistency',
                 __( 'Anonymity could not be evaluated — multiple detectors were unavailable. Run a scan with all providers enabled for a real consistency verdict.', 'privacy-checker' ),
                 array(

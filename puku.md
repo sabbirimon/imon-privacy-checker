@@ -13,7 +13,7 @@ npm install -g @puku/puku-cli
 Verify:
 
 ```bash
-puku-cli --version     # → 1.8.52
+puku-cli --version     # → 1.8.54
 which puku-cli         # → /Users/code/.npm-global/bin/puku-cli
 ```
 
