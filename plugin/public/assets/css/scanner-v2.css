@@ -2058,7 +2058,6 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-}
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -2685,6 +2684,61 @@
   .pcv2__header-actions .pcv2__btn--primary {
     padding: 0.5rem 1rem;
     font-size: 0.85rem;
+  }
+
+  /* Phase 31d — Connection card mobile.
+   * At 375px the connection-signal row (bars + flag + location +
+   * isp + decorative globe) gets cramped. Drop the decorative
+   * globe, drop the signal bar count from 5→4, and tighten gaps so
+   * the location line doesn't truncate. Also drop the fact-grid
+   * tile min-width from 130→108 so 2-up fits without wrapping. */
+  .pcv2__connection-signal {
+    padding: 0.7rem 0.8rem;
+    gap: 0.6rem;
+  }
+  .pcv2__signal-bars {
+    height: 26px;
+    gap: 0.12rem;
+  }
+  .pcv2__signal-bars .pcv2__signal-bar {
+    width: 5px;
+  }
+  .pcv2__signal-globe { display: none; }
+  .pcv2__signal-text {
+    gap: 0.2rem;
+  }
+  .pcv2__signal-location {
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+  }
+  .pcv2__signal-isp {
+    font-size: 0.72rem;
+  }
+  .pcv2__connection-facts {
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    gap: 0.45rem;
+  }
+  .pcv2__connection-tile {
+    padding: 0.55rem 0.6rem;
+    gap: 0.18rem;
+  }
+  .pcv2__connection-tile-label {
+    font-size: 0.62rem;
+  }
+  .pcv2__connection-tile-value {
+    font-size: 0.82rem;
+  }
+  /* IP badge — shrink the value font and tighten the gap so an
+   * IPv6 address doesn't overflow the card padding. */
+  .pcv2__connection-ip {
+    padding: 0.75rem 0.8rem;
+    gap: 0.55rem;
+  }
+  .pcv2__connection-ip-label { font-size: 0.62rem; }
+  .pcv2__connection-ip-value { font-size: 0.92rem; }
+  .pcv2__connection-ip-copy {
+    width: 30px; height: 30px;
+    font-size: 0.92rem;
   }
 }
 
